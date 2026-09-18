@@ -1,0 +1,25 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "g2rd-wpjm-geo/jobs-map",
+	"title": "Carte des offres d’emploi",
+	"category": "widgets",
+	"icon": "location-alt",
+	"description": "Carte interactive des offres WP Job Manager géolocalisées.",
+	"keywords": [ "carte", "map", "jobs", "offres", "emploi" ],
+	"textdomain": "g2rd-wpjm-geo",
+	"attributes": {
+		"height": {
+			"type": "number",
+			"default": 0
+		}
+	},
+	"supports": {
+		"html": false,
+		"align": [ "wide", "full" ],
+		"spacing": {
+			"margin": true
+		}
+	},
+	"editorScript": "g2rd-wpjm-geo-block-editor"
+}
