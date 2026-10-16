@@ -44,6 +44,7 @@ namespace {
 		public static $menus         = array();
 		public static $wpjm_geocode   = array(); // texte => tableau d'adresse renvoyé par WP_Job_Manager_Geocode::get_location_data().
 		public static $cache_bumps = 0;
+		public static $enqueued = array();
 
 		public static function reset() {
 			self::$options    = array();
@@ -65,6 +66,7 @@ namespace {
 			self::$menus         = array();
 			self::$wpjm_geocode   = array();
 			self::$cache_bumps = 0;
+			self::$enqueued = array();
 		}
 	}
 
@@ -338,6 +340,19 @@ namespace {
 		G2RD_Test_State::$menus[] = array( 'type' => 'sub', 'parent' => $parent, 'slug' => $slug, 'title' => $menu_title );
 		return $parent . '_page_' . $slug;
 	}
+	function wp_enqueue_style( $handle, $src = '', $deps = array(), $ver = false, $media = 'all' ) {
+		G2RD_Test_State::$enqueued[ 'style:' . $handle ] = $src;
+	}
+	function wp_enqueue_script( $handle, $src = '', $deps = array(), $ver = false, $in_footer = false ) {
+		G2RD_Test_State::$enqueued[ 'script:' . $handle ] = $src;
+	}
+	function wp_add_inline_style( $handle, $data ) {
+		G2RD_Test_State::$enqueued[ 'inline:' . $handle ] = $data;
+		return true;
+	}
+	function esc_url( $url, $protocols = null, $_context = 'display' ) {
+		return str_replace( '&', '&#038;', esc_url_raw( $url, $protocols ) );
+	}
 
 	// --- Transients et cron.
 	function get_transient( $key ) {
@@ -420,7 +435,7 @@ namespace G2RD\WPJMGeo {
 }
 
 namespace {
-	foreach ( array( 'Settings', 'Logger', 'UrlChecker', 'ApplicationNormalizer', 'JobQueue', 'UrlCheckQueue', 'GoFetchIntegration', 'PhotonGeocoder', 'GeocodingIntegration', 'GeocodeQueue', 'RestController', 'AdminMenu', 'RegeocodeTool' ) as $class ) {
+	foreach ( array( 'Settings', 'Logger', 'UrlChecker', 'ApplicationNormalizer', 'JobQueue', 'UrlCheckQueue', 'GoFetchIntegration', 'PhotonGeocoder', 'GeocodingIntegration', 'GeocodeQueue', 'RestController', 'AdminMenu', 'RegeocodeTool', 'AdminScreen' ) as $class ) {
 		require_once dirname( __DIR__ ) . '/includes/' . $class . '.php';
 	}
 }

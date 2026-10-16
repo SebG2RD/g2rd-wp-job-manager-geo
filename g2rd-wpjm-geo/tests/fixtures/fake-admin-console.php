@@ -17,6 +17,10 @@ class AdminConsole {
 	const CONTRACT_VERSION = 2;
 	const MENU_SLUG        = 'g2rd';
 	public static $opened  = array();
+	public static $styles = 0;
+	public static function enqueueStyle() {
+		self::$styles++;
+	}
 	public static function open( array $args ) {
 		self::$opened[] = $args;
 	}

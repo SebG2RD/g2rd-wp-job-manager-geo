@@ -18,6 +18,7 @@ if ( 'cli' !== PHP_SAPI ) {
 require __DIR__ . '/bootstrap.php';
 
 use G2RD\WPJMGeo\AdminMenu;
+use G2RD\WPJMGeo\AdminScreen;
 use G2RD\WPJMGeo\ApplicationNormalizer;
 use G2RD\WPJMGeo\GeocodeQueue;
 use G2RD\WPJMGeo\GeocodingIntegration;
@@ -847,6 +848,31 @@ $run = $tool->handle( 'run', 0, $lyon );
 check( 'Google, quota mémorisé ou géocodage coupé : erreur et arrêt', 'error' === $run['rows'][0]['status'] && true === $run['stopped'] );
 $run = $tool->handle( 'run', 0, array( array( 'id' => '313', 'location' => ',', 'source' => 'osm', 'geolocated' => '1' ) ) );
 check( 'localisation sans rien de géocodable : non trouvée, sans arrêt', 'not_found' === $run['rows'][0]['status'] && false === $run['stopped'] );
+
+echo PHP_EOL . '21. Adresse de la page' . PHP_EOL;
+check( 'page_url pointe sur admin.php', 'https://example.test/wp-admin/admin.php?page=g2rd-wpjm-geo' === Settings::page_url() );
+AdminMenu::reset();
+check( 'is_settings_screen suit AdminMenu (aucune page enregistrée)', false === Settings::is_settings_screen( 'job_listing_page_g2rd-wpjm-geo' ) );
+
+// Ressources et gabarit de la page (la console simulée est chargée depuis la section 19).
+boot();
+AdminMenu::reset();
+$menu   = new AdminMenu( '__return_false' );
+$screen = new AdminScreen();
+$menu->maybe_add_standalone();
+$screen->enqueue( 'edit.php' );
+check( 'autre écran : aucune ressource', array() === G2RD_Test_State::$enqueued );
+$screen->enqueue( 'toplevel_page_g2rd-wpjm-geo' );
+check( 'menu autonome : copie de la feuille, polices et script', isset( G2RD_Test_State::$enqueued['style:g2rd-wpjm-geo-console'], G2RD_Test_State::$enqueued['inline:g2rd-wpjm-geo-console'], G2RD_Test_State::$enqueued['script:g2rd-wpjm-geo-admin-settings'] ) );
+AdminMenu::reset();
+G2RD_Test_State::$enqueued    = array();
+\G2RD\AdminConsole::$styles = 0;
+$menu->attach_to_console( 'g2rd' );
+$screen->enqueue( 'g2rd_page_g2rd-wpjm-geo' );
+check( 'rattaché : feuille du thème chargée, pas la copie', 1 === \G2RD\AdminConsole::$styles && ! isset( G2RD_Test_State::$enqueued['style:g2rd-wpjm-geo-console'] ) && isset( G2RD_Test_State::$enqueued['script:g2rd-wpjm-geo-admin-settings'] ) );
+AdminScreen::open( array( 'title' => 'Titre délégué' ) );
+check( 'rattaché : gabarit délégué à la console du thème', 'Titre délégué' === end( \G2RD\AdminConsole::$opened )['title'] );
+AdminMenu::reset();
 
 $results = $GLOBALS['g2rd_results'];
 echo PHP_EOL . sprintf( 'Résultat : %d réussis, %d échoués', $results['pass'], $results['fail'] ) . PHP_EOL;

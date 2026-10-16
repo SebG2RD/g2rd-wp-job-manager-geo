@@ -213,6 +213,20 @@ class Logger {
 	}
 
 	/**
+	 * Nombre de remplacements sur les derniers jours.
+	 *
+	 * @param int $days Nombre de jours.
+	 * @return int
+	 */
+	public static function count_since( $days ) {
+		global $wpdb;
+		$table = self::table();
+		$limit = gmdate( 'Y-m-d H:i:s', time() - max( 1, absint( $days ) ) * DAY_IN_SECONDS );
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- nom de table interne.
+		return (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE created_at >= %s", $limit ) );
+	}
+
+	/**
 	 * Libellé lisible d'un code de raison.
 	 *
 	 * @param string $reason Code.
