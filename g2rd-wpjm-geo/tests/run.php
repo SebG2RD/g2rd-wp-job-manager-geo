@@ -17,6 +17,7 @@ if ( 'cli' !== PHP_SAPI ) {
 
 require __DIR__ . '/bootstrap.php';
 
+use G2RD\WPJMGeo\AdminMenu;
 use G2RD\WPJMGeo\ApplicationNormalizer;
 use G2RD\WPJMGeo\GeocodeQueue;
 use G2RD\WPJMGeo\GeocodingIntegration;
@@ -736,6 +737,27 @@ do_action( 'job_manager_job_location_edited', 240, 'Rouen' );
 check( 'source modifiée : cache des offres de WP Job Manager pas encore renouvelé', 0 === G2RD_Test_State::$cache_bumps );
 do_action( 'shutdown' );
 check( 'source modifiée : cache des offres renouvelé une fois en fin de requête', 1 === G2RD_Test_State::$cache_bumps );
+
+echo PHP_EOL . '19. Rattachement au menu' . PHP_EOL;
+boot();
+AdminMenu::reset();
+$menu = new AdminMenu( '__return_false' );
+$menu->attach_to_console( 'g2rd' );
+$menu->maybe_add_standalone();
+$top = G2RD_Test_State::$menus[0];
+check( 'sans le thème G2RD : menu autonome « G2RD Geo »', 1 === count( G2RD_Test_State::$menus ) && 'top' === $top['type'] && 'g2rd-wpjm-geo' === $top['slug'] && 'G2RD Geo' === $top['title'] && 'dashicons-location-alt' === $top['icon'] && 31 === $top['position'] );
+check( 'sans le thème : écran reconnu', AdminMenu::is_plugin_screen( 'toplevel_page_g2rd-wpjm-geo' ) && ! AdminMenu::is_attached() && ! AdminMenu::is_plugin_screen( 'job_listing_page_g2rd-wpjm-geo' ) );
+
+require __DIR__ . '/fixtures/fake-admin-console.php';
+boot();
+AdminMenu::reset();
+$menu = new AdminMenu( '__return_false' );
+$menu->attach_to_console( 'g2rd' );
+$menu->maybe_add_standalone();
+$sub = G2RD_Test_State::$menus[0];
+check( 'avec la console G2RD : sous-menu du menu « G2RD », pas de menu autonome', 1 === count( G2RD_Test_State::$menus ) && 'sub' === $sub['type'] && 'g2rd' === $sub['parent'] && 'Offres géolocalisées' === $sub['title'] );
+check( 'avec la console : écran reconnu', AdminMenu::is_attached() && AdminMenu::is_plugin_screen( 'g2rd_page_g2rd-wpjm-geo' ) );
+AdminMenu::reset();
 
 $results = $GLOBALS['g2rd_results'];
 echo PHP_EOL . sprintf( 'Résultat : %d réussis, %d échoués', $results['pass'], $results['fail'] ) . PHP_EOL;
