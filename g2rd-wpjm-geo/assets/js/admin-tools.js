@@ -34,6 +34,7 @@
 				keys.push( 'fixed' );
 			}
 			var list = document.createElement( 'ul' );
+			list.className = 'g2rd-stack';
 			keys.forEach( function ( key ) {
 				var item = document.createElement( 'li' );
 				item.textContent = ( i18n[ key ] || key ) + ' : ' + totals[ key ];
@@ -43,35 +44,42 @@
 			statsEl.appendChild( list );
 		}
 
+		function tableBody() {
+			var table = rowsEl.querySelector( 'table' );
+			if ( table ) {
+				return table.tBodies[ 0 ];
+			}
+			table = document.createElement( 'table' );
+			table.className = 'widefat striped g2rd-table';
+			var head = table.createTHead().insertRow();
+			[ i18n.job, i18n.current, i18n.next, i18n.reason ].forEach( function ( label ) {
+				var th = document.createElement( 'th' );
+				th.scope = 'col';
+				th.textContent = ( label || '' ).replace( /\s*:\s*$/, '' );
+				head.appendChild( th );
+			} );
+			table.createTBody();
+			rowsEl.appendChild( table );
+			return table.tBodies[ 0 ];
+		}
+
 		function appendRows( rows, shown ) {
+			var body = null;
 			rows.forEach( function ( row ) {
 				if ( shown.count >= MAX_ROWS ) {
 					shown.truncated = true;
 					return;
 				}
 				shown.count++;
-				var block = document.createElement( 'div' );
-				block.className = 'g2rd-wpjm-geo-tools__row';
-
-				var title = document.createElement( 'strong' );
-				title.textContent = ( i18n.job || 'Offre' ) + ' #' + row.id;
-				block.appendChild( title );
-
-				[
-					[ i18n.current, row.old ],
-					[ i18n.next, row[ 'new' ] ],
-					[ i18n.reason, row.reason ]
-				].forEach( function ( pair ) {
-					var line = document.createElement( 'p' );
-					var label = document.createElement( 'span' );
-					label.textContent = pair[ 0 ] + ' ';
-					var value = document.createElement( 'code' );
-					value.textContent = pair[ 1 ];
-					line.appendChild( label );
-					line.appendChild( value );
-					block.appendChild( line );
+				body = body || tableBody();
+				var tr = body.insertRow();
+				tr.insertCell().textContent = '#' + row.id;
+				[ row.old, row[ 'new' ] ].forEach( function ( value ) {
+					var cell = tr.insertCell();
+					cell.className = 'is-mono';
+					cell.textContent = value;
 				} );
-				rowsEl.appendChild( block );
+				tr.insertCell().textContent = row.reason;
 			} );
 		}
 

@@ -111,38 +111,34 @@ class MigrationTool {
 			'truncated' => __( 'Seules les 500 premières offres sont détaillées.', 'g2rd-wpjm-geo' ),
 		);
 		?>
-		<hr />
-		<h2><?php esc_html_e( 'Outil : offres Go Fetch Jobs existantes', 'g2rd-wpjm-geo' ); ?></h2>
-		<p><?php esc_html_e( 'Aucune modification n’est lancée automatiquement. Analysez d’abord, simulez, puis corrigez. Le traitement est réalisé par lots pour éviter les dépassements de délai. Les réglages utilisés sont ceux actuellement enregistrés.', 'g2rd-wpjm-geo' ); ?></p>
+		<section class="g2rd-section" id="g2rd-geo-gofetch-outil">
+			<div class="g2rd-section__head"><h3 class="g2rd-section__title"><?php esc_html_e( 'Offres Go Fetch Jobs existantes', 'g2rd-wpjm-geo' ); ?></h3></div>
+			<p class="g2rd-section__desc"><?php esc_html_e( 'Aucune modification n’est lancée automatiquement. Analysez d’abord, simulez, puis corrigez. Le traitement est réalisé par lots pour éviter les dépassements de délai. Les réglages utilisés sont ceux actuellement enregistrés.', 'g2rd-wpjm-geo' ); ?></p>
 
-		<?php if ( ! Dependencies::has_gofetch() ) : ?>
-			<div class="notice notice-info inline"><p><?php esc_html_e( 'Go Fetch Jobs n’est pas actif. L’outil peut néanmoins traiter les offres importées précédemment (elles conservent leur marqueur d’import).', 'g2rd-wpjm-geo' ); ?></p></div>
-		<?php endif; ?>
-		<?php if ( Settings::MODE_KEEP === $mode ) : ?>
-			<div class="notice notice-warning inline"><p><?php esc_html_e( 'Le remplacement est désactivé dans les réglages : l’analyse fonctionne, mais aucune offre ne sera signalée comme à corriger.', 'g2rd-wpjm-geo' ); ?></p></div>
-		<?php elseif ( '' === $email ) : ?>
-			<div class="notice notice-warning inline"><p><?php esc_html_e( 'Aucune adresse email générique valide n’est configurée : aucune correction ne sera effectuée.', 'g2rd-wpjm-geo' ); ?></p></div>
-		<?php endif; ?>
+			<?php if ( ! Dependencies::has_gofetch() ) : ?>
+				<div class="g2rd-alert g2rd-alert--info"><p><?php esc_html_e( 'Go Fetch Jobs n’est pas actif. L’outil peut néanmoins traiter les offres importées précédemment (elles conservent leur marqueur d’import).', 'g2rd-wpjm-geo' ); ?></p></div>
+			<?php endif; ?>
+			<?php if ( Settings::MODE_KEEP === $mode ) : ?>
+				<div class="g2rd-alert g2rd-alert--warning"><p><?php esc_html_e( 'Le remplacement est désactivé dans les réglages : l’analyse fonctionne, mais aucune offre ne sera signalée comme à corriger.', 'g2rd-wpjm-geo' ); ?></p></div>
+			<?php elseif ( '' === $email ) : ?>
+				<div class="g2rd-alert g2rd-alert--warning"><p><?php esc_html_e( 'Aucune adresse email générique valide n’est configurée : aucune correction ne sera effectuée.', 'g2rd-wpjm-geo' ); ?></p></div>
+			<?php endif; ?>
 
-		<div class="g2rd-wpjm-geo-tools"
-			data-ajax-url="<?php echo esc_url( admin_url( 'admin-ajax.php' ) ); ?>"
-			data-action="<?php echo esc_attr( self::AJAX_ACTION ); ?>"
-			data-nonce="<?php echo esc_attr( wp_create_nonce( self::NONCE_ACTION ) ); ?>"
-			data-i18n="<?php echo esc_attr( wp_json_encode( $i18n ) ); ?>">
-			<p>
-				<button type="button" class="button" data-g2rd-run="analyze"><?php esc_html_e( 'Analyser les offres Go Fetch Jobs existantes', 'g2rd-wpjm-geo' ); ?></button>
-			</p>
-			<p>
-				<label><input type="checkbox" data-g2rd-dry-run checked /> <?php esc_html_e( 'Mode simulation (aucune donnée n’est modifiée)', 'g2rd-wpjm-geo' ); ?></label>
-			</p>
-			<p>
-				<button type="button" class="button button-primary" data-g2rd-run="fix"><?php esc_html_e( 'Corriger les offres', 'g2rd-wpjm-geo' ); ?></button>
-			</p>
-			<p class="g2rd-wpjm-geo-tools__status" role="status" aria-live="polite"></p>
-			<div class="g2rd-wpjm-geo-tools__stats"></div>
-			<div class="g2rd-wpjm-geo-tools__rows"></div>
-		</div>
-
+			<div class="g2rd-wpjm-geo-tools"
+				data-ajax-url="<?php echo esc_url( admin_url( 'admin-ajax.php' ) ); ?>"
+				data-action="<?php echo esc_attr( self::AJAX_ACTION ); ?>"
+				data-nonce="<?php echo esc_attr( wp_create_nonce( self::NONCE_ACTION ) ); ?>"
+				data-i18n="<?php echo esc_attr( wp_json_encode( $i18n ) ); ?>">
+				<div class="g2rd-row">
+					<button type="button" class="button" data-g2rd-run="analyze"><?php esc_html_e( 'Analyser les offres Go Fetch Jobs existantes', 'g2rd-wpjm-geo' ); ?></button>
+					<label class="g2rd-row"><input type="checkbox" data-g2rd-dry-run checked /> <?php esc_html_e( 'Mode simulation (aucune donnée n’est modifiée)', 'g2rd-wpjm-geo' ); ?></label>
+					<button type="button" class="button button-primary" data-g2rd-run="fix"><?php esc_html_e( 'Corriger les offres', 'g2rd-wpjm-geo' ); ?></button>
+				</div>
+				<p class="g2rd-wpjm-geo-tools__status g2rd-muted" role="status" aria-live="polite"></p>
+				<div class="g2rd-wpjm-geo-tools__stats"></div>
+				<div class="g2rd-wpjm-geo-tools__rows"></div>
+			</div>
+		</section>
 		<?php
 		$this->render_log();
 	}
@@ -153,20 +149,21 @@ class MigrationTool {
 	 * @return void
 	 */
 	private function render_log() {
-		echo '<hr /><h2>' . esc_html__( 'Journal des remplacements', 'g2rd-wpjm-geo' ) . '</h2>';
+		echo '<section class="g2rd-section" id="g2rd-geo-journal-entrees">';
+		echo '<div class="g2rd-section__head"><h3 class="g2rd-section__title">' . esc_html__( 'Journal des remplacements', 'g2rd-wpjm-geo' ) . '</h3></div>';
 
 		if ( ! $this->settings->get( 'log_enabled' ) ) {
-			echo '<p>' . esc_html__( 'Le journal est désactivé.', 'g2rd-wpjm-geo' ) . '</p>';
+			echo '<div class="g2rd-alert g2rd-alert--info"><p>' . esc_html__( 'Le journal est désactivé.', 'g2rd-wpjm-geo' ) . '</p></div>';
 		}
 
 		$rows = $this->logger->latest( 50 );
 		if ( empty( $rows ) ) {
-			echo '<p>' . esc_html__( 'Aucune entrée pour le moment.', 'g2rd-wpjm-geo' ) . '</p>';
+			echo '<div class="g2rd-empty"><p>' . esc_html__( 'Aucune entrée pour le moment.', 'g2rd-wpjm-geo' ) . '</p></div></section>';
 			return;
 		}
 
-		echo '<p class="description">' . esc_html__( '50 dernières entrées.', 'g2rd-wpjm-geo' ) . '</p>';
-		echo '<div class="g2rd-wpjm-geo-table-wrap"><table class="widefat striped"><thead><tr>';
+		echo '<p class="g2rd-section__desc">' . esc_html__( '50 dernières entrées.', 'g2rd-wpjm-geo' ) . '</p>';
+		echo '<table class="widefat striped g2rd-table"><thead><tr>';
 		foreach ( array( __( 'Offre', 'g2rd-wpjm-geo' ), __( 'Date', 'g2rd-wpjm-geo' ), __( 'Ancienne valeur', 'g2rd-wpjm-geo' ), __( 'Nouvelle valeur', 'g2rd-wpjm-geo' ), __( 'Raison', 'g2rd-wpjm-geo' ), __( 'Source', 'g2rd-wpjm-geo' ) ) as $heading ) {
 			echo '<th scope="col">' . esc_html( $heading ) . '</th>';
 		}
@@ -176,14 +173,14 @@ class MigrationTool {
 			$link   = get_edit_post_link( $job_id );
 			echo '<tr>';
 			echo '<td>' . ( $link ? '<a href="' . esc_url( $link ) . '">#' . esc_html( (string) $job_id ) . '</a>' : '#' . esc_html( (string) $job_id ) ) . '</td>';
-			echo '<td>' . esc_html( get_date_from_gmt( $row['created_at'], get_option( 'date_format' ) . ' ' . get_option( 'time_format' ) ) ) . '</td>';
-			echo '<td class="g2rd-wpjm-geo-break">' . esc_html( $row['old_value'] ) . '</td>';
-			echo '<td>' . esc_html( $row['new_value'] ) . '</td>';
-			echo '<td>' . esc_html( Logger::reason_label( $row['reason'] ) ) . '</td>';
+			echo '<td class="is-date">' . esc_html( get_date_from_gmt( $row['created_at'], get_option( 'date_format' ) . ' ' . get_option( 'time_format' ) ) ) . '</td>';
+			echo '<td class="is-mono">' . esc_html( $row['old_value'] ) . '</td>';
+			echo '<td class="is-mono">' . esc_html( $row['new_value'] ) . '</td>';
+			echo '<td><span class="g2rd-tag g2rd-tag--info">' . esc_html( Logger::reason_label( $row['reason'] ) ) . '</span></td>';
 			echo '<td>' . esc_html( $row['source'] ) . '</td>';
 			echo '</tr>';
 		}
-		echo '</tbody></table></div>';
+		echo '</tbody></table></section>';
 	}
 
 	/**
