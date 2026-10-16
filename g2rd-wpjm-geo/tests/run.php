@@ -18,6 +18,8 @@ if ( 'cli' !== PHP_SAPI ) {
 require __DIR__ . '/bootstrap.php';
 
 use G2RD\WPJMGeo\ApplicationNormalizer;
+use G2RD\WPJMGeo\GeocodeQueue;
+use G2RD\WPJMGeo\GeocodingIntegration;
 use G2RD\WPJMGeo\GoFetchIntegration;
 use G2RD\WPJMGeo\Logger;
 use G2RD\WPJMGeo\PhotonGeocoder;
@@ -594,6 +596,103 @@ try {
 }
 check( 'exception pendant la requête : autorisation d’hôte retirée quand même', $thrown && false === apply_filters( 'http_request_host_is_external', false, 'photon.local' ) );
 check( 'fragment retiré de l’URL Photon', 0 === strpos( end( G2RD_Test_State::$http_calls ), 'GET https://photon.local/api/?q=Rouen' ) );
+
+echo PHP_EOL . '17. Géocodage libre des offres' . PHP_EOL;
+
+function geo_boot( $provider = 'osm' ) {
+	list( $s ) = boot( array( 'provider' => $provider ) );
+	$geocoder = new PhotonGeocoder( $s );
+	$GLOBALS['g2rd_sleeps'] = 0;
+	$queue = new GeocodeQueue(
+		$s,
+		$geocoder,
+		function () {
+			$GLOBALS['g2rd_sleeps']++;
+		}
+	);
+	$queue->register();
+	( new GeocodingIntegration( $s, $geocoder, $queue ) )->register();
+	G2RD_Test_State::$http_responder = function ( $method, $url ) {
+		if ( false !== strpos( $url, 'q=Montr%C3%A9al' ) ) {
+			return photon_reply( array( photon_feature( 'Montréal', 'place', 'city', -73.5698, 45.5031, array( 'state' => 'Québec', 'country' => 'Canada', 'countrycode' => 'CA' ) ) ) );
+		}
+		if ( false !== strpos( $url, 'q=Rouen' ) ) {
+			return photon_reply( array( photon_feature( 'Rouen', 'place', 'city', 1.0999, 49.4432, array( 'state' => 'Normandie', 'country' => 'France', 'countrycode' => 'FR' ) ) ) );
+		}
+		if ( false !== strpos( $url, 'q=Brest' ) ) {
+			return new WP_Error( 'http_request_failed', 'timeout' );
+		}
+		return photon_reply( array() );
+	};
+	return array( $s, $geocoder, $queue );
+}
+function job_with_google_coords( $id ) {
+	G2RD_Test_State::$post_types[ $id ]               = 'job_listing';
+	G2RD_Test_State::$meta[ $id ]['geolocated']       = 1;
+	G2RD_Test_State::$meta[ $id ]['geolocation_lat']  = '1.5';
+	G2RD_Test_State::$meta[ $id ]['geolocation_long'] = '2.5';
+}
+$src = GeocodingIntegration::META_SOURCE;
+
+geo_boot();
+check( 'mode libre : géocodage Google de WP Job Manager coupé', false === apply_filters( 'job_manager_geolocation_enabled', true ) );
+job_with_google_coords( 200 );
+do_action( 'job_manager_job_location_edited', 200, 'Montréal, Québec, Canada' );
+$m = G2RD_Test_State::$meta[200];
+check( 'saisie : coordonnées Photon au format WPJM', '45.5031' === $m['geolocation_lat'] && '-73.5698' === $m['geolocation_long'] && 'Montréal' === $m['geolocation_city'] && 'CA' === $m['geolocation_country_short'] && 1 === $m['geolocated'] );
+check( 'saisie : source osm', 'osm' === $m[ $src ] );
+
+job_with_google_coords( 201 );
+do_action( 'job_manager_job_location_edited', 201, 'IDF' );
+check( 'introuvable : anciennes coordonnées effacées, pas de source', ! isset( G2RD_Test_State::$meta[201]['geolocation_lat'] ) && ! isset( G2RD_Test_State::$meta[201]['geolocated'] ) && ! isset( G2RD_Test_State::$meta[201][ $src ] ) );
+
+job_with_google_coords( 202 );
+do_action( 'job_manager_job_location_edited', 202, '' );
+check( 'localisation vide : coordonnées effacées', ! isset( G2RD_Test_State::$meta[202]['geolocated'] ) );
+
+G2RD_Test_State::$post_types[203]              = 'post';
+G2RD_Test_State::$meta[203]['geolocation_lat'] = '9';
+do_action( 'job_manager_job_location_edited', 203, 'Rouen' );
+check( 'contenu qui n’est pas une offre : ignoré', '9' === G2RD_Test_State::$meta[203]['geolocation_lat'] );
+
+list( , , $queue ) = geo_boot();
+G2RD_Test_State::$doing_cron = true;
+job_with_google_coords( 210 );
+do_action( 'job_manager_job_location_edited', 210, 'Rouen' );
+check( 'différé : aucune requête, anciennes coordonnées effacées', 0 === count( G2RD_Test_State::$http_calls ) && ! isset( G2RD_Test_State::$meta[210]['geolocated'] ) );
+$queue->flush();
+check( 'différé : offre en file, cron planifié', array( 210 ) === get_option( GeocodeQueue::OPTION ) && false !== wp_next_scheduled( GeocodeQueue::CRON_HOOK ) );
+G2RD_Test_State::$meta[210]['_job_location'] = 'Rouen'; // WordPress écrit la valeur après le hook.
+unset( G2RD_Test_State::$scheduled[ GeocodeQueue::CRON_HOOK ] ); // WordPress retire l'événement avant de l'exécuter.
+do_action( GeocodeQueue::CRON_HOOK );
+check( 'cron : offre géocodée, source osm, file vide', 'Rouen' === G2RD_Test_State::$meta[210]['geolocation_city'] && 'osm' === G2RD_Test_State::$meta[210][ $src ] && array() === get_option( GeocodeQueue::OPTION ) );
+check( 'cron : pause d’une seconde après un appel réseau', 1 === $GLOBALS['g2rd_sleeps'] );
+
+foreach ( array( 211 => 'Brest', 212 => 'Rouen' ) as $id => $loc ) {
+	G2RD_Test_State::$post_types[ $id ]            = 'job_listing';
+	G2RD_Test_State::$meta[ $id ]['_job_location'] = $loc;
+	$queue->push( $id );
+}
+$queue->flush();
+unset( G2RD_Test_State::$scheduled[ GeocodeQueue::CRON_HOOK ] );
+do_action( GeocodeQueue::CRON_HOOK );
+check( 'panne : lot arrêté, offre remise en fin de file', array( 212, 211 ) === get_option( GeocodeQueue::OPTION ) );
+check( 'panne : nouvel essai dans 10 minutes', wp_next_scheduled( GeocodeQueue::CRON_HOOK ) >= time() + 590 );
+G2RD_Test_State::$doing_cron = false;
+
+geo_boot( 'google' );
+check( 'mode Google : géocodage de WP Job Manager actif', true === apply_filters( 'job_manager_geolocation_enabled', true ) );
+G2RD_Test_State::$post_types[220]   = 'job_listing';
+G2RD_Test_State::$meta[220][ $src ] = 'osm';
+do_action( 'job_manager_job_location_edited', 220, 'Paris' );
+check( 'mode Google : ancienne source osm oubliée', ! isset( G2RD_Test_State::$meta[220][ $src ] ) );
+
+list( $s, , $queue ) = geo_boot( 'google' );
+G2RD_Test_State::$post_types[221]              = 'job_listing';
+G2RD_Test_State::$meta[221]['_job_location'] = 'Rouen';
+update_option( GeocodeQueue::OPTION, array( 221 ) );
+do_action( GeocodeQueue::CRON_HOOK );
+check( 'file héritée du mode libre : vidée sans géocoder en mode Google', array() === get_option( GeocodeQueue::OPTION ) && ! isset( G2RD_Test_State::$meta[221]['geolocated'] ) );
 
 $results = $GLOBALS['g2rd_results'];
 echo PHP_EOL . sprintf( 'Résultat : %d réussis, %d échoués', $results['pass'], $results['fail'] ) . PHP_EOL;

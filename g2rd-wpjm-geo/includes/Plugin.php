@@ -96,6 +96,12 @@ final class Plugin {
 		$queue->register();
 		( new GoFetchIntegration( $this->settings, $normalizer, $queue ) )->register();
 
+		// Géocodage libre : actif seulement si le fournisseur OpenStreetMap est choisi.
+		$geocoder  = new PhotonGeocoder( $this->settings );
+		$geo_queue = new GeocodeQueue( $this->settings, $geocoder );
+		$geo_queue->register();
+		( new GeocodingIntegration( $this->settings, $geocoder, $geo_queue ) )->register();
+
 		if ( is_admin() ) {
 			( new MigrationTool( $this->settings, $normalizer, $logger ) )->register();
 		}
@@ -130,5 +136,6 @@ final class Plugin {
 	public static function deactivate() {
 		wp_clear_scheduled_hook( Logger::CRON_HOOK );
 		wp_clear_scheduled_hook( UrlCheckQueue::CRON_HOOK );
+		wp_clear_scheduled_hook( GeocodeQueue::CRON_HOOK );
 	}
 }
