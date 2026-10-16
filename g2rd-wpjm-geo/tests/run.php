@@ -20,6 +20,7 @@ require __DIR__ . '/bootstrap.php';
 use G2RD\WPJMGeo\ApplicationNormalizer;
 use G2RD\WPJMGeo\GoFetchIntegration;
 use G2RD\WPJMGeo\Logger;
+use G2RD\WPJMGeo\PhotonGeocoder;
 use G2RD\WPJMGeo\Settings;
 use G2RD\WPJMGeo\UrlChecker;
 use G2RD\WPJMGeo\UrlCheckQueue;
@@ -340,6 +341,104 @@ check( 'sanitize : champ absent, valeur personnalisée gardée', 'https://tuiles
 G2RD_Test_State::$errors = array();
 $again = $s->sanitize( $s->sanitize( array( 'provider' => 'osm', 'photon_url' => 'https://photon.perso.fr/api/' ) ) );
 check( 'sanitize idempotent, sans message', 'osm' === $again['provider'] && 'https://photon.perso.fr/api/' === $again['photon_url'] && 0 === count( G2RD_Test_State::$errors ) );
+
+echo PHP_EOL . '16. PhotonGeocoder' . PHP_EOL;
+
+function photon_feature( $name, $key, $value, $lng, $lat, $extra = array() ) {
+	return array(
+		'type'       => 'Feature',
+		'geometry'   => array( 'type' => 'Point', 'coordinates' => array( $lng, $lat ) ),
+		'properties' => array_merge( array( 'name' => $name, 'osm_key' => $key, 'osm_value' => $value ), $extra ),
+	);
+}
+function photon_reply( array $features, $code = 200 ) {
+	return array( 'response' => array( 'code' => $code ), 'body' => json_encode( array( 'type' => 'FeatureCollection', 'features' => $features ) ) );
+}
+
+check( 'clean : parenthèses retirées', 'Lyon' === PhotonGeocoder::clean( 'Lyon (69)' ) );
+check( 'clean : numéro isolé retiré', 'Paris' === PhotonGeocoder::clean( '75008 Paris' ) );
+check( 'clean : « Paris 6 » donne « Paris »', 'Paris' === PhotonGeocoder::clean( 'Paris 6' ) );
+check( 'clean : chiffre accolé à une lettre conservé', 'A4 Sud' === PhotonGeocoder::clean( 'A4 Sud' ) );
+check( 'clean : séparateurs de bord retirés', 'Rouen' === PhotonGeocoder::clean( ' - Rouen, ' ) );
+check( 'normalize : accents, casse, ponctuation', 'ile de france' === PhotonGeocoder::normalize( 'Île-de-France' ) );
+check( 'language : fr, de, sinon default', 'fr' === PhotonGeocoder::language( 'fr_FR' ) && 'de' === PhotonGeocoder::language( 'de_DE_formal' ) && 'default' === PhotonGeocoder::language( 'es_ES' ) );
+
+list( $s ) = boot();
+$geo  = new PhotonGeocoder( $s );
+$urls = array();
+G2RD_Test_State::$http_responder = function ( $method, $url ) use ( &$urls ) {
+	$urls[] = $url;
+	if ( false !== strpos( $url, 'q=Londres' ) ) {
+		return photon_reply( array( photon_feature( 'Londres', 'place', 'city', -0.1276, 51.5073, array( 'state' => 'Angleterre', 'country' => 'Royaume-Uni', 'countrycode' => 'gb' ) ) ) );
+	}
+	if ( false !== strpos( $url, 'q=IDF' ) ) {
+		return photon_reply( array( photon_feature( 'Idfu', 'place', 'town', 32.87, 24.98, array( 'country' => 'Égypte' ) ) ) );
+	}
+	if ( false !== strpos( $url, 'q=Brest' ) ) {
+		return new WP_Error( 'http_request_failed', 'cURL error 28: Operation timed out' );
+	}
+	if ( false !== strpos( $url, 'q=Atlantis' ) ) {
+		return photon_reply( array( photon_feature( 'Atlantis', 'place', 'city', 10, 200 ) ) );
+	}
+	return photon_reply( array() );
+};
+
+$r = $geo->geocode( 'Londres, Angleterre, Royaume-Uni' );
+check( 'Londres : coordonnées et ville', is_array( $r ) && '51.5073' === $r['lat'] && '-0.1276' === $r['long'] && 'Londres' === $r['city'] );
+check( 'Londres : adresse au format WPJM', is_array( $r ) && 'Londres, Angleterre, Royaume-Uni' === $r['formatted_address'] && 'Angleterre' === $r['state_long'] && 'Royaume-Uni' === $r['country_long'] && 'GB' === $r['country_short'] );
+check( 'requête : texte encodé, limite, langue, filtres de lieu', 1 === count( $urls ) && 0 === strpos( $urls[0], 'https://photon.komoot.io/api/?q=Londres%2C%20Angleterre%2C%20Royaume-Uni&limit=5&lang=fr' ) && false !== strpos( $urls[0], '&osm_tag=place&osm_tag=boundary%3Aadministrative' ) );
+check( 'premier appel : réseau', false === $geo->last_was_cached() );
+$geo->geocode( 'Londres, Angleterre, Royaume-Uni' );
+check( 'deuxième appel : cache', 1 === count( $urls ) && $geo->last_was_cached() );
+check( 'IDF : homonyme lointain refusé', null === $geo->geocode( 'IDF' ) );
+$before = count( $urls );
+check( 'IDF : refus mis en cache', null === $geo->geocode( 'IDF' ) && count( $urls ) === $before );
+check( 'coordonnées hors bornes refusées', null === $geo->geocode( 'Atlantis' ) );
+check( 'erreur réseau : WP_Error', is_wp_error( $geo->geocode( 'Brest' ) ) );
+$before = count( $urls );
+$geo->geocode( 'Brest' );
+check( 'erreur réseau : non mise en cache', count( $urls ) === $before + 1 );
+check( 'texte vide après nettoyage : null sans requête', null === $geo->geocode( ' (75) ' ) && count( $urls ) === $before + 1 );
+
+list( $s ) = boot();
+$geo  = new PhotonGeocoder( $s );
+$urls = array();
+G2RD_Test_State::$http_responder = function ( $method, $url ) use ( &$urls ) {
+	$urls[] = $url;
+	if ( false !== strpos( $url, 'osm_tag' ) ) {
+		return array( 'response' => array( 'code' => 400 ), 'body' => '{"message":"bad"}' );
+	}
+	return photon_reply(
+		array(
+			photon_feature( 'Trappes', 'shop', 'bakery', 1.0, 1.0 ),
+			photon_feature( 'Trappes', 'place', 'town', 2.0099, 48.7775, array( 'country' => 'France' ) ),
+		)
+	);
+};
+$r = $geo->geocode( 'TRAPPES' );
+check( 'HTTP 400 : nouvel essai sans filtre', 2 === count( $urls ) && false === strpos( $urls[1], 'osm_tag' ) );
+check( 'repli : seuls les lieux sont gardés', is_array( $r ) && '48.7775' === $r['lat'] && 'Trappes' === $r['city'] );
+
+G2RD_Test_State::$http_responder = function () {
+	return array( 'response' => array( 'code' => 400 ), 'body' => '{"message":"bad"}' );
+};
+check( 'HTTP 400 même sans filtre : introuvable, pas une panne', null === $geo->geocode( 'Texte refusé' ) );
+G2RD_Test_State::$http_responder = function () {
+	return array( 'response' => array( 'code' => 503 ), 'body' => '' );
+};
+check( 'HTTP 503 : panne (WP_Error)', is_wp_error( $geo->geocode( 'Nantes' ) ) );
+
+list( $s ) = boot( array( 'photon_url' => 'https://photon.local/api/' ) );
+$geo = new PhotonGeocoder( $s );
+add_filter( 'g2rd_wpjm_geo_photon_allow_private_host', '__return_true' );
+$during = array();
+G2RD_Test_State::$http_responder = function () use ( &$during ) {
+	$during = array( apply_filters( 'http_request_host_is_external', false, 'photon.local' ), apply_filters( 'http_request_host_is_external', false, 'evil.test' ) );
+	return photon_reply( array() );
+};
+$geo->geocode( 'Rouen' );
+check( 'Photon auto-hébergé : seul son hôte est autorisé pendant la requête', array( true, false ) === $during );
+check( 'autorisation retirée après la requête', false === apply_filters( 'http_request_host_is_external', false, 'photon.local' ) );
 
 $results =$GLOBALS['g2rd_results'];
 echo PHP_EOL . sprintf( 'Résultat : %d réussis, %d échoués', $results['pass'], $results['fail'] ) . PHP_EOL;
