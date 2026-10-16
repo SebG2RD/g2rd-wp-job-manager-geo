@@ -1928,7 +1928,7 @@ git commit -m "feat: géocodage libre des offres, différé pendant les imports"
 ### Task 6: Carte — filtre par source
 
 **Files:**
-- Modify: `g2rd-wpjm-geo/includes/RestController.php`
+- Modify: `g2rd-wpjm-geo/includes/RestController.php`, `g2rd-wpjm-geo/includes/GeocodingIntegration.php`
 - Modify: `g2rd-wpjm-geo/tests/bootstrap.php`, `g2rd-wpjm-geo/tests/run.php`
 
 - [ ] **Step 1: Écrire le test (section 18)**
@@ -1943,10 +1943,30 @@ $google = RestController::source_meta_query( 'google' );
 check( 'mode Google : source absente ou google', 'OR' === $google['relation'] && 'NOT EXISTS' === $google[0]['compare'] && 'google' === $google[1]['value'] );
 list( $s ) = boot( array( 'provider' => 'osm' ) );
 $args = ( new RestController( $s ) )->require_coordinates( array() );
-check( 'requête : coordonnées exigées et filtre de source', 3 === count( $args['meta_query'] ) && $osm === $args['meta_query'][2] );
+check( 'requête : coordonnées exigées et filtre de source', 'AND' === $args['meta_query']['relation'] && $osm === $args['meta_query'][2] );
+$args = ( new RestController( $s ) )->require_coordinates( array( 'meta_query' => array( 'relation' => 'OR', array( 'key' => '_featured', 'value' => '1' ) ) ) );
+check( 'requête : un relation OR existant ne rend pas les clauses facultatives', 'AND' === $args['meta_query']['relation'] && 'OR' === $args['meta_query'][0]['relation'] && $osm === $args['meta_query'][1][2] );
+
+geo_boot();
+job_with_google_coords( 240 );
+do_action( 'job_manager_job_location_edited', 240, 'Rouen' );
+check( 'source modifiée : cache des offres de WP Job Manager pas encore renouvelé', 0 === G2RD_Test_State::$cache_bumps );
+do_action( 'shutdown' );
+check( 'source modifiée : cache des offres renouvelé une fois en fin de requête', 1 === G2RD_Test_State::$cache_bumps );
 ```
 
-Dans `tests/bootstrap.php`, ajouter `'RestController'` à la fin de la liste des classes.
+Dans `tests/bootstrap.php`, ajouter `'RestController'` à la fin de la liste des classes. Ajouter à `G2RD_Test_State` la propriété `public static $cache_bumps = 0;` (remise à `0` dans `reset()`), et, à côté de la classe `WP_Job_Manager_Geocode` simulée :
+
+```php
+	class WP_Job_Manager_Cache_Helper {
+		public static function get_transient_version( $group, $refresh = false ) {
+			if ( $refresh ) {
+				G2RD_Test_State::$cache_bumps++;
+			}
+			return (string) G2RD_Test_State::$cache_bumps;
+		}
+	}
+```
 
 - [ ] **Step 2: Vérifier l'échec**
 
@@ -1955,10 +1975,28 @@ Expected: `Call to undefined method G2RD\WPJMGeo\RestController::source_meta_que
 
 - [ ] **Step 3: Implémenter**
 
-Dans `RestController.php`, dans `require_coordinates()`, juste avant `return $query_args;`, ajouter :
+Dans `RestController.php`, remplacer tout le corps de `require_coordinates()` (le docblock devient « Restreint la requête native aux offres géocodées par le fournisseur actif. ») par :
 
 ```php
-		$query_args['meta_query'][] = self::source_meta_query( $this->settings->get_provider() );
+		$ours = array(
+			'relation' => 'AND',
+			array(
+				'key'     => 'geolocation_lat',
+				'value'   => '',
+				'compare' => '!=',
+			),
+			array(
+				'key'     => 'geolocation_long',
+				'value'   => '',
+				'compare' => '!=',
+			),
+			self::source_meta_query( $this->settings->get_provider() ),
+		);
+		// Groupe à part : un relation OR imposé au premier niveau par une autre extension ne rend pas ces clauses facultatives.
+		$query_args['meta_query'] = ( empty( $query_args['meta_query'] ) || ! is_array( $query_args['meta_query'] ) ) // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
+			? $ours
+			: array( 'relation' => 'AND', $query_args['meta_query'], $ours );
+		return $query_args;
 ```
 
 Après la méthode `require_coordinates()`, ajouter :
@@ -2006,6 +2044,59 @@ par :
 		return 'jm_g2rdgeo_' . md5( $page . '|' . $per_page . '|' . (string) $lang . '|' . $this->settings->get_provider() . '|' . G2RD_WPJM_GEO_VERSION ) . $version;
 ```
 
+Dans `GeocodingIntegration.php` : WP Job Manager garde la liste de `get_job_listings()` un jour en cache et ne renouvelle ce cache ni sur `add_post_meta` ni sur `delete_post_meta`. Dans `register()`, dans la boucle sur `added_post_meta`, `updated_post_meta` et `deleted_post_meta`, après la ligne `add_action( $hook, array( __CLASS__, 'on_foreign_coords' ), 10, 3 );`, ajouter :
+
+```php
+			add_action( $hook, array( __CLASS__, 'on_map_meta_changed' ), 10, 3 );
+```
+
+Après la méthode `on_foreign_coords()`, ajouter :
+
+```php
+
+	/**
+	 * Source ou coordonnées modifiées : la liste des offres mise en cache par
+	 * WP Job Manager est renouvelée une fois, en fin de requête.
+	 *
+	 * @param int|int[] $meta_id   ID(s) de la métadonnée.
+	 * @param int       $object_id ID de l'offre.
+	 * @param string    $meta_key  Clé.
+	 * @return void
+	 */
+	public static function on_map_meta_changed( $meta_id, $object_id, $meta_key ) {
+		if ( in_array( $meta_key, array( self::META_SOURCE, 'geolocation_lat' ), true ) ) {
+			// WordPress n'enregistre qu'une fois le même rappel sur le même hook : un seul renouvellement par requête.
+			add_action( 'shutdown', array( __CLASS__, 'bump_listings_cache' ) );
+		}
+	}
+
+	/**
+	 * Renouvelle la version du cache des offres de WP Job Manager (et donc celle de la carte).
+	 *
+	 * @return void
+	 */
+	public static function bump_listings_cache() {
+		if ( class_exists( 'WP_Job_Manager_Cache_Helper' ) ) {
+			\WP_Job_Manager_Cache_Helper::get_transient_version( 'get_job_listings', true );
+		}
+	}
+```
+
+Dans `tests/bootstrap.php`, rendre `add_filter()` simulée fidèle à WordPress sur ce point : un rappel identique (`===`) déjà enregistré à la même priorité est remplacé, pas ajouté une seconde fois. Corps de la fonction :
+
+```php
+		if ( isset( G2RD_Test_State::$hooks[ $hook ][ $priority ] ) ) {
+			foreach ( G2RD_Test_State::$hooks[ $hook ][ $priority ] as $i => $entry ) {
+				if ( $entry[0] === $callback ) {
+					G2RD_Test_State::$hooks[ $hook ][ $priority ][ $i ] = array( $callback, $args );
+					return true;
+				}
+			}
+		}
+		G2RD_Test_State::$hooks[ $hook ][ $priority ][] = array( $callback, $args );
+		return true;
+```
+
 - [ ] **Step 4: Vérifier le succès**
 
 Run: `php g2rd-wpjm-geo/tests/run.php | sed -n '/^18\./,$p'`
@@ -2014,7 +2105,7 @@ Expected: section 18 en `[OK]`, `0 échoués`.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add g2rd-wpjm-geo/includes/RestController.php g2rd-wpjm-geo/tests/bootstrap.php g2rd-wpjm-geo/tests/run.php
+git add g2rd-wpjm-geo/includes/RestController.php g2rd-wpjm-geo/includes/GeocodingIntegration.php g2rd-wpjm-geo/tests/bootstrap.php g2rd-wpjm-geo/tests/run.php
 git commit -m "feat: la carte n'affiche que les offres de la source active"
 ```
 
