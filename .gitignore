@@ -1,2 +1,5 @@
 g2rd-wpjm-geo.zip
 node_modules/
+tools/jsdom/
+tools/docker/plugins/
+tools/docker/cookies.txt
