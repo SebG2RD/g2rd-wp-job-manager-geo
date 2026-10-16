@@ -24,6 +24,7 @@ use G2RD\WPJMGeo\GeocodingIntegration;
 use G2RD\WPJMGeo\GoFetchIntegration;
 use G2RD\WPJMGeo\Logger;
 use G2RD\WPJMGeo\PhotonGeocoder;
+use G2RD\WPJMGeo\RegeocodeTool;
 use G2RD\WPJMGeo\RestController;
 use G2RD\WPJMGeo\Settings;
 use G2RD\WPJMGeo\UrlChecker;
@@ -758,6 +759,77 @@ $sub = G2RD_Test_State::$menus[0];
 check( 'avec la console G2RD : sous-menu du menu « G2RD », pas de menu autonome', 1 === count( G2RD_Test_State::$menus ) && 'sub' === $sub['type'] && 'g2rd' === $sub['parent'] && 'Offres géolocalisées' === $sub['title'] );
 check( 'avec la console : écran reconnu', AdminMenu::is_attached() && AdminMenu::is_plugin_screen( 'g2rd_page_g2rd-wpjm-geo' ) );
 AdminMenu::reset();
+
+echo PHP_EOL . '20. Re-géocodage des offres' . PHP_EOL;
+$rows = array(
+	array( 'id' => '300', 'location' => 'Rouen', 'source' => null, 'geolocated' => '1' ),
+	array( 'id' => '301', 'location' => 'Montréal', 'source' => 'osm', 'geolocated' => '1' ),
+	array( 'id' => '302', 'location' => 'IDF', 'source' => null, 'geolocated' => null ),
+	array( 'id' => '303', 'location' => 'Brest', 'source' => null, 'geolocated' => '1' ),
+	array( 'id' => '303', 'location' => 'Brest', 'source' => null, 'geolocated' => '1' ),
+);
+$sum = RegeocodeTool::summarize( $rows, 'osm' );
+check( 'résumé libre : 4 offres (doublon ignoré), 2 Google, 1 libre, 1 sans coordonnées', 4 === $sum['total'] && 2 === $sum['google'] && 1 === $sum['osm'] && 1 === $sum['none'] );
+check( 'résumé libre : 1 affichée, 3 à re-géocoder', 1 === $sum['shown'] && 3 === $sum['todo'] && array( 300, 302, 303 ) === $sum['todo_ids'] );
+$sum = RegeocodeTool::summarize( $rows, 'google' );
+check( 'résumé Google : 2 affichées, 2 à re-géocoder', 2 === $sum['shown'] && array( 301, 302 ) === $sum['todo_ids'] );
+
+list( $s ) = geo_boot();
+foreach ( $rows as $row ) {
+	$id = (int) $row['id'];
+	job_with_google_coords( $id );
+	G2RD_Test_State::$meta[ $id ]['_job_location'] = $row['location'];
+}
+$sleeps = 0;
+$tool   = new RegeocodeTool(
+	$s,
+	new PhotonGeocoder( $s ),
+	function () use ( &$sleeps ) {
+		$sleeps++;
+	}
+);
+$a = $tool->handle( 'analyze', 0, $rows );
+check( 'analyse : terminée sans appel réseau', true === $a['done'] && array() === $a['rows'] && 3 === $a['summary']['todo'] && 0 === count( G2RD_Test_State::$http_calls ) && ! isset( $a['summary']['todo_ids'] ) );
+$sim = $tool->handle( 'simulate', 0, $rows );
+$st  = array_column( $sim['rows'], 'status', 'id' );
+check( 'simulation : Rouen prévu, IDF non trouvée, Brest en erreur', 'ok' === $st[300] && 'not_found' === $st[302] && 'error' === $st[303] && 'Rouen, France' === $sim['rows'][0]['result'] );
+check( 'simulation : arrêt sur panne, aucune écriture', true === $sim['done'] && true === $sim['stopped'] && '1.5' === G2RD_Test_State::$meta[300]['geolocation_lat'] && ! isset( G2RD_Test_State::$meta[300][ $src ] ) );
+check( 'simulation : lien de modification fourni', 'https://example.test/wp-admin/post.php?post=300&action=edit' === $sim['rows'][0]['edit'] );
+G2RD_Test_State::$http_responder = function ( $method, $url ) {
+	if ( false !== strpos( $url, 'q=Rouen' ) ) {
+		return photon_reply( array( photon_feature( 'Rouen', 'place', 'city', 1.0999, 49.4432, array( 'country' => 'France' ) ) ) );
+	}
+	if ( false !== strpos( $url, 'q=Brest' ) ) {
+		return photon_reply( array( photon_feature( 'Brest', 'place', 'city', -4.4861, 48.3904, array( 'country' => 'France' ) ) ) );
+	}
+	return photon_reply( array() );
+};
+$run = $tool->handle( 'run', 0, $rows );
+$st  = array_column( $run['rows'], 'status', 'id' );
+check( 'exécution : Rouen et Brest écrits, IDF non trouvée', 'done' === $st[300] && 'done' === $st[303] && 'not_found' === $st[302] && true === $run['done'] );
+check( 'exécution : coordonnées libres et source osm', '49.4432' === G2RD_Test_State::$meta[300]['geolocation_lat'] && 'osm' === G2RD_Test_State::$meta[300][ $src ] && 'osm' === G2RD_Test_State::$meta[303][ $src ] );
+check( 'exécution : offre non trouvée laissée intacte', '1.5' === G2RD_Test_State::$meta[302]['geolocation_lat'] );
+check( 'exécution : curseur sur la dernière offre traitée', 303 === $run['cursor'] );
+
+list( $s ) = geo_boot( 'google' );
+foreach ( array( 310 => 'Paris', 311 => 'Nulle part' ) as $id => $loc ) {
+	G2RD_Test_State::$post_types[ $id ]            = 'job_listing';
+	G2RD_Test_State::$meta[ $id ]['_job_location'] = $loc;
+	G2RD_Test_State::$meta[ $id ]['geolocated']    = 1;
+	G2RD_Test_State::$meta[ $id ][ $src ]          = 'osm';
+}
+G2RD_Test_State::$wpjm_geocode['Paris'] = array( 'lat' => '48.85', 'long' => '2.35', 'city' => 'Paris', 'country_long' => 'France' );
+$grows = array(
+	array( 'id' => '310', 'location' => 'Paris', 'source' => 'osm', 'geolocated' => '1' ),
+	array( 'id' => '311', 'location' => 'Nulle part', 'source' => 'osm', 'geolocated' => '1' ),
+);
+$tool = new RegeocodeTool( $s, new PhotonGeocoder( $s ), '__return_false' );
+$sim  = $tool->handle( 'simulate', 0, $grows );
+check( 'Google, simulation : aucune requête, à l’exécution', 'pending' === $sim['rows'][0]['status'] && 0 === count( G2RD_Test_State::$http_calls ) );
+$run = $tool->handle( 'run', 0, $grows );
+$st  = array_column( $run['rows'], 'status', 'id' );
+check( 'Google, exécution : Paris géocodée par WPJM, source google', 'done' === $st[310] && 'google' === G2RD_Test_State::$meta[310][ $src ] && '48.85' === G2RD_Test_State::$meta[310]['geolocation_lat'] );
+check( 'Google, exécution : échec de géocodage listé, offre intacte', 'not_found' === $st[311] && 'osm' === G2RD_Test_State::$meta[311][ $src ] );
 
 $results = $GLOBALS['g2rd_results'];
 echo PHP_EOL . sprintf( 'Résultat : %d réussis, %d échoués', $results['pass'], $results['fail'] ) . PHP_EOL;

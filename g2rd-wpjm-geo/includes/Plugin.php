@@ -103,6 +103,7 @@ final class Plugin {
 		( new GeocodingIntegration( $this->settings, $geocoder, $geo_queue ) )->register();
 
 		if ( is_admin() ) {
+			( new RegeocodeTool( $this->settings, $geocoder ) )->register();
 			( new MigrationTool( $this->settings, $normalizer, $logger ) )->register();
 		}
 	}
