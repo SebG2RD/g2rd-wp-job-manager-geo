@@ -36,6 +36,12 @@ class Settings {
 	const MODE_ALL     = 'all';
 	const MODE_INVALID = 'invalid';
 
+	const PROVIDER_GOOGLE = 'google';
+	const PROVIDER_OSM    = 'osm';
+
+	const DEFAULT_OSM_STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty';
+	const DEFAULT_PHOTON_URL    = 'https://photon.komoot.io/api/';
+
 	/**
 	 * Cache mémoire des réglages fusionnés avec les valeurs par défaut.
 	 *
@@ -62,6 +68,9 @@ class Settings {
 			'gofetch_scope'         => self::MODE_ALL,
 			'log_enabled'           => true,
 			'log_retention_days'    => 90,
+			'provider'              => self::PROVIDER_GOOGLE,
+			'osm_style_url'         => self::DEFAULT_OSM_STYLE_URL,
+			'photon_url'            => self::DEFAULT_PHOTON_URL,
 		);
 	}
 
@@ -138,6 +147,27 @@ class Settings {
 			return self::MODE_KEEP;
 		}
 		return self::MODE_INVALID === $this->get( 'gofetch_scope' ) ? self::MODE_INVALID : self::MODE_ALL;
+	}
+
+	/**
+	 * Fournisseur cartographique actif.
+	 *
+	 * @return string PROVIDER_GOOGLE ou PROVIDER_OSM.
+	 */
+	public function get_provider() {
+		return self::PROVIDER_OSM === $this->get( 'provider' ) ? self::PROVIDER_OSM : self::PROVIDER_GOOGLE;
+	}
+
+	/**
+	 * URL https avec hôte, ou chaîne vide.
+	 *
+	 * @param mixed $raw Valeur saisie.
+	 * @return string
+	 */
+	public static function https_url( $raw ) {
+		$url  = esc_url_raw( trim( (string) $raw ), array( 'https' ) );
+		$host = '' === $url ? '' : (string) wp_parse_url( $url, PHP_URL_HOST );
+		return ( 0 === strpos( $url, 'https://' ) && '' !== $host ) ? $url : '';
 	}
 
 	/**
@@ -314,6 +344,21 @@ class Settings {
 
 		$scope                  = isset( $input['gofetch_scope'] ) ? sanitize_key( $input['gofetch_scope'] ) : self::MODE_ALL;
 		$clean['gofetch_scope'] = self::MODE_INVALID === $scope ? self::MODE_INVALID : self::MODE_ALL;
+
+		$clean['provider'] = ( isset( $input['provider'] ) && self::PROVIDER_OSM === $input['provider'] ) ? self::PROVIDER_OSM : self::PROVIDER_GOOGLE;
+
+		$urls = array(
+			'osm_style_url' => __( 'L’URL du style de carte doit commencer par https:// : elle n’a pas été enregistrée.', 'g2rd-wpjm-geo' ),
+			'photon_url'    => __( 'L’URL du serveur Photon doit commencer par https:// : elle n’a pas été enregistrée.', 'g2rd-wpjm-geo' ),
+		);
+		foreach ( $urls as $key => $message ) {
+			$raw   = isset( $input[ $key ] ) ? trim( (string) $input[ $key ] ) : '';
+			$url   = self::https_url( $raw );
+			$clean[ $key ] = '' !== $url ? $url : (string) $this->get( $key );
+			if ( '' === $url && '' !== $raw ) {
+				$this->notify( 'invalid_' . $key, $message );
+			}
+		}
 
 		$this->cache = null;
 		return $clean;

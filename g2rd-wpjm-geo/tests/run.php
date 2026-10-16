@@ -261,6 +261,28 @@ do_action( UrlCheckQueue::CRON_HOOK );
 check( 'lot de 2 : #140 et #141 traités, #142 et l’ID concurrent #777 toujours en file', DEF === application( 140 ) && DEF === application( 141 ) && 'ftp://site.example/c' === application( 142 ) && array( 142, 777 ) === get_option( UrlCheckQueue::OPTION ) );
 check( 'un nouveau lot est planifié', false !== wp_next_scheduled( UrlCheckQueue::CRON_HOOK ) );
 
+echo PHP_EOL . '15. Réglages du fournisseur' . PHP_EOL;
+list( $s ) = boot();
+check( 'fournisseur par défaut : google', 'google' === $s->get_provider() );
+update_option( Settings::OPTION, array( 'provider' => 'osm' ) );
+$s->flush_cache();
+check( 'fournisseur osm lu', 'osm' === $s->get_provider() );
+update_option( Settings::OPTION, array( 'provider' => 'autre' ) );
+$s->flush_cache();
+check( 'valeur inconnue : google', 'google' === $s->get_provider() );
+check( 'URL https acceptée et rognée', 'https://photon.example.org/api/' === Settings::https_url( ' https://photon.example.org/api/ ' ) );
+check( 'URL http refusée', '' === Settings::https_url( 'http://photon.example.org/api/' ) );
+check( 'URL sans hôte refusée', '' === Settings::https_url( 'https:///api' ) );
+check( 'javascript: refusé', '' === Settings::https_url( 'javascript:alert(1)' ) );
+list( $s ) = boot();
+G2RD_Test_State::$errors = array();
+$c = $s->sanitize( array( 'provider' => 'osm', 'osm_style_url' => 'http://insecure.test/style', 'photon_url' => 'https://photon.mon-serveur.fr/api/' ) );
+check( 'sanitize : fournisseur osm', 'osm' === $c['provider'] );
+check( 'sanitize : style http refusé, valeur précédente gardée, message', Settings::DEFAULT_OSM_STYLE_URL === $c['osm_style_url'] && 'invalid_osm_style_url' === G2RD_Test_State::$errors[0]['code'] );
+check( 'sanitize : URL Photon https acceptée', 'https://photon.mon-serveur.fr/api/' === $c['photon_url'] );
+$c = $s->sanitize( array() );
+check( 'sanitize : champs absents, valeurs par défaut sans message', 'google' === $c['provider'] && Settings::DEFAULT_PHOTON_URL === $c['photon_url'] && 1 === count( G2RD_Test_State::$errors ) );
+
 $results = $GLOBALS['g2rd_results'];
 echo PHP_EOL . sprintf( 'Résultat : %d réussis, %d échoués', $results['pass'], $results['fail'] ) . PHP_EOL;
 exit( $results['fail'] ? 1 : 0 );
