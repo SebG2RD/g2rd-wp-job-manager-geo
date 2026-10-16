@@ -378,7 +378,7 @@ namespace G2RD\WPJMGeo {
 }
 
 namespace {
-	foreach ( array( 'Settings', 'Logger', 'UrlChecker', 'ApplicationNormalizer', 'UrlCheckQueue', 'GoFetchIntegration' ) as $class ) {
+	foreach ( array( 'Settings', 'Logger', 'UrlChecker', 'ApplicationNormalizer', 'JobQueue', 'UrlCheckQueue', 'GoFetchIntegration' ) as $class ) {
 		require_once dirname( __DIR__ ) . '/includes/' . $class . '.php';
 	}
 }
