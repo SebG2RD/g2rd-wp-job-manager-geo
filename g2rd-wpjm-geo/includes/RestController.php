@@ -206,7 +206,37 @@ class RestController {
 			'value'   => '',
 			'compare' => '!=',
 		);
+		$query_args['meta_query'][] = self::source_meta_query( $this->settings->get_provider() );
 		return $query_args;
+	}
+
+	/**
+	 * La carte n'affiche que les offres géocodées par le fournisseur actif : Google exige
+	 * que ses résultats de géocodage soient affichés sur une Google Map.
+	 *
+	 * @param string $provider Fournisseur actif.
+	 * @return array Clause meta_query.
+	 */
+	public static function source_meta_query( $provider ) {
+		if ( Settings::PROVIDER_OSM === $provider ) {
+			return array(
+				'key'     => GeocodingIntegration::META_SOURCE,
+				'value'   => Settings::PROVIDER_OSM,
+				'compare' => '=',
+			);
+		}
+		return array(
+			'relation' => 'OR',
+			array(
+				'key'     => GeocodingIntegration::META_SOURCE,
+				'compare' => 'NOT EXISTS',
+			),
+			array(
+				'key'     => GeocodingIntegration::META_SOURCE,
+				'value'   => Settings::PROVIDER_GOOGLE,
+				'compare' => '=',
+			),
+		);
 	}
 
 	/**
@@ -307,6 +337,6 @@ class RestController {
 		$lang    = apply_filters( 'wpjm_lang', null );
 		$version = \WP_Job_Manager_Cache_Helper::get_transient_version( 'get_job_listings' );
 
-		return 'jm_g2rdgeo_' . md5( $page . '|' . $per_page . '|' . (string) $lang . '|' . G2RD_WPJM_GEO_VERSION ) . $version;
+		return 'jm_g2rdgeo_' . md5( $page . '|' . $per_page . '|' . (string) $lang . '|' . $this->settings->get_provider() . '|' . G2RD_WPJM_GEO_VERSION ) . $version;
 	}
 }

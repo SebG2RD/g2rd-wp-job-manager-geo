@@ -23,6 +23,7 @@ use G2RD\WPJMGeo\GeocodingIntegration;
 use G2RD\WPJMGeo\GoFetchIntegration;
 use G2RD\WPJMGeo\Logger;
 use G2RD\WPJMGeo\PhotonGeocoder;
+use G2RD\WPJMGeo\RestController;
 use G2RD\WPJMGeo\Settings;
 use G2RD\WPJMGeo\UrlChecker;
 use G2RD\WPJMGeo\UrlCheckQueue;
@@ -717,6 +718,15 @@ G2RD_Test_State::$post_types[230] = 'job_listing';
 G2RD_Test_State::$meta[230]       = array( 'geolocated' => 1, 'geolocation_lat' => '49.4432', $src => 'osm' );
 WP_Job_Manager_Geocode::save_location_data( 230, array( 'lat' => '49.4431', 'long' => '1.0993' ) ); // update_location_data() de WP Job Manager, en mode Google.
 check( 'coordonnées écrites par un tiers : source osm retirée', ! isset( G2RD_Test_State::$meta[230][ $src ] ) );
+
+echo PHP_EOL . '18. Carte : filtre par source' . PHP_EOL;
+$osm = RestController::source_meta_query( 'osm' );
+check( 'mode libre : seulement la source osm', GeocodingIntegration::META_SOURCE === $osm['key'] && 'osm' === $osm['value'] && '=' === $osm['compare'] );
+$google = RestController::source_meta_query( 'google' );
+check( 'mode Google : source absente ou google', 'OR' === $google['relation'] && 'NOT EXISTS' === $google[0]['compare'] && 'google' === $google[1]['value'] );
+list( $s ) = boot( array( 'provider' => 'osm' ) );
+$args = ( new RestController( $s ) )->require_coordinates( array() );
+check( 'requête : coordonnées exigées et filtre de source', 3 === count( $args['meta_query'] ) && $osm === $args['meta_query'][2] );
 
 $results = $GLOBALS['g2rd_results'];
 echo PHP_EOL . sprintf( 'Résultat : %d réussis, %d échoués', $results['pass'], $results['fail'] ) . PHP_EOL;
