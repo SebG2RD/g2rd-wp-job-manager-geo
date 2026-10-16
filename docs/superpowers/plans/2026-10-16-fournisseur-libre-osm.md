@@ -2140,6 +2140,7 @@ if ( 'cli' !== PHP_SAPI ) {
 
 class AdminConsole {
 	const CONTRACT_VERSION = 2;
+	const MENU_SLUG        = 'g2rd';
 	public static $opened  = array();
 	public static function open( array $args ) {
 		self::$opened[] = $args;
