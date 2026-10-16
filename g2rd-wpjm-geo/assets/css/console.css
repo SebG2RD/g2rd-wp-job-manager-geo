@@ -1,5 +1,5 @@
 /*
- * Copie de la feuille de la console G2RD — thème G2RD 1.41.1, commit 18ff72c.
+ * Copie de la feuille de la console G2RD — thème G2RD 1.41.1, commit 0784c73.
  * Source : blocks/g2rd-options-page/build/style-index.css — © Sébastien Gérard, reprise par son auteur.
  * Chargée UNIQUEMENT quand le thème G2RD ne fournit pas sa console (menu autonome).
  * Ne pas modifier à la main : php tools/build-console-css.php <dossier du thème G2RD>.
@@ -1247,6 +1247,3 @@
 	.g2rd-savebar { transform: translateX( -50% ) !important; }
 	.g2rd-app .components-form-toggle.is-checked .components-form-toggle__thumb { transform: translateX( 18px ) !important; }
 }
-
-
-/*# sourceMappingURL=style-index.css.map*/

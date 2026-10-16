@@ -40,8 +40,14 @@ class AdminScreen {
 		if ( ! AdminMenu::is_plugin_screen( $hook_suffix ) ) {
 			return;
 		}
-		if ( ! AdminMenu::is_attached() ) {
-			wp_enqueue_style( self::STYLE_HANDLE, G2RD_WPJM_GEO_URL . 'assets/css/console.css', array( 'wp-components', 'dashicons' ), G2RD_WPJM_GEO_VERSION );
+		if ( AdminMenu::is_attached() ) {
+			// Le thème reconnaît ses pages au préfixe g2rd_page_ ; charger sa feuille soi-même n'en dépend pas (appel idempotent).
+			if ( is_callable( array( 'G2RD\AdminConsole', 'enqueueStyle' ) ) ) {
+				\G2RD\AdminConsole::enqueueStyle();
+			}
+		} else {
+			$file = G2RD_WPJM_GEO_DIR . 'assets/css/console.css';
+			wp_enqueue_style( self::STYLE_HANDLE, G2RD_WPJM_GEO_URL . 'assets/css/console.css', array( 'wp-components', 'dashicons' ), file_exists( $file ) ? (string) filemtime( $file ) : G2RD_WPJM_GEO_VERSION );
 			wp_add_inline_style( self::STYLE_HANDLE, self::font_face_css() );
 		}
 		wp_enqueue_script( self::SCRIPT_HANDLE, G2RD_WPJM_GEO_URL . 'assets/js/admin-settings.js', array(), G2RD_WPJM_GEO_VERSION, true );

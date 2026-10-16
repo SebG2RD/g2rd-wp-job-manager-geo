@@ -85,18 +85,17 @@ class AdminMenu {
 		if ( self::$attached || ! self::console_available() ) {
 			return;
 		}
-		$hook = add_submenu_page(
-			(string) $parent,
+		// La console est là : jamais de menu autonome, même sans la capacité (WordPress renvoie alors false).
+		self::$attached = true;
+		$hook           = add_submenu_page(
+			'' !== (string) $parent ? (string) $parent : \G2RD\AdminConsole::MENU_SLUG,
 			__( 'Console G2RD — Offres géolocalisées', 'g2rd-wpjm-geo' ),
 			__( 'Offres géolocalisées', 'g2rd-wpjm-geo' ),
 			Settings::CAPABILITY,
 			Settings::PAGE_SLUG,
 			$this->render
 		);
-		if ( is_string( $hook ) && '' !== $hook ) {
-			self::$hook_suffix = $hook;
-			self::$attached    = true;
-		}
+		self::$hook_suffix = is_string( $hook ) ? $hook : '';
 	}
 
 	/**
