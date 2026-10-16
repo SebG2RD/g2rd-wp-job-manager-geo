@@ -3294,6 +3294,50 @@ echo PHP_EOL . '21. Adresse de la page' . PHP_EOL;
 check( 'page_url pointe sur admin.php', 'https://example.test/wp-admin/admin.php?page=g2rd-wpjm-geo' === Settings::page_url() );
 AdminMenu::reset();
 check( 'is_settings_screen suit AdminMenu (aucune page enregistrée)', false === Settings::is_settings_screen( 'job_listing_page_g2rd-wpjm-geo' ) );
+
+// Ressources et gabarit de la page (la console simulée est chargée depuis la section 19).
+boot();
+AdminMenu::reset();
+$menu   = new AdminMenu( '__return_false' );
+$screen = new AdminScreen();
+$menu->maybe_add_standalone();
+$screen->enqueue( 'edit.php' );
+check( 'autre écran : aucune ressource', array() === G2RD_Test_State::$enqueued );
+$screen->enqueue( 'toplevel_page_g2rd-wpjm-geo' );
+check( 'menu autonome : copie de la feuille, polices et script', isset( G2RD_Test_State::$enqueued['style:g2rd-wpjm-geo-console'], G2RD_Test_State::$enqueued['inline:g2rd-wpjm-geo-console'], G2RD_Test_State::$enqueued['script:g2rd-wpjm-geo-admin-settings'] ) );
+AdminMenu::reset();
+G2RD_Test_State::$enqueued    = array();
+\G2RD\AdminConsole::$styles = 0;
+$menu->attach_to_console( 'g2rd' );
+$screen->enqueue( 'g2rd_page_g2rd-wpjm-geo' );
+check( 'rattaché : feuille du thème chargée, pas la copie', 1 === \G2RD\AdminConsole::$styles && ! isset( G2RD_Test_State::$enqueued['style:g2rd-wpjm-geo-console'] ) && isset( G2RD_Test_State::$enqueued['script:g2rd-wpjm-geo-admin-settings'] ) );
+AdminScreen::open( array( 'title' => 'Titre délégué' ) );
+check( 'rattaché : gabarit délégué à la console du thème', 'Titre délégué' === end( \G2RD\AdminConsole::$opened )['title'] );
+AdminMenu::reset();
+```
+
+Dans `tests/bootstrap.php` : ajouter `'AdminScreen'` à la fin de la liste des classes ; ajouter à `G2RD_Test_State` la propriété `public static $enqueued = array();` (remise à `array()` dans `reset()`) et ces fonctions simulées :
+
+```php
+	function wp_enqueue_style( $handle, $src = '', $deps = array(), $ver = false, $media = 'all' ) {
+		G2RD_Test_State::$enqueued[ 'style:' . $handle ] = $src;
+	}
+	function wp_enqueue_script( $handle, $src = '', $deps = array(), $ver = false, $in_footer = false ) {
+		G2RD_Test_State::$enqueued[ 'script:' . $handle ] = $src;
+	}
+	function wp_add_inline_style( $handle, $data ) {
+		G2RD_Test_State::$enqueued[ 'inline:' . $handle ] = $data;
+		return true;
+	}
+```
+
+Si l'une de ces fonctions existe déjà, la remplacer par cette version. Dans `tests/fixtures/fake-admin-console.php`, ajouter à la classe `AdminConsole` :
+
+```php
+	public static $styles = 0;
+	public static function enqueueStyle() {
+		self::$styles++;
+	}
 ```
 
 - [ ] **Step 2: Vérifier l'échec**
