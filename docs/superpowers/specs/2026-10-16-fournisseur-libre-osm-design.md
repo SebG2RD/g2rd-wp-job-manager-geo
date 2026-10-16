@@ -24,7 +24,7 @@ Validé avec le propriétaire le 2026-10-16, section par section.
 | Photon, aller-retour | Un libellé choisi dans la liste (« London, Ontario, Canada », « Paris, Texas, États-Unis d'Amérique », « Montréal, Québec, Canada ») est regéocodé au bon endroit. | essais en direct |
 | OpenFreeMap | MIT, usage commercial autorisé, sans inscription, sans clé, sans limite de vues. Tuiles vectorielles : MapLibre GL JS requis. Styles `liberty`, `bright`, `positron`. Attribution « OpenFreeMap © OpenMapTiles Data from OpenStreetMap », ajoutée automatiquement par MapLibre. | openfreemap.org, /quick_start |
 | Serveur de tuiles OSM | Aucune garantie, accès « bloqué sans préavis » en cas d'usage intensif ou commercial. Non retenu. | operations.osmfoundation.org/policies/tiles |
-| MapLibre GL JS | 6.14.0, BSD-3-Clause, ~1 Mo non compressé, ~276 Ko gzip. Exige WebGL 2. | registry.npmjs.org |
+| MapLibre GL JS | 6.x n'est distribué qu'en module ES (`maplibre-gl.mjs` + worker séparé). Retenu : **5.24.0**, dernière 5.x, build UMD (`window.maplibregl`), BSD-3-Clause, ~1 Mo non compressé, ~276 Ko gzip. Exige WebGL 2 ; worker créé en `blob:`. | jsdelivr, registry.npmjs.org |
 | WP Job Manager 2.4.7 | Filtre `job_manager_geolocation_enabled` ; action `job_manager_job_location_edited( $job_id, $new_location )` déclenchée sur `add_post_meta` et `update_post_meta` de `_job_location`, **avant** l'écriture ; méthodes publiques statiques `WP_Job_Manager_Geocode::clear_location_data()`, `save_location_data()`, `generate_location_data()`. | code source |
 | Thème G2RD | Menu « G2RD » (slug `g2rd`), action `g2rd_console_menu( $parent )`, `\G2RD\AdminConsole::open()` / `close()`, contrat `CONTRACT_VERSION = 2`, feuille chargée sur les hooks `g2rd_page_*`. Introduit en 1.41.0, non publié (thème local en 1.40.1). | G2RD-theme `classes/class-admin-console.php`, `docs/internal/console-admin-extensions.md` |
 | Site cible | Thème actif « G2RD Child », enfant d'**Astra** (`Template: astra`) : le thème G2RD n'y est pas installé. | style.css local et en ligne |
@@ -97,8 +97,8 @@ plugin. Absente : l'offre compte comme `google` (géocodée par WP Job Manager).
 | `assets/js/jobs-map.js` | modifié | moteur Google, utilise `map-common.js` |
 | `assets/js/jobs-map-osm.js` | nouveau | moteur MapLibre |
 | `assets/js/location-autocomplete.js` | modifié | interface commune, sources `google` et `photon` |
-| `assets/vendor/maplibre-gl/` | nouveau | `maplibre-gl.js`, `maplibre-gl.css`, `LICENSE.txt` (6.14.0) |
-| `assets/css/console.css` | nouveau | copie réduite de la feuille de la console G2RD (repli) |
+| `assets/vendor/maplibre-gl/` | nouveau | `maplibre-gl.js`, `maplibre-gl.css`, `LICENSE.txt` (5.24.0) |
+| `assets/css/console.css` | nouveau | copie intégrale de la feuille compilée de la console G2RD (repli), régénérée par `tools/build-console-css.php` |
 | `assets/fonts/` | nouveau | Instrument Sans et IBM Plex Mono (woff2 latin) + `OFL-*.txt`, repris de g2rd-facturation |
 | `assets/css/admin.css` | supprimé | les résultats des outils passent en `g2rd-table` |
 | `uninstall.php` | modifié | nouvelles options, métadonnée de source |
@@ -181,9 +181,10 @@ plugin. Absente : l'offre compte comme `google` (géocodée par WP Job Manager).
   bandeau, barre avec monogramme, titre « G2RD WP Job Manager Geo » et version
   du plugin, titre de page, jusqu'à trois tuiles). `AdminScreen::close()`
   ferme.
-- Mode autonome uniquement : `assets/css/console.css` (classes utilisées
-  seulement, sélecteurs sous `.g2rd-app`, en-tête indiquant la version et le
-  commit du thème d'origine) et les polices du plugin, chargées sur la seule
+- Mode autonome uniquement : `assets/css/console.css` (copie intégrale de
+  `blocks/g2rd-options-page/build/style-index.css` du thème, ~58 Ko, sélecteurs
+  déjà encadrés sous `.g2rd-app` — une extraction partielle serait fragile —,
+  en-tête indiquant la version et le commit du thème d'origine) et les polices du plugin, chargées sur la seule
   page du plugin, plus le style `wp-components` de WordPress pour les
   interrupteurs.
 - Classes employées (contrat v2) : `g2rd-section` (+ `__head`, `__title`,
@@ -287,8 +288,9 @@ cache.
   prévu (ville, pays) », « Non trouvée » ou « Erreur ». Appels réseau, aucune
   écriture ; réponses mises en cache.
 - `run` : fournisseur `osm` → `PhotonGeocoder` puis écriture (tableau
-  ci-dessus) ; fournisseur `google` → `clear_location_data()`,
-  `generate_location_data()` de WPJM, `_g2rd_wpjm_geo_source = google`.
+  ci-dessus) ; fournisseur `google` → `WP_Job_Manager_Geocode::get_location_data()`
+  puis même écriture, `_g2rd_wpjm_geo_source = google` ; échec de géocodage →
+  « Non trouvée », clé absente ou quota → « Erreur », sans effacement.
 - Résultat affiché : compteurs et liste des offres « Non trouvée » /
   « Erreur » avec lien de modification.
 - Jamais lancé automatiquement : après une bascule, une alerte de la page
