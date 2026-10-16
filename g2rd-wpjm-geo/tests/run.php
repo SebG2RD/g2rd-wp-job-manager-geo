@@ -726,7 +726,16 @@ $google = RestController::source_meta_query( 'google' );
 check( 'mode Google : source absente ou google', 'OR' === $google['relation'] && 'NOT EXISTS' === $google[0]['compare'] && 'google' === $google[1]['value'] );
 list( $s ) = boot( array( 'provider' => 'osm' ) );
 $args = ( new RestController( $s ) )->require_coordinates( array() );
-check( 'requête : coordonnées exigées et filtre de source', 3 === count( $args['meta_query'] ) && $osm === $args['meta_query'][2] );
+check( 'requête : coordonnées exigées et filtre de source', 'AND' === $args['meta_query']['relation'] && $osm === $args['meta_query'][2] );
+$args = ( new RestController( $s ) )->require_coordinates( array( 'meta_query' => array( 'relation' => 'OR', array( 'key' => '_featured', 'value' => '1' ) ) ) );
+check( 'requête : un relation OR existant ne rend pas les clauses facultatives', 'AND' === $args['meta_query']['relation'] && 'OR' === $args['meta_query'][0]['relation'] && $osm === $args['meta_query'][1][2] );
+
+geo_boot();
+job_with_google_coords( 240 );
+do_action( 'job_manager_job_location_edited', 240, 'Rouen' );
+check( 'source modifiée : cache des offres de WP Job Manager pas encore renouvelé', 0 === G2RD_Test_State::$cache_bumps );
+do_action( 'shutdown' );
+check( 'source modifiée : cache des offres renouvelé une fois en fin de requête', 1 === G2RD_Test_State::$cache_bumps );
 
 $results = $GLOBALS['g2rd_results'];
 echo PHP_EOL . sprintf( 'Résultat : %d réussis, %d échoués', $results['pass'], $results['fail'] ) . PHP_EOL;

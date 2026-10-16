@@ -43,6 +43,7 @@ namespace {
 		public static $user_locale    = null;
 		public static $menus         = array();
 		public static $wpjm_geocode   = array(); // texte => tableau d'adresse renvoyé par WP_Job_Manager_Geocode::get_location_data().
+		public static $cache_bumps = 0;
 
 		public static function reset() {
 			self::$options    = array();
@@ -63,6 +64,7 @@ namespace {
 			self::$user_locale    = null;
 			self::$menus         = array();
 			self::$wpjm_geocode   = array();
+			self::$cache_bumps = 0;
 		}
 	}
 
@@ -110,6 +112,14 @@ namespace {
 			return array_key_exists( $raw_address, G2RD_Test_State::$wpjm_geocode ) ? G2RD_Test_State::$wpjm_geocode[ $raw_address ] : new WP_Error( 'error', 'No results found' );
 		}
 	}
+	class WP_Job_Manager_Cache_Helper {
+		public static function get_transient_version( $group, $refresh = false ) {
+			if ( $refresh ) {
+				G2RD_Test_State::$cache_bumps++;
+			}
+			return (string) G2RD_Test_State::$cache_bumps;
+		}
+	}
 	$GLOBALS['wpdb'] = new G2RD_Test_Wpdb();
 
 	// --- Options.
@@ -147,6 +157,14 @@ namespace {
 
 	// --- Hooks (implémentation minimale mais réelle : priorité et nombre d'arguments).
 	function add_filter( $hook, $callback, $priority = 10, $args = 1 ) {
+		if ( isset( G2RD_Test_State::$hooks[ $hook ][ $priority ] ) ) {
+			foreach ( G2RD_Test_State::$hooks[ $hook ][ $priority ] as $i => $entry ) {
+				if ( $entry[0] === $callback ) {
+					G2RD_Test_State::$hooks[ $hook ][ $priority ][ $i ] = array( $callback, $args );
+					return true;
+				}
+			}
+		}
 		G2RD_Test_State::$hooks[ $hook ][ $priority ][] = array( $callback, $args );
 		return true;
 	}

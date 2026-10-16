@@ -187,26 +187,30 @@ class RestController {
 	}
 
 	/**
-	 * Restreint la requête native aux offres géocodées par WP Job Manager.
+	 * Restreint la requête native aux offres géocodées par le fournisseur actif.
 	 *
 	 * @param array $query_args Arguments WP_Query.
 	 * @return array
 	 */
 	public function require_coordinates( $query_args ) {
-		if ( ! isset( $query_args['meta_query'] ) || ! is_array( $query_args['meta_query'] ) ) {
-			$query_args['meta_query'] = array(); // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
-		}
-		$query_args['meta_query'][] = array(
-			'key'     => 'geolocation_lat',
-			'value'   => '',
-			'compare' => '!=',
+		$ours = array(
+			'relation' => 'AND',
+			array(
+				'key'     => 'geolocation_lat',
+				'value'   => '',
+				'compare' => '!=',
+			),
+			array(
+				'key'     => 'geolocation_long',
+				'value'   => '',
+				'compare' => '!=',
+			),
+			self::source_meta_query( $this->settings->get_provider() ),
 		);
-		$query_args['meta_query'][] = array(
-			'key'     => 'geolocation_long',
-			'value'   => '',
-			'compare' => '!=',
-		);
-		$query_args['meta_query'][] = self::source_meta_query( $this->settings->get_provider() );
+		// Groupe à part : un relation OR imposé au premier niveau par une autre extension ne rend pas ces clauses facultatives.
+		$query_args['meta_query'] = ( empty( $query_args['meta_query'] ) || ! is_array( $query_args['meta_query'] ) ) // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
+			? $ours
+			: array( 'relation' => 'AND', $query_args['meta_query'], $ours );
 		return $query_args;
 	}
 

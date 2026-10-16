@@ -82,6 +82,7 @@ class GeocodingIntegration {
 		// Go Fetch Jobs, WP All Import) ne sont plus garanties par la source.
 		foreach ( array( 'added_post_meta', 'updated_post_meta', 'deleted_post_meta' ) as $hook ) {
 			add_action( $hook, array( __CLASS__, 'on_foreign_coords' ), 10, 3 );
+			add_action( $hook, array( __CLASS__, 'on_map_meta_changed' ), 10, 3 );
 		}
 		if ( Settings::PROVIDER_OSM === $this->settings->get_provider() ) {
 			add_filter( 'job_manager_geolocation_enabled', '__return_false', 99 );
@@ -116,6 +117,33 @@ class GeocodingIntegration {
 		$object_id = absint( $object_id );
 		if ( ! self::$writing && $object_id && 'geolocation_lat' === $meta_key ) {
 			delete_post_meta( $object_id, self::META_SOURCE );
+		}
+	}
+
+	/**
+	 * Source ou coordonnées modifiées : la liste des offres mise en cache par
+	 * WP Job Manager est renouvelée une fois, en fin de requête.
+	 *
+	 * @param int|int[] $meta_id   ID(s) de la métadonnée.
+	 * @param int       $object_id ID de l'offre.
+	 * @param string    $meta_key  Clé.
+	 * @return void
+	 */
+	public static function on_map_meta_changed( $meta_id, $object_id, $meta_key ) {
+		if ( in_array( $meta_key, array( self::META_SOURCE, 'geolocation_lat' ), true ) ) {
+			// WordPress n'enregistre qu'une fois le même rappel sur le même hook : un seul renouvellement par requête.
+			add_action( 'shutdown', array( __CLASS__, 'bump_listings_cache' ) );
+		}
+	}
+
+	/**
+	 * Renouvelle la version du cache des offres de WP Job Manager (et donc celle de la carte).
+	 *
+	 * @return void
+	 */
+	public static function bump_listings_cache() {
+		if ( class_exists( 'WP_Job_Manager_Cache_Helper' ) ) {
+			\WP_Job_Manager_Cache_Helper::get_transient_version( 'get_job_listings', true );
 		}
 	}
 
