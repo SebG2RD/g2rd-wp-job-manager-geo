@@ -5093,7 +5093,7 @@ git commit -m "refactor: fonctions de carte partagées (map-common.js)"
 
 **Files:**
 - Create: `g2rd-wpjm-geo/assets/vendor/maplibre-gl/{maplibre-gl.js,maplibre-gl.css,LICENSE.txt,index.php}`, `g2rd-wpjm-geo/assets/js/jobs-map-osm.js`, `g2rd-wpjm-geo/includes/OsmAssets.php`
-- Modify: `g2rd-wpjm-geo/includes/JobsMap.php`, `g2rd-wpjm-geo/includes/Plugin.php`, `g2rd-wpjm-geo/assets/css/frontend.css`, `g2rd-wpjm-geo/tests/js/run.js`
+- Modify: `g2rd-wpjm-geo/includes/JobsMap.php`, `g2rd-wpjm-geo/includes/Plugin.php`, `g2rd-wpjm-geo/assets/css/frontend.css`, `g2rd-wpjm-geo/assets/js/map-common.js`, `g2rd-wpjm-geo/assets/js/jobs-map.js`, `g2rd-wpjm-geo/tests/js/run.js`
 
 - [ ] **Step 1: Embarquer MapLibre 5.24.0**
 
@@ -5107,7 +5107,149 @@ grep -c "getClusterExpansionZoom" $V/maplibre-gl.js
 
 Expected: en-tête `MapLibre GL JS … @license 3-Clause BSD … v5.24.0`, `maplibre-gl.js` ≈ 1 056 837 octets, `maplibre-gl.css` ≈ 70 Ko, `LICENSE.txt` ≈ 6 Ko, compteur > 0.
 
-- [ ] **Step 2: Écrire les tests (section F)**
+- [ ] **Step 1 bis: État partagé dans `map-common.js` et tests des fonctions communes**
+
+Dans `assets/js/map-common.js`, juste avant `window.g2rdWpjmGeoMapCommon = {`, ajouter :
+
+```js
+	/**
+	 * Messages de la carte (chargement, vide, erreur), communs aux deux moteurs.
+	 * L'état vide propose le lien « Re-géocoder » quand la page le fournit (administrateurs).
+	 */
+	function statusController( container, i18n ) {
+		var status = container.querySelector( '.g2rd-wpjm-geo-map__status' );
+		function set( message, linkUrl ) {
+			if ( ! status ) {
+				return;
+			}
+			status.textContent = message || '';
+			var url = message ? safeUrl( linkUrl ) : '';
+			if ( url && i18n.regeocode ) {
+				var link = document.createElement( 'a' );
+				link.href = url;
+				link.textContent = i18n.regeocode;
+				status.appendChild( document.createTextNode( ' ' ) );
+				status.appendChild( link );
+			}
+			status.hidden = ! message;
+		}
+		return {
+			set: set,
+			fail: function () {
+				container.classList.add( 'has-error' );
+				set( i18n.error );
+			},
+			empty: function () {
+				container.classList.add( 'is-empty' );
+				set( i18n.empty, container.getAttribute( 'data-admin-url' ) );
+			}
+		};
+	}
+
+```
+
+et, dans l'objet exporté, remplacer `observe: observe` par :
+
+```js
+		observe: observe,
+		status: statusController
+```
+
+Dans `assets/js/jobs-map.js` (moteur Google), même état partagé : remplacer
+
+```js
+		var status = container.querySelector( '.g2rd-wpjm-geo-map__status' );
+		var mapId = container.getAttribute( 'data-map-id' ) || '';
+		var clustering = '1' === container.getAttribute( 'data-clustering' ) && !! window.markerClusterer;
+
+		function setStatus( message ) {
+			if ( status ) {
+				status.textContent = message || '';
+				status.hidden = ! message;
+			}
+		}
+
+		function fail() {
+			container.classList.add( 'has-error' );
+			setStatus( i18n.error );
+		}
+```
+
+par :
+
+```js
+		var mapId = container.getAttribute( 'data-map-id' ) || '';
+		var clustering = '1' === container.getAttribute( 'data-clustering' ) && !! window.markerClusterer;
+		var ui = C.status( container, i18n );
+		var fail = ui.fail;
+```
+
+puis remplacer
+
+```js
+			if ( ! markers.length ) {
+				setStatus( i18n.empty );
+				container.classList.add( 'is-empty' );
+			} else {
+				setStatus( '' );
+```
+
+par :
+
+```js
+			if ( ! markers.length ) {
+				ui.empty();
+			} else {
+				ui.set( '' );
+```
+
+Dans `tests/js/run.js`, juste avant la ligne `console.log('\nResultat JS : ' …`, ajouter la section H :
+
+```js
+  console.log('\nH. Fonctions communes (map-common.js)');
+  {
+    const cw = new JSDOM('<div class="g2rd-wpjm-geo-map" id="m1"></div><div class="g2rd-wpjm-geo-map" id="m2"></div>', { runScripts: 'outside-only', url: 'https://x.test/' }).window;
+    let io = null;
+    cw.IntersectionObserver = function (cb, opt) { io = { cb, opt, targets: [] }; this.observe = t => io.targets.push(t); this.unobserve = () => {}; };
+    cw.fetch = () => Promise.reject(new Error('unused'));
+    cw.eval(src('js/map-common.js'));
+    const C = cw.g2rdWpjmGeoMapCommon;
+    check('API exposee : un seul objet global, 9 fonctions', 'parseJson,sprintf,safeUrl,placeLabel,buildInfoContent,groupByCoordinates,createFetcher,observe,status' === Object.keys(C).join(','));
+    check('safeUrl : http(s) absolu seulement (relatif, //hote, javascript:, espace initial, non-chaine refuses)',
+      C.safeUrl('HTTPS://a.test/x') === 'HTTPS://a.test/x' && ['/job/1', '//evil.test', 'javascript:alert(1)', ' javascript:alert(1)', 'https:evil', 'data:text/html,x', null, 42].every(u => C.safeUrl(u) === ''));
+    const g = C.groupByCoordinates([{ latitude: '48.856614', longitude: '2.352222' }, { latitude: 48.8566141, longitude: 2.3522224 }, { latitude: 48.85662, longitude: 2.352222 }, { latitude: 90, longitude: 180 }, { latitude: 90.0001, longitude: 0 }, { latitude: '', longitude: '' }]);
+    check('regroupement a 5 decimales, ordre conserve, bornes 90/180 incluses, hors bornes et vides ignores', 3 === g.length && 2 === g[0].jobs.length && 1 === g[1].jobs.length && 90 === g[2].position.lat);
+    const urls = [];
+    cw.fetch = url => { urls.push(url); return Promise.resolve({ ok: true, status: 200, headers: { get: () => '500' }, json: () => Promise.resolve([{}]) }); };
+    const box = cw.document.createElement('div');
+    box.setAttribute('data-rest-url', 'https://x.test/?rest_route=/g2rd-wpjm-geo/v1/jobs');
+    const all = await C.createFetcher(box).fetchAll();
+    check('pagination plafonnee a 200 pages, "&" si l URL contient deja "?", per_page par defaut 250', 200 === urls.length && 200 === all.length && /\?rest_route=[^?]+&page=1&per_page=250$/.test(urls[0]));
+    urls.length = 0;
+    cw.fetch = url => { urls.push(url); return Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, json: () => Promise.resolve({ code: 'x' }) }); };
+    check('en-tete X-WP-TotalPages absent et reponse non tableau : une page, aucune offre', 0 === (await C.createFetcher(box).fetchAll()).length && 1 === urls.length);
+    const started = [];
+    C.observe(c => started.push(c.id));
+    await wait(20);
+    check('demarrage paresseux : 2 cartes observees (marge 300px), aucune demarree avant d etre visible', !!io && 2 === io.targets.length && '300px' === io.opt.rootMargin && 0 === started.length);
+    io.cb([{ isIntersecting: true, target: io.targets[1] }, { isIntersecting: false, target: io.targets[0] }]);
+    io.cb([{ isIntersecting: true, target: io.targets[1] }]);
+    check('seule la carte visible demarre, une seule fois', 'm2' === started.join(','));
+    const sbox = cw.document.createElement('div');
+    sbox.innerHTML = '<p class="g2rd-wpjm-geo-map__status"></p>';
+    sbox.setAttribute('data-admin-url', 'https://x.test/wp-admin/admin.php?page=g2rd-wpjm-geo#g2rd-geo-outils');
+    C.status(sbox, { empty: 'VIDE', error: 'ERREUR', regeocode: 'Re-geocoder' }).empty();
+    const sp = sbox.querySelector('p');
+    check('etat vide : message et lien Re-geocoder (http(s) seulement)', sbox.classList.contains('is-empty') && 'VIDE Re-geocoder' === sp.textContent && 1 === sp.querySelectorAll('a').length && !sp.hidden);
+    sbox.setAttribute('data-admin-url', 'javascript:alert(1)');
+    C.status(sbox, { empty: 'VIDE', regeocode: 'Re-geocoder' }).empty();
+    check('etat vide : lien javascript: refuse', 0 === sp.querySelectorAll('a').length);
+  }
+```
+
+Le compteur `Resultat JS` des étapes suivantes en tient compte (+9).
+
+- [ ] **Step 2: Écrire les tests (section I)**
 
 Dans `tests/js/run.js`, juste avant `(async () => {`, ajouter :
 
@@ -5166,7 +5308,7 @@ async function osmMap({ data, clustering = true, noWebgl = false, styleFail = fa
 Puis, avant la ligne du résultat final, ajouter :
 
 ```js
-  console.log('\nF. Carte en mode libre (MapLibre)');
+  console.log('\nI. Carte en mode libre (MapLibre)');
   let o = await osmMap({ data: jobs });
   check('MapLibre initialise : style OpenFreeMap, gestes cooperatifs', !!o.st.map && o.st.mapOpts.style === 'https://tiles.openfreemap.org/styles/liberty' && o.st.mapOpts.cooperativeGestures === true);
   const srcJobs = o.st.sources['g2rd-jobs'];
@@ -5311,29 +5453,9 @@ Expected: `ENOENT` sur `jobs-map-osm.js`.
 	function initMap( container ) {
 		var i18n = C.parseJson( container.getAttribute( 'data-i18n' ) );
 		var canvas = container.querySelector( '.g2rd-wpjm-geo-map__canvas' );
-		var status = container.querySelector( '.g2rd-wpjm-geo-map__status' );
 		var clustering = '1' === container.getAttribute( 'data-clustering' );
-		var adminUrl = container.getAttribute( 'data-admin-url' ) || '';
-
-		function setStatus( message, linkUrl ) {
-			if ( ! status ) {
-				return;
-			}
-			status.textContent = message || '';
-			if ( message && linkUrl && /^https?:\/\//i.test( linkUrl ) ) {
-				var link = document.createElement( 'a' );
-				link.href = linkUrl;
-				link.textContent = i18n.regeocode || '';
-				status.appendChild( document.createTextNode( ' ' ) );
-				status.appendChild( link );
-			}
-			status.hidden = ! message;
-		}
-
-		function fail() {
-			container.classList.add( 'has-error' );
-			setStatus( i18n.error );
-		}
+		var ui = C.status( container, i18n );
+		var fail = ui.fail;
 
 		if ( ! canvas || ! cfg.styleUrl || ! cfg.maplibreJs || ! container.getAttribute( 'data-rest-url' ) || ! supportsWebGL2() ) {
 			fail();
@@ -5456,10 +5578,9 @@ Expected: `ENOENT` sur `jobs-map-osm.js`.
 				} );
 
 				if ( ! features.length ) {
-					container.classList.add( 'is-empty' );
-					setStatus( i18n.empty, adminUrl );
+					ui.empty();
 				} else {
-					setStatus( '' );
+					ui.set( '' );
 					if ( 1 === features.length ) {
 						map.jumpTo( { center: features[ 0 ].geometry.coordinates, zoom: 10 } );
 					} else {
@@ -5484,7 +5605,7 @@ Expected: `ENOENT` sur `jobs-map-osm.js`.
 - [ ] **Step 5: Vérifier le succès**
 
 Run: `NODE_PATH=tools/jsdom/node_modules node g2rd-wpjm-geo/tests/js/run.js | sed -n '/^F\./,$p'`
-Expected: section F en `[OK]`, `0 echoues`.
+Expected: sections H et I en `[OK]`, `0 echoues`.
 
 - [ ] **Step 6: Créer `OsmAssets.php`**
 
@@ -5643,7 +5764,7 @@ for f in g2rd-wpjm-geo/includes/*.php; do php -l "$f" | grep -v "^No syntax"; do
 node --check g2rd-wpjm-geo/assets/js/jobs-map-osm.js
 php g2rd-wpjm-geo/tests/run.php | tail -1
 NODE_PATH=tools/jsdom/node_modules node g2rd-wpjm-geo/tests/js/run.js | tail -1
-git add g2rd-wpjm-geo/assets/vendor/maplibre-gl g2rd-wpjm-geo/assets/js/jobs-map-osm.js g2rd-wpjm-geo/includes/OsmAssets.php g2rd-wpjm-geo/includes/JobsMap.php g2rd-wpjm-geo/includes/Plugin.php g2rd-wpjm-geo/assets/css/frontend.css g2rd-wpjm-geo/tests/js/run.js
+git add g2rd-wpjm-geo/assets/vendor/maplibre-gl g2rd-wpjm-geo/assets/js/jobs-map-osm.js g2rd-wpjm-geo/assets/js/map-common.js g2rd-wpjm-geo/assets/js/jobs-map.js g2rd-wpjm-geo/includes/OsmAssets.php g2rd-wpjm-geo/includes/JobsMap.php g2rd-wpjm-geo/includes/Plugin.php g2rd-wpjm-geo/assets/css/frontend.css g2rd-wpjm-geo/tests/js/run.js
 git commit -m "feat: carte libre MapLibre + OpenFreeMap, clustering natif"
 ```
 
