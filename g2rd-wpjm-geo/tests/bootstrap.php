@@ -213,8 +213,7 @@ namespace {
 		return trim( preg_replace( '/[\r\n\t ]+/', ' ', strip_tags( (string) $value ) ) );
 	}
 	function wp_strip_all_tags( $text ) {
-		return trim( preg_replace( '/[
-	 ]+/', ' ', strip_tags( preg_replace( '@<(script|style)[^>]*?>.*?</\1>@si', '', (string) $text ) ) ) );
+		return trim( preg_replace( '/[\r\n\t ]+/', ' ', strip_tags( preg_replace( '@<(script|style)[^>]*?>.*?</\1>@si', '', (string) $text ) ) ) );
 	}
 	function sanitize_key( $key ) {
 		return preg_replace( '/[^a-z0-9_\-]/', '', strtolower( (string) $key ) );
