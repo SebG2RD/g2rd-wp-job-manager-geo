@@ -18,7 +18,9 @@
 | — | `JobQueue.php` (base commune) ; `UrlCheckQueue` et `GeocodeQueue` en héritent | la file des URL a déjà le bon comportement (retrait avant traitement, écriture unique) |
 | Lignes masquées par `hidden` | `style="display:none"` | la console donne `display:flex` aux lignes, ce qui l'emporte sur `[hidden]` |
 | — | `JobQueue` relit l'option en base (purge du cache objet), libère son verrou dans un `finally`, planifie un passage de secours et impose `RETRY_DELAY` (correctifs de revue, tâche 3) | un ID perdu ou une file bloquée retirerait des offres de la carte |
-| — | Photon : un HTTP 400 persistant (même sans filtre) vaut « introuvable » | une offre au texte refusé bloquerait la file à chaque passage |
+| — | Photon : un HTTP 400 persistant (même sans filtre) vaut « introuvable », sauf s'il porte sur la langue ou les paramètres (erreur de configuration) | une offre au texte refusé bloquerait la file à chaque passage |
+| Clé de cache md5( langue + texte nettoyé ) | md5( URL Photon + langue du site + segments normalisés + indice de département ) ; langue du site (`get_locale()`), pas celle de l'utilisateur, y compris pour l'autocomplétion | deux textes de même clé donnaient des résultats différents ; le nom renvoyé par Photon, que le garde-fou compare, dépend de la langue (correctifs de revue, tâche 4) |
+| Garde-fou : nom = premier segment | idem, puis à nom égal : département ou code postal saisi, autres segments, pays du site (filtre `g2rd_wpjm_geo_photon_preferred_country`) ; « Paris 15e », « St Etienne » reconnus ; « Remote », « Télétravail » jamais envoyés | « Laval (53) » ou « Valence (26) » seraient placées sur un homonyme étranger plus peuplé |
 
 Les autres ajustements (MapLibre 5.24.0, copie intégrale de la feuille, chemin Google du re-géocodage) sont déjà reportés dans la spécification.
 
@@ -737,11 +739,125 @@ G2RD_Test_State::$http_responder = function () use ( &$during ) {
 $geo->geocode( 'Rouen' );
 check( 'Photon auto-hébergé : seul son hôte est autorisé pendant la requête', array( true, false ) === $during );
 check( 'autorisation retirée après la requête', false === apply_filters( 'http_request_host_is_external', false, 'photon.local' ) );
+
+// Clé de cache par segment, arrondissements, homonymes, textes vagues, erreurs, robustesse.
+check( 'clean : « Paris 15e » donne « Paris »', 'Paris' === PhotonGeocoder::clean( 'Paris 15e' ) );
+check( 'clean : « Lyon 1er » et « Marseille 13e Arrondissement »', 'Lyon' === PhotonGeocoder::clean( 'Lyon 1er' ) && 'Marseille' === PhotonGeocoder::clean( 'Marseille 13e Arrondissement' ) );
+check( 'clean : UTF-8 invalide, chaîne vide sans avertissement', '' === PhotonGeocoder::clean( "Lyon \xC3\x28" ) );
+check( 'normalize : St et Ste lus Saint et Sainte', 'saint etienne' === PhotonGeocoder::normalize( 'St-Étienne' ) && 'sainte genevieve des bois' === PhotonGeocoder::normalize( 'Ste-Geneviève-des-Bois' ) );
+check( 'normalize : accents combinants retirés', 'saint etienne' === PhotonGeocoder::normalize( "Saint-E\u{0301}tienne" ) );
+check( 'hint : département, code postal, Corse, outre-mer', '53' === PhotonGeocoder::hint( 'Laval (53)' ) && '75' === PhotonGeocoder::hint( '75008 Paris' ) && '20' === PhotonGeocoder::hint( 'Ajaccio (2A)' ) && '974' === PhotonGeocoder::hint( 'Saint-Denis (974)' ) && '' === PhotonGeocoder::hint( 'Lyon' ) );
+
+list( $s ) = boot();
+$geo  = new PhotonGeocoder( $s );
+$urls = array();
+G2RD_Test_State::$http_responder = function ( $method, $url ) use ( &$urls ) {
+	$urls[] = $url;
+	if ( false !== strpos( $url, 'q=Laval' ) ) {
+		return photon_reply(
+			array(
+				photon_feature( 'Laval', 'place', 'city', -73.75, 45.57, array( 'postcode' => 'H7T', 'country' => 'Canada', 'countrycode' => 'CA' ) ),
+				photon_feature( 'Laval', 'place', 'town', -0.77, 48.07, array( 'postcode' => '53000', 'country' => 'France', 'countrycode' => 'FR' ) ),
+			)
+		);
+	}
+	if ( false !== strpos( $url, 'q=Valence' ) ) {
+		return photon_reply(
+			array(
+				photon_feature( 'Valence', 'place', 'city', 4.89, 44.93, array( 'country' => 'France', 'countrycode' => 'FR' ) ),
+				photon_feature( 'Valence', 'place', 'city', -0.38, 39.47, array( 'country' => 'Espagne', 'countrycode' => 'ES' ) ),
+			)
+		);
+	}
+	if ( false !== strpos( $url, 'q=Paris' ) ) {
+		return photon_reply( array( photon_feature( 'Paris', 'place', 'city', 2.3522, 48.8566, array( 'country' => 'France', 'countrycode' => 'FR' ) ) ) );
+	}
+	if ( false !== strpos( $url, 'q=Lyon' ) ) {
+		return photon_reply( array( photon_feature( 'Lyon', 'amenity', 'bar', 2.35, 48.85 ) ) );
+	}
+	return photon_reply( array() );
+};
+$r = $geo->geocode( 'Laval (53)' );
+check( 'homonymes : le département saisi l’emporte', is_array( $r ) && '48.07' === $r['lat'] && 'FR' === $r['country_short'] );
+$r = $geo->geocode( 'Laval' );
+check( 'homonymes : sans indice, le pays du site (fr_FR) l’emporte', is_array( $r ) && 'FR' === $r['country_short'] );
+$r = $geo->geocode( 'Valence, Espagne' );
+check( 'homonymes : le pays cité dans le texte l’emporte', is_array( $r ) && 'ES' === $r['country_short'] );
+$before = count( $urls );
+check( '« Paris France » : premier segment différent, introuvable', null === $geo->geocode( 'Paris France' ) );
+$r = $geo->geocode( 'Paris, France' );
+check( '« Paris, France » : clé de cache distincte, trouvé', is_array( $r ) && '48.8566' === $r['lat'] && count( $urls ) === $before + 2 );
+$r = $geo->geocode( 'Paris 15e' );
+check( '« Paris 15e » : trouvé', is_array( $r ) && 'Paris' === $r['city'] );
+check( 'commerce renvoyé malgré le filtre : ignoré', null === $geo->geocode( 'Lyon' ) );
+$before = count( $urls );
+check( 'texte vague (Remote, Télétravail) : null sans requête', null === $geo->geocode( 'Remote' ) && null === $geo->geocode( 'Télétravail' ) && count( $urls ) === $before && $geo->last_was_cached() );
+check( 'écriture non latine : null sans requête', null === $geo->geocode( '東京' ) && count( $urls ) === $before );
+
+G2RD_Test_State::$http_responder = function () {
+	return array( 'response' => array( 'code' => 429 ), 'body' => '' );
+};
+$e = $geo->geocode( 'Nancy' );
+check( 'HTTP 429 : WP_Error g2rd_photon_http après un vrai appel', is_wp_error( $e ) && 'g2rd_photon_http' === $e->get_error_code() && false === $geo->last_was_cached() );
+G2RD_Test_State::$http_responder = function () {
+	return array( 'response' => array( 'code' => 200 ), 'body' => '<html>maintenance</html>' );
+};
+$e = $geo->geocode( 'Nancy' );
+check( 'HTML au lieu de JSON : g2rd_photon_invalid', is_wp_error( $e ) && 'g2rd_photon_invalid' === $e->get_error_code() );
+G2RD_Test_State::$http_responder = function ( $method, $url ) {
+	if ( false !== strpos( $url, 'osm_tag' ) ) {
+		return array( 'response' => array( 'code' => 400 ), 'body' => '' );
+	}
+	return array( 'response' => array( 'code' => 400 ), 'body' => '{"message":"Language is not supported. Supported are: default, en, de, fr"}' );
+};
+$e = $geo->geocode( 'Nancy' );
+check( 'HTTP 400 sur la langue : erreur de configuration, pas « introuvable »', is_wp_error( $e ) && 'g2rd_photon_config' === $e->get_error_code() );
+G2RD_Test_State::$http_responder = function () {
+	return photon_reply( array( photon_feature( 'Greenwich', 'place', 'village', 0.00001, 51.4769, array( 'state' => str_repeat( 'a', 500 ) ) ) ) );
+};
+$r = $geo->geocode( 'Greenwich' );
+check( 'coordonnée proche de zéro en notation décimale', is_array( $r ) && '0.00001' === $r['long'] );
+check( 'champs tronqués à 200 caractères', is_array( $r ) && 200 === strlen( $r['state_long'] ) );
+G2RD_Test_State::$http_responder = function () {
+	return array( 'response' => array( 'code' => 200 ), 'body' => json_encode( array( 'features' => array( array( 'geometry' => array( 'coordinates' => array( 'a' => 1, 'b' => 2 ) ), 'properties' => array( 'name' => 'Metz', 'osm_key' => 'place', 'osm_value' => 'city' ) ) ) ) ) );
+};
+check( 'coordonnées mal formées : introuvable, sans avertissement', null === $geo->geocode( 'Metz' ) );
+G2RD_Test_State::$locale         = 'en_US';
+G2RD_Test_State::$http_responder = function () {
+	return photon_reply( array() );
+};
+$geo->geocode( 'Caen' );
+check( 'langue du site : en_US donne lang=en', false !== strpos( end( G2RD_Test_State::$http_calls ), '&lang=en' ) );
+
+list( $s ) = boot( array( 'photon_url' => 'https://photon.local/api/#ancre' ) );
+$geo = new PhotonGeocoder( $s );
+add_filter( 'g2rd_wpjm_geo_photon_allow_private_host', '__return_true' );
+G2RD_Test_State::$http_responder = function () {
+	throw new \RuntimeException( 'filtre tiers en erreur' );
+};
+$thrown = false;
+try {
+	$geo->geocode( 'Rouen' );
+} catch ( \RuntimeException $e ) {
+	$thrown = true;
+}
+check( 'exception pendant la requête : autorisation d’hôte retirée quand même', $thrown && false === apply_filters( 'http_request_host_is_external', false, 'photon.local' ) );
+check( 'fragment retiré de l’URL Photon', 0 === strpos( end( G2RD_Test_State::$http_calls ), 'GET https://photon.local/api/?q=Rouen' ) );
 ```
 
 - [ ] **Step 2: Charger la classe dans les tests et vérifier l'échec**
 
-Dans `tests/bootstrap.php`, ajouter `'PhotonGeocoder'` à la fin de la liste des classes.
+Dans `tests/bootstrap.php`, ajouter `'PhotonGeocoder'` à la fin de la liste des classes, et ces deux fonctions simulées (si elles n'existent pas encore) à côté de `determine_locale()` :
+
+```php
+	function get_locale() {
+		return G2RD_Test_State::$locale;
+	}
+	function wp_check_invalid_utf8( $text, $strip = false ) {
+		$text = (string) $text;
+		return ( '' === $text || 1 === preg_match( '/^./us', $text ) ) ? $text : '';
+	}
+```
 
 Run: `php g2rd-wpjm-geo/tests/run.php | tail -3`
 Expected: erreur `failed to open stream` sur `includes/PhotonGeocoder.php`.
@@ -769,7 +885,9 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Seuls les lieux (place=*) et les limites administratives sont acceptés, et
  * seulement si leur nom correspond au premier segment du texte : une offre
  * reste sans coordonnées plutôt que d'être placée sur un homonyme lointain
- * (« IDF » donne Idfu, en Égypte).
+ * (« IDF » donne Idfu, en Égypte). Entre plusieurs lieux du même nom, le
+ * choix favorise le département ou code postal saisi (« Laval (53) »), puis
+ * les autres segments du texte (« Valence, Espagne »), puis le pays du site.
  */
 class PhotonGeocoder {
 
@@ -777,11 +895,23 @@ class PhotonGeocoder {
 	const CACHE_TTL    = 2592000; // 30 jours.
 	const MISS_TTL     = 86400;   // 1 jour.
 	const TIMEOUT      = 5;
+	const MAX_LENGTH   = 200;
+	const MAX_RESPONSE = 262144;  // 256 Kio.
 
 	/**
 	 * Valeurs osm_value d'un lieu dont le nom est celui de la ville.
 	 */
 	const CITY_VALUES = array( 'city', 'town', 'village', 'hamlet', 'municipality', 'suburb', 'locality' );
+
+	/**
+	 * Lieux rattachés à une commune : la ville est celle de Photon (properties.city) quand elle est connue.
+	 */
+	const SUB_CITY_VALUES = array( 'hamlet', 'suburb', 'locality' );
+
+	/**
+	 * Localisations sans lieu précis (forme normalisée) : jamais envoyées à Photon.
+	 */
+	const VAGUE = array( 'remote', 'full remote', 'teletravail', 'a distance', 'hybride' );
 
 	/**
 	 * Réglages.
@@ -791,7 +921,7 @@ class PhotonGeocoder {
 	private $settings;
 
 	/**
-	 * Le dernier résultat venait-il du cache ?
+	 * Le dernier appel s'est-il passé de Photon ?
 	 *
 	 * @var bool
 	 */
@@ -818,31 +948,74 @@ class PhotonGeocoder {
 	}
 
 	/**
-	 * Retire parenthèses, nombres isolés et séparateurs de bord.
+	 * Retire parenthèses, numéros d'arrondissement, nombres isolés et séparateurs de bord.
 	 *
 	 * @param string $text Localisation saisie.
 	 * @return string
 	 */
 	public static function clean( $text ) {
-		$text = preg_replace( '/\([^)]*\)/u', ' ', (string) $text );
+		$text = wp_check_invalid_utf8( (string) $text );
+		$text = preg_replace( '/\([^)]*\)/u', ' ', $text );
+		// « Paris 15e », « Lyon 1er », « Marseille 13e arrondissement ».
+		$text = preg_replace( '/(?<![\p{L}\p{N}])\p{N}+\s*(?:er|re|ère|ème|eme|e|è)(?:\s+arrondissement)?(?![\p{L}\p{N}])/iu', ' ', $text );
 		$text = preg_replace( '/(?<![\p{L}\p{N}])\p{N}+(?![\p{L}\p{N}])/u', ' ', $text );
 		$text = preg_replace( '/\s+/u', ' ', $text );
-		return (string) preg_replace( '/^[\s,;\/\-–—]+|[\s,;\/\-–—]+$/u', '', $text );
+		return self::truncate( (string) preg_replace( '/^[\s,;\/\-–—]+|[\s,;\/\-–—]+$/u', '', $text ) );
 	}
 
 	/**
-	 * Forme de comparaison : sans accents, minuscules, ponctuation remplacée par une espace.
+	 * Forme de comparaison : sans accents, minuscules, ponctuation remplacée par
+	 * une espace, « st » et « ste » lus « saint » et « sainte ».
 	 *
 	 * @param string $text Texte.
 	 * @return string
 	 */
 	public static function normalize( $text ) {
-		$text = strtolower( remove_accents( (string) $text ) );
-		return trim( (string) preg_replace( '/[^a-z0-9]+/', ' ', $text ) );
+		// Les accents combinants (texte décomposé, sans l'extension intl) sont retirés à part.
+		$text = (string) preg_replace( '/\p{Mn}+/u', '', remove_accents( (string) $text ) );
+		$text = trim( (string) preg_replace( '/[^a-z0-9]+/', ' ', strtolower( $text ) ) );
+		return (string) preg_replace( array( '/\bst\b/', '/\bste\b/' ), array( 'saint', 'sainte' ), $text );
 	}
 
 	/**
-	 * Le dernier appel à geocode() a-t-il été servi par le cache ?
+	 * Département ou code postal français indiqué dans le texte.
+	 *
+	 * « Laval (53) » → 53, « 75008 Paris » → 75, « Ajaccio (2A) » → 20,
+	 * « Saint-Denis (974) » → 974.
+	 *
+	 * @param string $text Localisation saisie.
+	 * @return string Préfixe de code postal, ou chaîne vide.
+	 */
+	public static function hint( $text ) {
+		if ( ! preg_match( '/\(\s*(\d{2,3}|2[AB])\s*\)|(?<!\d)(\d{5})(?!\d)/i', (string) $text, $m ) ) {
+			return '';
+		}
+		$code = ! empty( $m[2] ) ? $m[2] : strtoupper( $m[1] );
+		if ( in_array( substr( $code, 0, 2 ), array( '2A', '2B' ), true ) ) {
+			return '20';
+		}
+		return '97' === substr( $code, 0, 2 ) ? substr( $code, 0, 3 ) : substr( $code, 0, 2 );
+	}
+
+	/**
+	 * Pays favorisé entre deux lieux du même nom : celui de la langue du site.
+	 *
+	 * @return string Code ISO à deux lettres, ou chaîne vide.
+	 */
+	public static function preferred_country() {
+		$country = preg_match( '/^[a-z]{2,3}_([A-Z]{2})/', (string) get_locale(), $m ) ? $m[1] : '';
+		/**
+		 * Pays (code ISO à deux lettres) favorisé quand plusieurs lieux portent le nom saisi.
+		 *
+		 * @param string $country Défaut : région de la langue du site (FR pour fr_FR), vide sinon.
+		 */
+		$country = (string) apply_filters( 'g2rd_wpjm_geo_photon_preferred_country', $country );
+		return strtoupper( substr( (string) preg_replace( '/[^A-Za-z]/', '', $country ), 0, 2 ) );
+	}
+
+	/**
+	 * Le dernier appel à geocode() s'est-il passé de Photon (cache, ou texte
+	 * qui ne désigne aucun lieu) ? Sert à ne marquer une pause qu'après un vrai appel.
 	 *
 	 * @return bool
 	 */
@@ -857,54 +1030,85 @@ class PhotonGeocoder {
 	 * @return array|null|\WP_Error Adresse au format WPJM, null si introuvable, WP_Error si le service est indisponible.
 	 */
 	public function geocode( $text ) {
-		$this->last_was_cached = false;
+		$this->last_was_cached = true;
 		$cleaned               = self::clean( $text );
-		if ( '' === $cleaned ) {
+		$segments              = array_map( array( __CLASS__, 'normalize' ), explode( ',', $cleaned ) );
+		if ( '' === $segments[0] || in_array( $segments[0], self::VAGUE, true ) ) {
+			// Rien de comparable (vide, écriture non latine) ou pas de lieu précis : inutile d'appeler Photon.
 			return null;
 		}
 
-		$lang   = self::language( function_exists( 'determine_locale' ) ? determine_locale() : get_locale() );
-		$key    = self::CACHE_PREFIX . md5( $lang . '|' . self::normalize( $cleaned ) );
+		$base   = $this->base_url();
+		$hint   = self::hint( $text );
+		$lang   = self::language( get_locale() );
+		$key    = self::CACHE_PREFIX . md5( $base . '|' . $lang . '|' . implode( ',', $segments ) . '|' . $hint );
 		$cached = get_transient( $key );
 		if ( is_array( $cached ) && array_key_exists( 'r', $cached ) ) {
-			$this->last_was_cached = true;
 			return $cached['r'];
 		}
 
-		$features = $this->request( $cleaned, $lang, true );
+		$this->last_was_cached = false;
+		$features              = $this->request( $base, $cleaned, $lang, true );
 		if ( is_wp_error( $features ) && 'g2rd_photon_bad_request' === $features->get_error_code() ) {
-			$features = $this->request( $cleaned, $lang, false );
+			$features = $this->request( $base, $cleaned, $lang, false );
 		}
 		if ( is_wp_error( $features ) ) {
 			return $features;
 		}
 
-		$feature = self::pick( $features, $cleaned );
+		$feature = self::pick( $features, $cleaned, $hint );
 		$address = $feature ? self::to_address( $feature ) : null;
 		set_transient( $key, array( 'r' => $address ), $address ? self::CACHE_TTL : self::MISS_TTL );
 		return $address;
 	}
 
 	/**
-	 * Premier résultat dont le nom correspond au premier segment du texte.
+	 * Meilleur résultat dont le nom correspond au premier segment du texte.
+	 *
+	 * À nom égal : code postal commençant par l'indice (+4), pays, région ou
+	 * département cité dans les autres segments (+2), pays du site (+1). À rang
+	 * égal, l'ordre de Photon (pertinence) est conservé.
 	 *
 	 * @param array  $features Entités GeoJSON renvoyées par Photon.
 	 * @param string $cleaned  Texte nettoyé.
+	 * @param string $hint     Préfixe de code postal (voir hint()).
 	 * @return array|null
 	 */
-	public static function pick( array $features, $cleaned ) {
-		$parts  = explode( ',', (string) $cleaned );
-		$wanted = self::normalize( $parts[0] );
+	public static function pick( array $features, $cleaned, $hint = '' ) {
+		$segments = array_map( array( __CLASS__, 'normalize' ), explode( ',', (string) $cleaned ) );
+		$wanted   = array_shift( $segments );
 		if ( '' === $wanted ) {
 			return null;
 		}
+		$context   = array_filter( $segments );
+		$preferred = self::preferred_country();
+		$best      = null;
+		$best_rank = -1;
 		foreach ( $features as $feature ) {
-			$name = ( isset( $feature['properties']['name'] ) && is_string( $feature['properties']['name'] ) ) ? $feature['properties']['name'] : '';
-			if ( '' !== $name && self::normalize( $name ) === $wanted ) {
-				return $feature;
+			$props = ( is_array( $feature ) && isset( $feature['properties'] ) && is_array( $feature['properties'] ) ) ? $feature['properties'] : array();
+			$name  = ( isset( $props['name'] ) && is_string( $props['name'] ) ) ? $props['name'] : '';
+			if ( '' === $name || self::normalize( $name ) !== $wanted || null === self::to_address( $feature ) ) {
+				continue;
+			}
+			$rank = 0;
+			if ( '' !== $hint && isset( $props['postcode'] ) && is_scalar( $props['postcode'] ) && 0 === strpos( (string) $props['postcode'], $hint ) ) {
+				$rank += 4;
+			}
+			foreach ( array( 'country', 'state', 'county' ) as $field ) {
+				if ( isset( $props[ $field ] ) && is_string( $props[ $field ] ) && in_array( self::normalize( $props[ $field ] ), $context, true ) ) {
+					$rank += 2;
+					break;
+				}
+			}
+			if ( '' !== $preferred && isset( $props['countrycode'] ) && is_string( $props['countrycode'] ) && strtoupper( $props['countrycode'] ) === $preferred ) {
+				++$rank;
+			}
+			if ( $rank > $best_rank ) {
+				$best      = $feature;
+				$best_rank = $rank;
 			}
 		}
-		return null;
+		return $best;
 	}
 
 	/**
@@ -915,7 +1119,7 @@ class PhotonGeocoder {
 	 */
 	public static function to_address( array $feature ) {
 		$coords = isset( $feature['geometry']['coordinates'] ) ? $feature['geometry']['coordinates'] : null;
-		if ( ! is_array( $coords ) || count( $coords ) < 2 || ! is_numeric( $coords[0] ) || ! is_numeric( $coords[1] ) ) {
+		if ( ! is_array( $coords ) || ! isset( $coords[0], $coords[1] ) || ! is_numeric( $coords[0] ) || ! is_numeric( $coords[1] ) ) {
 			return null;
 		}
 		$lng = (float) $coords[0];
@@ -926,19 +1130,23 @@ class PhotonGeocoder {
 
 		$props = ( isset( $feature['properties'] ) && is_array( $feature['properties'] ) ) ? $feature['properties'] : array();
 		$text  = function ( $key ) use ( $props ) {
-			return ( isset( $props[ $key ] ) && is_scalar( $props[ $key ] ) ) ? sanitize_text_field( (string) $props[ $key ] ) : '';
+			return ( isset( $props[ $key ] ) && is_scalar( $props[ $key ] ) ) ? self::truncate( sanitize_text_field( (string) $props[ $key ] ) ) : '';
 		};
 
-		$name    = $text( 'name' );
-		$state   = $text( 'state' );
-		$country = $text( 'country' );
-		$is_city = 'place' === $text( 'osm_key' ) && in_array( $text( 'osm_value' ), self::CITY_VALUES, true );
+		$name      = $text( 'name' );
+		$state     = $text( 'state' );
+		$country   = $text( 'country' );
+		$osm_value = $text( 'osm_value' );
+		$city      = $text( 'city' );
+		if ( 'place' === $text( 'osm_key' ) && in_array( $osm_value, self::CITY_VALUES, true ) && ( '' === $city || ! in_array( $osm_value, self::SUB_CITY_VALUES, true ) ) ) {
+			$city = $name;
+		}
 
 		return array(
-			'lat'               => (string) round( $lat, 7 ),
-			'long'              => (string) round( $lng, 7 ),
+			'lat'               => self::coordinate( $lat ),
+			'long'              => self::coordinate( $lng ),
 			'formatted_address' => implode( ', ', array_values( array_unique( array_filter( array( $name, $state, $country ) ) ) ) ),
-			'city'              => $is_city ? $name : $text( 'city' ),
+			'city'              => $city,
 			'state_long'        => $state,
 			'postcode'          => $text( 'postcode' ),
 			'country_long'      => $country,
@@ -947,16 +1155,61 @@ class PhotonGeocoder {
 	}
 
 	/**
+	 * Lieu (place=*) ou limite administrative.
+	 *
+	 * @param mixed $feature Entité GeoJSON.
+	 * @return bool
+	 */
+	public static function is_place( $feature ) {
+		$props = ( is_array( $feature ) && isset( $feature['properties'] ) && is_array( $feature['properties'] ) ) ? $feature['properties'] : array();
+		$key   = isset( $props['osm_key'] ) ? $props['osm_key'] : '';
+		$value = isset( $props['osm_value'] ) ? $props['osm_value'] : '';
+		return 'place' === $key || ( 'boundary' === $key && 'administrative' === $value );
+	}
+
+	/**
+	 * Coordonnée en notation décimale (jamais « 1.0E-5 »), 7 décimales au plus.
+	 *
+	 * @param float $value Coordonnée.
+	 * @return string
+	 */
+	private static function coordinate( $value ) {
+		$text = rtrim( rtrim( sprintf( '%.7F', $value ), '0' ), '.' );
+		return '-0' === $text ? '0' : $text;
+	}
+
+	/**
+	 * Tronque un texte à MAX_LENGTH caractères.
+	 *
+	 * @param string $text Texte.
+	 * @return string
+	 */
+	private static function truncate( $text ) {
+		return function_exists( 'mb_substr' ) ? mb_substr( $text, 0, self::MAX_LENGTH ) : substr( $text, 0, self::MAX_LENGTH );
+	}
+
+	/**
+	 * URL Photon configurée, sans fragment (sinon les paramètres partiraient dans le fragment).
+	 *
+	 * @return string
+	 */
+	private function base_url() {
+		$base = (string) $this->settings->get( 'photon_url' );
+		$hash = strpos( $base, '#' );
+		return false === $hash ? $base : substr( $base, 0, $hash );
+	}
+
+	/**
 	 * Appelle Photon.
 	 *
+	 * @param string $base     URL Photon.
 	 * @param string $query    Texte nettoyé.
 	 * @param string $lang     Langue Photon.
 	 * @param bool   $filtered Restreindre aux lieux et limites administratives.
 	 * @return array|\WP_Error Entités, ou erreur (code g2rd_photon_bad_request pour un HTTP 400 avec filtre).
 	 */
-	private function request( $query, $lang, $filtered ) {
-		$base = (string) $this->settings->get( 'photon_url' );
-		$url  = $base . ( false === strpos( $base, '?' ) ? '?' : '&' ) . http_build_query(
+	private function request( $base, $query, $lang, $filtered ) {
+		$url = $base . ( false === strpos( $base, '?' ) ? '?' : '&' ) . http_build_query(
 			array(
 				'q'     => $query,
 				'limit' => 5,
@@ -970,17 +1223,22 @@ class PhotonGeocoder {
 			$url .= '&osm_tag=place&osm_tag=' . rawurlencode( 'boundary:administrative' );
 		}
 
-		$allow    = $this->allow_private_host( $base );
-		$response = wp_safe_remote_get(
-			$url,
-			array(
-				'timeout'     => self::TIMEOUT,
-				'redirection' => 2,
-				'user-agent'  => 'G2RD-WPJM-Geo/' . G2RD_WPJM_GEO_VERSION . ' (+' . home_url( '/' ) . ')',
-			)
-		);
-		if ( $allow ) {
-			remove_filter( 'http_request_host_is_external', $allow, 10 );
+		$allow = $this->allow_private_host( $base );
+		try {
+			$response = wp_safe_remote_get(
+				$url,
+				array(
+					'timeout'             => self::TIMEOUT,
+					'redirection'         => 2,
+					'sslverify'           => true,
+					'limit_response_size' => self::MAX_RESPONSE,
+					'user-agent'          => 'G2RD-WPJM-Geo/' . G2RD_WPJM_GEO_VERSION . ' (+' . home_url( '/' ) . ')',
+				)
+			);
+		} finally {
+			if ( $allow ) {
+				remove_filter( 'http_request_host_is_external', $allow, 10 );
+			}
 		}
 
 		if ( is_wp_error( $response ) ) {
@@ -988,36 +1246,36 @@ class PhotonGeocoder {
 		}
 		$code = (int) wp_remote_retrieve_response_code( $response );
 		if ( 400 === $code && $filtered ) {
-			return new \WP_Error( 'g2rd_photon_bad_request', 'Photon : HTTP 400' );
+			return new \WP_Error( 'g2rd_photon_bad_request', __( 'Photon a refusé la requête (HTTP 400).', 'g2rd-wpjm-geo' ) );
 		}
 		if ( 400 === $code ) {
+			$body = strtolower( (string) wp_remote_retrieve_body( $response ) );
+			if ( false !== strpos( $body, 'language' ) || false !== strpos( $body, 'parameter' ) ) {
+				// Langue ou paramètre refusé : la configuration du serveur est en cause, pas le texte.
+				return new \WP_Error( 'g2rd_photon_config', __( 'Le serveur Photon refuse la langue ou les paramètres de la requête (HTTP 400) : vérifiez sa configuration.', 'g2rd-wpjm-geo' ) );
+			}
 			// Refusé même sans filtre : propre à ce texte, traité comme introuvable
 			// (sinon l'offre bloquerait la file de géocodage à chaque passage).
 			return array();
 		}
 		if ( 200 !== $code ) {
-			return new \WP_Error( 'g2rd_photon_http', 'Photon : HTTP ' . $code );
+			/* translators: %d: HTTP status code. */
+			return new \WP_Error( 'g2rd_photon_http', sprintf( __( 'Photon est indisponible (HTTP %d).', 'g2rd-wpjm-geo' ), $code ) );
 		}
 		$data = json_decode( (string) wp_remote_retrieve_body( $response ), true );
 		if ( ! is_array( $data ) || ! isset( $data['features'] ) || ! is_array( $data['features'] ) ) {
-			return new \WP_Error( 'g2rd_photon_invalid', 'Photon : réponse illisible' );
+			return new \WP_Error( 'g2rd_photon_invalid', __( 'Photon a renvoyé une réponse illisible.', 'g2rd-wpjm-geo' ) );
 		}
-		if ( $filtered ) {
-			return $data['features'];
-		}
-		return array_values(
-			array_filter(
-				$data['features'],
-				function ( $feature ) {
-					$key = isset( $feature['properties']['osm_key'] ) ? $feature['properties']['osm_key'] : '';
-					return in_array( $key, array( 'place', 'boundary' ), true );
-				}
-			)
-		);
+		// Filtré aussi côté serveur : une instance qui ignorerait osm_tag renverrait des commerces.
+		return array_values( array_filter( $data['features'], array( __CLASS__, 'is_place' ) ) );
 	}
 
 	/**
 	 * Autorise, le temps d'une requête, l'hôte d'un Photon auto-hébergé à une adresse privée.
+	 *
+	 * Photon écoute par défaut en HTTP sur le port 2322 : il doit être servi en
+	 * https sur le port 443 (proxy inverse), seul port accepté avec 80 et 8080
+	 * par wp_safe_remote_get().
 	 *
 	 * @param string $base URL Photon configurée.
 	 * @return callable|null Callback à retirer après la requête.
@@ -5317,7 +5575,8 @@ Remplacer le corps de `enqueue_autocomplete()` par :
 		wp_enqueue_style( GoogleAssets::HANDLE_STYLE );
 		wp_enqueue_script( GoogleAssets::HANDLE_AUTOCOMPLETE );
 
-		$locale = function_exists( 'determine_locale' ) ? determine_locale() : get_locale();
+		// Langue du site, comme le géocodage serveur : un libellé choisi ici doit être retrouvé par PhotonGeocoder.
+		$locale = get_locale();
 		$config = array(
 			'source'    => $is_osm ? 'photon' : 'google',
 			'photonUrl' => $is_osm ? esc_url_raw( (string) $this->settings->get( 'photon_url' ), array( 'https' ) ) : '',
