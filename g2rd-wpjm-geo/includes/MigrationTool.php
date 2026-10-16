@@ -107,6 +107,7 @@ class MigrationTool {
 			'current'   => __( 'Valeur actuelle :', 'g2rd-wpjm-geo' ),
 			'next'      => __( 'Nouvelle valeur :', 'g2rd-wpjm-geo' ),
 			'reason'    => __( 'Raison :', 'g2rd-wpjm-geo' ),
+			'results'   => __( 'Offres à corriger', 'g2rd-wpjm-geo' ),
 			'simulated' => __( 'Simulation : aucune donnée n’a été modifiée.', 'g2rd-wpjm-geo' ),
 			'truncated' => __( 'Seules les 500 premières offres sont détaillées.', 'g2rd-wpjm-geo' ),
 		);
@@ -129,14 +130,14 @@ class MigrationTool {
 				data-action="<?php echo esc_attr( self::AJAX_ACTION ); ?>"
 				data-nonce="<?php echo esc_attr( wp_create_nonce( self::NONCE_ACTION ) ); ?>"
 				data-i18n="<?php echo esc_attr( wp_json_encode( $i18n ) ); ?>">
-				<div class="g2rd-row">
+				<div class="g2rd-row g2rd-row--wrap">
 					<button type="button" class="button" data-g2rd-run="analyze"><?php esc_html_e( 'Analyser les offres Go Fetch Jobs existantes', 'g2rd-wpjm-geo' ); ?></button>
 					<label class="g2rd-row"><input type="checkbox" data-g2rd-dry-run checked /> <?php esc_html_e( 'Mode simulation (aucune donnée n’est modifiée)', 'g2rd-wpjm-geo' ); ?></label>
 					<button type="button" class="button button-primary" data-g2rd-run="fix"><?php esc_html_e( 'Corriger les offres', 'g2rd-wpjm-geo' ); ?></button>
 				</div>
 				<p class="g2rd-wpjm-geo-tools__status g2rd-muted" role="status" aria-live="polite"></p>
 				<div class="g2rd-wpjm-geo-tools__stats"></div>
-				<div class="g2rd-wpjm-geo-tools__rows"></div>
+				<div class="g2rd-wpjm-geo-tools__rows" style="overflow-x:auto"></div>
 			</div>
 		</section>
 		<?php
@@ -163,7 +164,7 @@ class MigrationTool {
 		}
 
 		echo '<p class="g2rd-section__desc">' . esc_html__( '50 dernières entrées.', 'g2rd-wpjm-geo' ) . '</p>';
-		echo '<table class="widefat striped g2rd-table"><thead><tr>';
+		echo '<table class="widefat striped g2rd-table"><caption class="screen-reader-text">' . esc_html__( 'Journal des remplacements', 'g2rd-wpjm-geo' ) . '</caption><thead><tr>';
 		foreach ( array( __( 'Offre', 'g2rd-wpjm-geo' ), __( 'Date', 'g2rd-wpjm-geo' ), __( 'Ancienne valeur', 'g2rd-wpjm-geo' ), __( 'Nouvelle valeur', 'g2rd-wpjm-geo' ), __( 'Raison', 'g2rd-wpjm-geo' ), __( 'Source', 'g2rd-wpjm-geo' ) ) as $heading ) {
 			echo '<th scope="col">' . esc_html( $heading ) . '</th>';
 		}
@@ -174,8 +175,9 @@ class MigrationTool {
 			echo '<tr>';
 			echo '<td>' . ( $link ? '<a href="' . esc_url( $link ) . '">#' . esc_html( (string) $job_id ) . '</a>' : '#' . esc_html( (string) $job_id ) ) . '</td>';
 			echo '<td class="is-date">' . esc_html( get_date_from_gmt( $row['created_at'], get_option( 'date_format' ) . ' ' . get_option( 'time_format' ) ) ) . '</td>';
-			echo '<td class="is-mono">' . esc_html( $row['old_value'] ) . '</td>';
-			echo '<td class="is-mono">' . esc_html( $row['new_value'] ) . '</td>';
+			// overflow-wrap en ligne : une URL importée sans point de coupure ne doit pas élargir la carte (console.css est une copie intégrale du thème).
+			echo '<td class="is-mono" style="overflow-wrap:anywhere">' . esc_html( $row['old_value'] ) . '</td>';
+			echo '<td class="is-mono" style="overflow-wrap:anywhere">' . esc_html( $row['new_value'] ) . '</td>';
 			echo '<td><span class="g2rd-tag g2rd-tag--info">' . esc_html( Logger::reason_label( $row['reason'] ) ) . '</span></td>';
 			echo '<td>' . esc_html( $row['source'] ) . '</td>';
 			echo '</tr>';

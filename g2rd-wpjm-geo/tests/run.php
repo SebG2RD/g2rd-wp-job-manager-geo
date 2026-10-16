@@ -24,6 +24,7 @@ use G2RD\WPJMGeo\GeocodeQueue;
 use G2RD\WPJMGeo\GeocodingIntegration;
 use G2RD\WPJMGeo\GoFetchIntegration;
 use G2RD\WPJMGeo\Logger;
+use G2RD\WPJMGeo\MigrationTool;
 use G2RD\WPJMGeo\PhotonGeocoder;
 use G2RD\WPJMGeo\RegeocodeTool;
 use G2RD\WPJMGeo\RestController;
@@ -896,6 +897,20 @@ preg_match_all( '/\sid="([^"]+)"/', $html, $ids );
 preg_match_all( '/aria-(?:describedby|labelledby)="([^"]+)"/', $html, $refs );
 check( 'aucune référence ARIA pendante', array() === array_diff( $refs[1], $ids[1] ) );
 AdminMenu::reset();
+
+echo PHP_EOL . '23. Outil Go Fetch Jobs et journal : rendu' . PHP_EOL;
+list( $s, $normalizer ) = boot( array( 'log_enabled' => true ) );
+$hostile_log = new class( $s ) extends Logger {
+	public function latest( $limit = 50 ) {
+		return array( array( 'id' => 1, 'job_id' => 7, 'created_at' => '2026-01-01 00:00:00', 'old_value' => 'javascript:alert(1)//"><svg onload=alert(1)>', 'new_value' => '<b>x</b>@ex.fr', 'reason' => '<i>r</i>', 'source' => '<a href="javascript:alert(2)">x</a>' ) );
+	}
+};
+ob_start();
+( new MigrationTool( $s, $normalizer, $hostile_log ) )->render();
+$html = ob_get_clean();
+check( 'journal : valeurs importées échappées', false === strpos( $html, '<svg' ) && false === strpos( $html, '<b>x' ) && false === strpos( $html, '<i>r' ) && false === strpos( $html, 'href="javascript' ) && false !== strpos( $html, 'javascript:alert(1)//&quot;&gt;&lt;svg' ) );
+check( 'outil : points d’accroche du script présents', 1 === preg_match( '/class="g2rd-wpjm-geo-tools"[^>]*data-ajax-url="[^"]+"[^>]*data-nonce="[^"]+"[^>]*data-i18n="/s', $html ) && false !== strpos( $html, 'g2rd-wpjm-geo-tools__rows' ) && false !== strpos( $html, 'data-g2rd-run="fix"' ) && false !== strpos( $html, 'data-g2rd-dry-run' ) );
+check( 'sections équilibrées', 2 === substr_count( $html, '<section' ) && 2 === substr_count( $html, '</section>' ) );
 
 $results = $GLOBALS['g2rd_results'];
 echo PHP_EOL . sprintf( 'Résultat : %d réussis, %d échoués', $results['pass'], $results['fail'] ) . PHP_EOL;

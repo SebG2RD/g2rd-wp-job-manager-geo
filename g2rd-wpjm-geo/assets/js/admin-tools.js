@@ -51,6 +51,9 @@
 			}
 			table = document.createElement( 'table' );
 			table.className = 'widefat striped g2rd-table';
+			var caption = table.createCaption();
+			caption.className   = 'screen-reader-text';
+			caption.textContent = i18n.results || '';
 			var head = table.createTHead().insertRow();
 			[ i18n.job, i18n.current, i18n.next, i18n.reason ].forEach( function ( label ) {
 				var th = document.createElement( 'th' );
@@ -77,6 +80,7 @@
 				[ row.old, row[ 'new' ] ].forEach( function ( value ) {
 					var cell = tr.insertCell();
 					cell.className = 'is-mono';
+					cell.style.overflowWrap = 'anywhere';
 					cell.textContent = value;
 				} );
 				tr.insertCell().textContent = row.reason;
