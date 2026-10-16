@@ -3329,6 +3329,9 @@ Dans `tests/bootstrap.php` : ajouter `'AdminScreen'` à la fin de la liste des c
 		G2RD_Test_State::$enqueued[ 'inline:' . $handle ] = $data;
 		return true;
 	}
+	function esc_url( $url, $protocols = null, $_context = 'display' ) {
+		return str_replace( '&', '&#038;', esc_url_raw( $url, $protocols ) );
+	}
 ```
 
 Si l'une de ces fonctions existe déjà, la remplacer par cette version. Dans `tests/fixtures/fake-admin-console.php`, ajouter à la classe `AdminConsole` :
