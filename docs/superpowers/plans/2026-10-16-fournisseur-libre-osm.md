@@ -4430,14 +4430,14 @@ Remplacer, dans `render()`, tout ce qui suit le tableau `$i18n` (de `?>` à `$th
 				data-action="<?php echo esc_attr( self::AJAX_ACTION ); ?>"
 				data-nonce="<?php echo esc_attr( wp_create_nonce( self::NONCE_ACTION ) ); ?>"
 				data-i18n="<?php echo esc_attr( wp_json_encode( $i18n ) ); ?>">
-				<div class="g2rd-row">
+				<div class="g2rd-row g2rd-row--wrap">
 					<button type="button" class="button" data-g2rd-run="analyze"><?php esc_html_e( 'Analyser les offres Go Fetch Jobs existantes', 'g2rd-wpjm-geo' ); ?></button>
 					<label class="g2rd-row"><input type="checkbox" data-g2rd-dry-run checked /> <?php esc_html_e( 'Mode simulation (aucune donnée n’est modifiée)', 'g2rd-wpjm-geo' ); ?></label>
 					<button type="button" class="button button-primary" data-g2rd-run="fix"><?php esc_html_e( 'Corriger les offres', 'g2rd-wpjm-geo' ); ?></button>
 				</div>
 				<p class="g2rd-wpjm-geo-tools__status g2rd-muted" role="status" aria-live="polite"></p>
 				<div class="g2rd-wpjm-geo-tools__stats"></div>
-				<div class="g2rd-wpjm-geo-tools__rows"></div>
+				<div class="g2rd-wpjm-geo-tools__rows" style="overflow-x:auto"></div>
 			</div>
 		</section>
 		<?php
@@ -4464,7 +4464,7 @@ Remplacer le corps de `render_log()` par :
 		}
 
 		echo '<p class="g2rd-section__desc">' . esc_html__( '50 dernières entrées.', 'g2rd-wpjm-geo' ) . '</p>';
-		echo '<table class="widefat striped g2rd-table"><thead><tr>';
+		echo '<table class="widefat striped g2rd-table"><caption class="screen-reader-text">' . esc_html__( 'Journal des remplacements', 'g2rd-wpjm-geo' ) . '</caption><thead><tr>';
 		foreach ( array( __( 'Offre', 'g2rd-wpjm-geo' ), __( 'Date', 'g2rd-wpjm-geo' ), __( 'Ancienne valeur', 'g2rd-wpjm-geo' ), __( 'Nouvelle valeur', 'g2rd-wpjm-geo' ), __( 'Raison', 'g2rd-wpjm-geo' ), __( 'Source', 'g2rd-wpjm-geo' ) ) as $heading ) {
 			echo '<th scope="col">' . esc_html( $heading ) . '</th>';
 		}
@@ -4475,8 +4475,9 @@ Remplacer le corps de `render_log()` par :
 			echo '<tr>';
 			echo '<td>' . ( $link ? '<a href="' . esc_url( $link ) . '">#' . esc_html( (string) $job_id ) . '</a>' : '#' . esc_html( (string) $job_id ) ) . '</td>';
 			echo '<td class="is-date">' . esc_html( get_date_from_gmt( $row['created_at'], get_option( 'date_format' ) . ' ' . get_option( 'time_format' ) ) ) . '</td>';
-			echo '<td class="is-mono">' . esc_html( $row['old_value'] ) . '</td>';
-			echo '<td class="is-mono">' . esc_html( $row['new_value'] ) . '</td>';
+			// overflow-wrap en ligne : une URL importée sans point de coupure ne doit pas élargir la carte (console.css est une copie intégrale du thème).
+			echo '<td class="is-mono" style="overflow-wrap:anywhere">' . esc_html( $row['old_value'] ) . '</td>';
+			echo '<td class="is-mono" style="overflow-wrap:anywhere">' . esc_html( $row['new_value'] ) . '</td>';
 			echo '<td><span class="g2rd-tag g2rd-tag--info">' . esc_html( Logger::reason_label( $row['reason'] ) ) . '</span></td>';
 			echo '<td>' . esc_html( $row['source'] ) . '</td>';
 			echo '</tr>';
@@ -4513,6 +4514,9 @@ Remplacer les fonctions `renderStats()` et `appendRows()` par :
 			}
 			table = document.createElement( 'table' );
 			table.className = 'widefat striped g2rd-table';
+			var caption = table.createCaption();
+			caption.className   = 'screen-reader-text';
+			caption.textContent = i18n.results || '';
 			var head = table.createTHead().insertRow();
 			[ i18n.job, i18n.current, i18n.next, i18n.reason ].forEach( function ( label ) {
 				var th = document.createElement( 'th' );
@@ -4539,6 +4543,7 @@ Remplacer les fonctions `renderStats()` et `appendRows()` par :
 				[ row.old, row[ 'new' ] ].forEach( function ( value ) {
 					var cell = tr.insertCell();
 					cell.className = 'is-mono';
+					cell.style.overflowWrap = 'anywhere';
 					cell.textContent = value;
 				} );
 				tr.insertCell().textContent = row.reason;
@@ -4555,12 +4560,80 @@ grep -rn "admin.css" g2rd-wpjm-geo --include=*.php
 
 Expected: `grep` ne renvoie rien.
 
+- [ ] **Step 4 bis: Titre accessible du tableau et tests de rendu**
+
+Dans `MigrationTool::render()`, dans le tableau `$i18n`, juste après la ligne `'reason'    => __( 'Raison :', 'g2rd-wpjm-geo' ),`, ajouter :
+
+```php
+			'results'   => __( 'Offres à corriger', 'g2rd-wpjm-geo' ),
+```
+
+Dans `tests/bootstrap.php` : ajouter `'MigrationTool'` à la fin de la liste des classes et ces fonctions simulées (sans dupliquer une fonction déjà présente) :
+
+```php
+	function wp_create_nonce( $action = -1 ) {
+		return 'nonce';
+	}
+	function wp_json_encode( $data, $options = 0, $depth = 512 ) {
+		return json_encode( $data, $options, $depth );
+	}
+	function esc_html_e( $text, $domain = 'default' ) {
+		echo esc_html( $text );
+	}
+	function get_date_from_gmt( $date, $format = 'Y-m-d H:i:s' ) {
+		return $date;
+	}
+```
+
+Dans `tests/run.php`, ajouter aux `use` : `use G2RD\WPJMGeo\MigrationTool;`, puis, juste avant `$results = $GLOBALS['g2rd_results'];` :
+
+```php
+echo PHP_EOL . '23. Outil Go Fetch Jobs et journal : rendu' . PHP_EOL;
+list( $s, $normalizer ) = boot( array( 'log_enabled' => true ) );
+$hostile_log = new class( $s ) extends Logger {
+	public function latest( $limit = 50 ) {
+		return array( array( 'id' => 1, 'job_id' => 7, 'created_at' => '2026-01-01 00:00:00', 'old_value' => 'javascript:alert(1)//"><svg onload=alert(1)>', 'new_value' => '<b>x</b>@ex.fr', 'reason' => '<i>r</i>', 'source' => '<a href="javascript:alert(2)">x</a>' ) );
+	}
+};
+ob_start();
+( new MigrationTool( $s, $normalizer, $hostile_log ) )->render();
+$html = ob_get_clean();
+check( 'journal : valeurs importées échappées', false === strpos( $html, '<svg' ) && false === strpos( $html, '<b>x' ) && false === strpos( $html, '<i>r' ) && false === strpos( $html, 'href="javascript' ) && false !== strpos( $html, 'javascript:alert(1)//&quot;&gt;&lt;svg' ) );
+check( 'outil : points d’accroche du script présents', 1 === preg_match( '/class="g2rd-wpjm-geo-tools"[^>]*data-ajax-url="[^"]+"[^>]*data-nonce="[^"]+"[^>]*data-i18n="/s', $html ) && false !== strpos( $html, 'g2rd-wpjm-geo-tools__rows' ) && false !== strpos( $html, 'data-g2rd-run="fix"' ) && false !== strpos( $html, 'data-g2rd-dry-run' ) );
+check( 'sections équilibrées', 2 === substr_count( $html, '<section' ) && 2 === substr_count( $html, '</section>' ) );
+```
+
+Dans `tests/js/run.js`, juste avant la ligne `console.log('\nResultat JS : ' …` :
+
+```js
+  console.log('\nG. Outil Go Fetch Jobs');
+  {
+    const tw = new JSDOM('<div class="g2rd-wpjm-geo-tools" data-ajax-url="/a" data-action="x" data-nonce="n" data-i18n=\'{"job":"Offre","current":"Valeur actuelle :","next":"Nouvelle valeur :","reason":"Raison :","done":"Terminé."}\'><button data-g2rd-run="fix"></button><input type="checkbox" data-g2rd-dry-run checked><p class="g2rd-wpjm-geo-tools__status"></p><div class="g2rd-wpjm-geo-tools__stats"></div><div class="g2rd-wpjm-geo-tools__rows"></div></div>', { runScripts: 'outside-only' }).window;
+    const toolStats = { analyzed: 1, email: 0, url: 1, empty: 0, toFix: 1, fixed: 0 };
+    const pages = [
+      { success: true, data: { stats: toolStats, rows: [{ id: 9, old: 'javascript:alert(1)//"><img src=x onerror=alert(1)>', new: '<svg onload=alert(2)>', reason: '<script>alert(3)</script>' }], cursor: 9, done: false } },
+      { success: true, data: { stats: toolStats, rows: [{ id: 10, old: 'u', new: 'e', reason: 'r' }], cursor: 10, done: false } },
+      { success: true, data: { stats: toolStats, rows: [], cursor: 10, done: true } }
+    ];
+    let page = 0;
+    tw.fetch = () => Promise.resolve({ ok: true, json: () => Promise.resolve(pages[page++]) });
+    tw.eval(src('js/admin-tools.js'));
+    tw.document.dispatchEvent(new tw.Event('DOMContentLoaded'));
+    tw.document.querySelector('[data-g2rd-run="fix"]').click();
+    await wait(20);
+    const toolRows = tw.document.querySelector('.g2rd-wpjm-geo-tools__rows');
+    check('outil : un seul tableau pour tous les lots', 1 === toolRows.querySelectorAll('table').length && 2 === toolRows.querySelectorAll('tbody tr').length);
+    check('outil : en-tetes sans deux-points, scope="col"', 'Offre|Valeur actuelle|Nouvelle valeur|Raison' === [...toolRows.querySelectorAll('th')].map(t => t.textContent).join('|') && 4 === toolRows.querySelectorAll('th[scope="col"]').length);
+    check('outil : valeurs importees inserees en texte', 0 === toolRows.querySelectorAll('img,svg,script').length && toolRows.querySelector('td.is-mono').textContent.startsWith('javascript:'));
+  }
+```
+
 - [ ] **Step 5: Lint, tests, commit**
 
 ```bash
 php -l g2rd-wpjm-geo/includes/MigrationTool.php && node --check g2rd-wpjm-geo/assets/js/admin-tools.js
 php g2rd-wpjm-geo/tests/run.php | tail -1
-git add g2rd-wpjm-geo/includes/MigrationTool.php g2rd-wpjm-geo/assets/js/admin-tools.js
+git add g2rd-wpjm-geo/includes/MigrationTool.php g2rd-wpjm-geo/assets/js/admin-tools.js g2rd-wpjm-geo/tests/bootstrap.php g2rd-wpjm-geo/tests/run.php g2rd-wpjm-geo/tests/js/run.js
 git commit -m "feat: outil Go Fetch Jobs et journal à la charte de la console"
 ```
 
