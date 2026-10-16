@@ -3343,6 +3343,131 @@ Si l'une de ces fonctions existe déjà, la remplacer par cette version. Dans `t
 	}
 ```
 
+Test de rendu (section 22, juste après la section 21) : une case absente du formulaire serait enregistrée décochée.
+
+```php
+echo PHP_EOL . '22. Rendu de la page de réglages' . PHP_EOL;
+list( $s ) = boot( array( 'provider' => 'google', 'browser_api_key' => 'AIza"<k>' ) );
+AdminMenu::reset();
+ob_start();
+( new \G2RD\WPJMGeo\SettingsPage( $s ) )->render();
+$html    = ob_get_clean();
+$missing = array();
+foreach ( array_keys( Settings::defaults() ) as $key ) {
+	if ( false === strpos( $html, 'name="' . Settings::OPTION . '[' . $key . ']"' ) ) {
+		$missing[] = $key;
+	}
+}
+check( 'chaque réglage a son champ (une case absente serait enregistrée décochée)', array() === $missing );
+check( 'adresse générique : option dédiée dans le formulaire', false !== strpos( $html, 'name="' . Settings::FALLBACK_EMAIL_OPTION . '"' ) );
+check( 'formulaire options.php du groupe enregistré', false !== strpos( $html, 'action="options.php"' ) && false !== strpos( $html, 'name="option_page" value="' . Settings::GROUP . '"' ) );
+check( 'valeur de la clé échappée', false !== strpos( $html, 'value="AIza&quot;&lt;k&gt;"' ) && false === strpos( $html, 'AIza"<k>' ) );
+check( 'mode Google : lignes OpenStreetMap masquées mais présentes', 3 === substr_count( $html, 'data-g2rd-provider="osm" style="display:none"' ) && false === strpos( $html, 'data-g2rd-provider="google" style=' ) );
+check( 'remplacement Go Fetch Jobs coché par défaut', 1 === preg_match( '/is-checked"><input[^>]+name="g2rd_wpjm_geo_settings\[gofetch_replace\]"[^>]+checked/', $html ) );
+preg_match_all( '/\sid="([^"]+)"/', $html, $ids );
+preg_match_all( '/aria-(?:describedby|labelledby)="([^"]+)"/', $html, $refs );
+check( 'aucune référence ARIA pendante', array() === array_diff( $refs[1], $ids[1] ) );
+AdminMenu::reset();
+```
+
+Pour ce test, dans `tests/bootstrap.php` :
+
+- ajouter `'Dependencies', 'GoogleAssets', 'SettingsPage'` à la fin de la liste des classes ;
+- dans la classe `G2RD_Test_Wpdb`, remplacer `public $prefix = 'wp_';` par :
+
+```php
+		public $prefix   = 'wp_';
+		public $posts    = 'wp_posts';
+		public $postmeta = 'wp_postmeta';
+		public function prepare( $query, ...$args ) {
+			return $query;
+		}
+		public function get_results( $query, $output = null ) {
+			return array();
+		}
+		public function get_var( $query ) {
+			return 0;
+		}
+```
+
+- ajouter, après `esc_url()`, les fonctions simulées du rendu (ne pas dupliquer une fonction déjà présente) :
+
+```php
+	// --- Rendu de la page d'administration.
+	if ( ! defined( 'ARRAY_A' ) ) {
+		define( 'ARRAY_A', 'ARRAY_A' );
+	}
+	function esc_attr( $text ) {
+		return htmlspecialchars( (string) $text, ENT_QUOTES, 'UTF-8' );
+	}
+	function esc_html( $text ) {
+		return htmlspecialchars( (string) $text, ENT_QUOTES, 'UTF-8' );
+	}
+	function esc_attr__( $text ) {
+		return esc_attr( $text );
+	}
+	function esc_html__( $text ) {
+		return esc_html( $text );
+	}
+	function _n( $single, $plural, $number ) {
+		return 1 === (int) $number ? $single : $plural;
+	}
+	function checked( $checked, $current = true, $echo = true ) {
+		$result = (string) $checked === (string) $current ? " checked='checked'" : '';
+		if ( $echo ) {
+			echo $result;
+		}
+		return $result;
+	}
+	function current_user_can( $capability ) {
+		return true;
+	}
+	function wp_die( $message = '' ) {
+		throw new RuntimeException( (string) $message );
+	}
+	function settings_errors() {
+		echo '<!-- settings_errors -->';
+	}
+	function settings_fields( $group ) {
+		echo '<input type="hidden" name="option_page" value="' . esc_attr( $group ) . '" />';
+	}
+```
+
+Test du script (section F de `tests/js/run.js`, juste avant la ligne `console.log('\nResultat JS : ' …`) :
+
+```js
+  console.log('\nF. Page de reglages');
+  const settingsHtml = '<form class="g2rd-wpjm-geo-settings">'
+    + '<label><input type="radio" name="o[provider]" value="google" checked></label><label><input type="radio" name="o[provider]" value="osm"></label>'
+    + '<div data-g2rd-provider="google"><input name="o[browser_api_key]" value="k"></div>'
+    + '<div data-g2rd-provider="osm" style="display:none"><input type="url" name="o[photon_url]" value="https://p.test/api/"></div>'
+    + '<span class="components-form-toggle is-checked"><input class="components-form-toggle__input" type="checkbox" id="t" name="o[gofetch_replace]" value="1" checked></span>'
+    + '<div class="g2rd-savebar"><button type="submit">ok</button></div></form>';
+  const settings = async (before) => {
+    const sw = new JSDOM(settingsHtml, { runScripts: 'outside-only' }).window;
+    if (before) before(sw.document);
+    sw.eval(src('js/admin-settings.js'));
+    await wait(10);
+    const sd = sw.document;
+    return { sw, sd, bar: sd.querySelector('.g2rd-savebar'), t: sd.getElementById('t'), rows: v => [...sd.querySelectorAll('[data-g2rd-provider="' + v + '"]')].map(n => n.style.display).join() };
+  };
+  const fire = (s, el, type) => el.dispatchEvent(new s.sw.Event(type, { bubbles: true }));
+  let s = await settings();
+  check('barre masquee tant que rien ne change', s.bar.style.display === 'none');
+  const osmRadio = s.sd.querySelector('input[value="osm"]');
+  osmRadio.checked = true; fire(s, osmRadio, 'change');
+  check('bascule OSM : lignes Google masquees, OSM affichees, barre visible', s.rows('google') === 'none' && s.rows('osm') === '' && s.bar.style.display === '');
+  check('champs masques toujours soumis', new s.sw.FormData(s.sd.querySelector('form')).get('o[browser_api_key]') === 'k');
+  const googleRadio = s.sd.querySelector('input[value="google"]');
+  googleRadio.checked = true; fire(s, googleRadio, 'change');
+  check('retour a la valeur enregistree : barre masquee', s.bar.style.display === 'none');
+  s.t.checked = false; fire(s, s.t, 'change');
+  check('interrupteur : classe is-checked suit la case', !s.t.parentNode.classList.contains('is-checked'));
+  s = await settings(d => { d.getElementById('t').checked = false; d.querySelector('input[value="osm"]').checked = true; });
+  check('etat restaure par le navigateur : interrupteur, lignes et barre synchronises', !s.t.parentNode.classList.contains('is-checked') && s.rows('google') === 'none' && s.bar.style.display === '');
+  check('formulaire absent : aucune erreur', await (async () => { const ew = new JSDOM('<p></p>', { runScripts: 'outside-only' }).window; ew.eval(src('js/admin-settings.js')); await wait(10); return true; })());
+```
+
 - [ ] **Step 2: Vérifier l'échec**
 
 Run: `php g2rd-wpjm-geo/tests/run.php | sed -n '/^21\./,$p'`
@@ -3800,7 +3925,7 @@ class SettingsPage {
 		settings_errors();
 		$this->toc();
 
-		echo '<form action="options.php" method="post" class="g2rd-wpjm-geo-settings">';
+		echo '<form action="options.php" method="post" class="g2rd-wpjm-geo-settings g2rd-tab-content">'; // g2rd-tab-content : espacement des cartes, comme dans le thème.
 		settings_fields( Settings::GROUP );
 		$this->section_cartography( $is_osm, $stats );
 		$this->section_autocomplete();
@@ -3859,7 +3984,7 @@ class SettingsPage {
 			'journal'        => __( 'Journal', 'g2rd-wpjm-geo' ),
 			'outils'         => __( 'Outils', 'g2rd-wpjm-geo' ),
 		);
-		echo '<nav class="g2rd-row" aria-label="' . esc_attr__( 'Sommaire', 'g2rd-wpjm-geo' ) . '">';
+		echo '<nav class="g2rd-row g2rd-row--wrap" aria-label="' . esc_attr__( 'Sommaire', 'g2rd-wpjm-geo' ) . '">';
 		foreach ( $items as $id => $label ) {
 			echo '<a class="g2rd-chip g2rd-chip--muted" href="#g2rd-geo-' . esc_attr( $id ) . '">' . esc_html( $label ) . '</a>';
 		}
@@ -3898,7 +4023,7 @@ class SettingsPage {
 				__( 'Clé utilisée uniquement par le navigateur (autocomplétion et carte). Restreignez-la au référent %s et aux API « Maps JavaScript API » et « Places API (New) ». La clé serveur de WP Job Manager n’est jamais envoyée au navigateur.', 'g2rd-wpjm-geo' ),
 				wp_parse_url( home_url(), PHP_URL_HOST ) . '/*'
 			),
-			$this->input( 'browser_api_key', 'password', ' autocomplete="off" spellcheck="false"' ),
+			$this->input( 'browser_api_key', 'password', ' autocomplete="new-password" spellcheck="false"' ),
 			Settings::PROVIDER_GOOGLE
 		);
 		$this->row(
@@ -3912,14 +4037,14 @@ class SettingsPage {
 			'g2rd-wpjm-geo-osm_style_url',
 			__( 'Style de la carte', 'g2rd-wpjm-geo' ),
 			__( 'URL https d’un style MapLibre. Styles OpenFreeMap : liberty, bright ou positron (https://tiles.openfreemap.org/styles/…). Videz le champ pour revenir au style par défaut.', 'g2rd-wpjm-geo' ),
-			$this->input( 'osm_style_url', 'url', ' spellcheck="false"' ),
+			$this->input( 'osm_style_url', 'text', ' inputmode="url" spellcheck="false"' ), // text : un champ url invalide et masqué bloquerait l'envoi sans message.
 			Settings::PROVIDER_OSM
 		);
 		$this->row(
 			'g2rd-wpjm-geo-photon_url',
 			__( 'Serveur Photon', 'g2rd-wpjm-geo' ),
 			__( 'URL https de l’API de recherche Photon, utilisée pour l’autocomplétion et le géocodage des offres. Remplaçable par un serveur auto-hébergé ; videz le champ pour revenir à l’instance publique.', 'g2rd-wpjm-geo' ),
-			$this->input( 'photon_url', 'url', ' spellcheck="false"' ),
+			$this->input( 'photon_url', 'text', ' inputmode="url" spellcheck="false"' ),
 			Settings::PROVIDER_OSM
 		);
 		echo '</div>';
@@ -3973,7 +4098,7 @@ class SettingsPage {
 				__( 'Carte des offres d’emploi', 'g2rd-wpjm-geo' )
 			)
 		);
-		$this->row( 'g2rd-wpjm-geo-map_enabled', __( 'Activer la carte', 'g2rd-wpjm-geo' ), '', $this->toggle( 'map_enabled' ) );
+		$this->row( 'g2rd-wpjm-geo-map_enabled', __( 'Activer la carte', 'g2rd-wpjm-geo' ), '', $this->toggle( 'map_enabled', false ) );
 		$this->row( 'g2rd-wpjm-geo-map_height', __( 'Hauteur de la carte (px)', 'g2rd-wpjm-geo' ), __( 'De 200 à 1200 px. Sur petit écran, la carte est limitée à 70 % de la hauteur de la fenêtre ; la largeur est toujours fluide.', 'g2rd-wpjm-geo' ), $this->input( 'map_height', 'number', ' min="200" max="1200" step="10"' ) );
 		$this->row( 'g2rd-wpjm-geo-clustering_enabled', __( 'Regrouper les offres proches', 'g2rd-wpjm-geo' ), __( 'Les offres aux coordonnées strictement identiques sont toujours réunies dans une même fenêtre.', 'g2rd-wpjm-geo' ), $this->toggle( 'clustering_enabled' ) );
 		echo '</div></section>';
@@ -4024,7 +4149,7 @@ class SettingsPage {
 	 */
 	private function section_log() {
 		$this->open_section( 'journal', __( 'Journal', 'g2rd-wpjm-geo' ), __( 'Trace de chaque remplacement : offre, date, ancienne et nouvelle valeur, raison, source.', 'g2rd-wpjm-geo' ) );
-		$this->row( 'g2rd-wpjm-geo-log_enabled', __( 'Activer le journal', 'g2rd-wpjm-geo' ), '', $this->toggle( 'log_enabled' ) );
+		$this->row( 'g2rd-wpjm-geo-log_enabled', __( 'Activer le journal', 'g2rd-wpjm-geo' ), '', $this->toggle( 'log_enabled', false ) );
 		$this->row(
 			'g2rd-wpjm-geo-log_retention_days',
 			__( 'Durée de conservation (jours)', 'g2rd-wpjm-geo' ),
@@ -4129,14 +4254,15 @@ class SettingsPage {
 	/**
 	 * Interrupteur (balisage de FormToggle de WordPress).
 	 *
-	 * @param string $key Clé.
+	 * @param string $key       Clé.
+	 * @param bool   $described La ligne a une description.
 	 * @return string
 	 */
-	private function toggle( $key ) {
+	private function toggle( $key, $described = true ) {
 		$id = 'g2rd-wpjm-geo-' . $key;
 		$on = (bool) $this->settings->get( $key );
 		return '<span class="components-form-toggle g2rd-toggle' . ( $on ? ' is-checked' : '' ) . '">'
-			. '<input class="components-form-toggle__input" type="checkbox" id="' . esc_attr( $id ) . '" name="' . esc_attr( $this->name( $key ) ) . '" value="1"' . checked( $on, true, false ) . ' aria-describedby="' . esc_attr( $id ) . '-desc" />'
+			. '<input class="components-form-toggle__input" type="checkbox" id="' . esc_attr( $id ) . '" name="' . esc_attr( $this->name( $key ) ) . '" value="1"' . checked( $on, true, false ) . ( $described ? ' aria-describedby="' . esc_attr( $id ) . '-desc"' : '' ) . ' />'
 			. '<span class="components-form-toggle__track"></span><span class="components-form-toggle__thumb"></span></span>';
 	}
 
@@ -4187,10 +4313,13 @@ class SettingsPage {
 		}
 
 		// La classe is-checked du conteneur pilote l'apparence de l'interrupteur de WordPress.
+		// Synchronisée dès le chargement : le navigateur peut restaurer l'état des cases (retour arrière) sans événement.
 		Array.prototype.forEach.call( form.querySelectorAll( '.components-form-toggle__input' ), function ( input ) {
-			input.addEventListener( 'change', function () {
+			var sync = function () {
 				input.parentNode.classList.toggle( 'is-checked', input.checked );
-			} );
+			};
+			sync();
+			input.addEventListener( 'change', sync );
 		} );
 
 		// display et non hidden : la console donne display:flex aux lignes.
@@ -4200,6 +4329,9 @@ class SettingsPage {
 			} );
 		}
 		Array.prototype.forEach.call( form.querySelectorAll( 'input[type="radio"][name$="[provider]"]' ), function ( radio ) {
+			if ( radio.checked ) {
+				showProvider( radio.value );
+			}
 			radio.addEventListener( 'change', function () {
 				if ( radio.checked ) {
 					showProvider( radio.value );
@@ -4207,15 +4339,23 @@ class SettingsPage {
 			} );
 		} );
 
-		// Barre d'enregistrement : visible sans JavaScript, sinon affichée à la première modification.
+		// Barre d'enregistrement : visible sans JavaScript, sinon tant qu'un champ diffère de la valeur enregistrée.
 		var bar = form.querySelector( '.g2rd-savebar' );
 		if ( bar ) {
-			bar.style.display = 'none';
-			var reveal = function () {
-				bar.style.display = '';
+			var dirty = function () {
+				return Array.prototype.some.call( form.querySelectorAll( 'input' ), function ( el ) {
+					if ( 'checkbox' === el.type || 'radio' === el.type ) {
+						return el.checked !== el.defaultChecked;
+					}
+					return 'hidden' !== el.type && el.value !== el.defaultValue;
+				} );
 			};
-			form.addEventListener( 'input', reveal );
-			form.addEventListener( 'change', reveal );
+			var refresh = function () {
+				bar.style.display = dirty() ? '' : 'none';
+			};
+			refresh();
+			form.addEventListener( 'input', refresh );
+			form.addEventListener( 'change', refresh );
 		}
 	}
 
@@ -4252,7 +4392,7 @@ par :
 for f in g2rd-wpjm-geo/includes/*.php; do php -l "$f" | grep -v "^No syntax"; done
 node --check g2rd-wpjm-geo/assets/js/admin-settings.js
 php g2rd-wpjm-geo/tests/run.php | tail -1
-git add g2rd-wpjm-geo/includes/Settings.php g2rd-wpjm-geo/includes/SettingsPage.php g2rd-wpjm-geo/includes/Logger.php g2rd-wpjm-geo/includes/Plugin.php g2rd-wpjm-geo/assets/js/admin-settings.js g2rd-wpjm-geo/tests/run.php
+git add g2rd-wpjm-geo/includes/Settings.php g2rd-wpjm-geo/includes/SettingsPage.php g2rd-wpjm-geo/includes/Logger.php g2rd-wpjm-geo/includes/Plugin.php g2rd-wpjm-geo/assets/js/admin-settings.js g2rd-wpjm-geo/tests/run.php g2rd-wpjm-geo/tests/bootstrap.php g2rd-wpjm-geo/tests/fixtures/fake-admin-console.php g2rd-wpjm-geo/tests/js/run.js
 git commit -m "feat: page d'administration à la charte de la console G2RD"
 ```
 
