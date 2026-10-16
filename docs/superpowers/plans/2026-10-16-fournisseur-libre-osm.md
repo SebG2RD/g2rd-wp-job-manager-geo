@@ -2275,18 +2275,17 @@ class AdminMenu {
 		if ( self::$attached || ! self::console_available() ) {
 			return;
 		}
-		$hook = add_submenu_page(
-			(string) $parent,
+		// La console est là : jamais de menu autonome, même sans la capacité (WordPress renvoie alors false).
+		self::$attached = true;
+		$hook           = add_submenu_page(
+			'' !== (string) $parent ? (string) $parent : \G2RD\AdminConsole::MENU_SLUG,
 			__( 'Console G2RD — Offres géolocalisées', 'g2rd-wpjm-geo' ),
 			__( 'Offres géolocalisées', 'g2rd-wpjm-geo' ),
 			Settings::CAPABILITY,
 			Settings::PAGE_SLUG,
 			$this->render
 		);
-		if ( is_string( $hook ) && '' !== $hook ) {
-			self::$hook_suffix = $hook;
-			self::$attached    = true;
-		}
+		self::$hook_suffix = is_string( $hook ) ? $hook : '';
 	}
 
 	/**
@@ -2410,8 +2409,14 @@ class AdminScreen {
 		if ( ! AdminMenu::is_plugin_screen( $hook_suffix ) ) {
 			return;
 		}
-		if ( ! AdminMenu::is_attached() ) {
-			wp_enqueue_style( self::STYLE_HANDLE, G2RD_WPJM_GEO_URL . 'assets/css/console.css', array( 'wp-components', 'dashicons' ), G2RD_WPJM_GEO_VERSION );
+		if ( AdminMenu::is_attached() ) {
+			// Le thème reconnaît ses pages au préfixe g2rd_page_ ; charger sa feuille soi-même n'en dépend pas (appel idempotent).
+			if ( is_callable( array( 'G2RD\AdminConsole', 'enqueueStyle' ) ) ) {
+				\G2RD\AdminConsole::enqueueStyle();
+			}
+		} else {
+			$file = G2RD_WPJM_GEO_DIR . 'assets/css/console.css';
+			wp_enqueue_style( self::STYLE_HANDLE, G2RD_WPJM_GEO_URL . 'assets/css/console.css', array( 'wp-components', 'dashicons' ), file_exists( $file ) ? (string) filemtime( $file ) : G2RD_WPJM_GEO_VERSION );
 			wp_add_inline_style( self::STYLE_HANDLE, self::font_face_css() );
 		}
 		wp_enqueue_script( self::SCRIPT_HANDLE, G2RD_WPJM_GEO_URL . 'assets/js/admin-settings.js', array(), G2RD_WPJM_GEO_VERSION, true );
@@ -2548,7 +2553,15 @@ if ( '' === $theme || ! is_readable( $src ) || ! is_readable( $style ) ) {
 preg_match( '/^\s*Version:\s*(\S+)/mi', (string) file_get_contents( $style ), $match );
 $version = isset( $match[1] ) ? $match[1] : 'inconnue';
 $null    = '\\' === DIRECTORY_SEPARATOR ? 'NUL' : '/dev/null';
-$commit  = trim( (string) shell_exec( 'git -C ' . escapeshellarg( $theme ) . ' rev-parse --short HEAD 2>' . $null ) );
+$rel     = 'blocks/g2rd-options-page/build/style-index.css';
+$git     = 'git -C ' . escapeshellarg( $theme ) . ' ';
+// Dernier commit de la feuille elle-même (pas HEAD) : l'en-tête ne change que si le CSS change.
+$commit = trim( (string) shell_exec( $git . 'log -1 --format=%h -- ' . escapeshellarg( $rel ) . ' 2>' . $null ) );
+if ( '' !== $commit && '' !== trim( (string) shell_exec( $git . 'status --porcelain -- ' . escapeshellarg( $rel ) . ' 2>' . $null ) ) ) {
+	$commit .= ' + modifications locales';
+}
+// La carte des sources (.map) n'est pas copiée : sa référence provoquerait un 404.
+$css = preg_replace( '~\s*/\*#\s*sourceMappingURL=[^*]*\*/\s*$~', "\n", (string) file_get_contents( $src ) );
 
 $header = "/*\n"
 	. ' * Copie de la feuille de la console G2RD — thème G2RD ' . $version . ( '' !== $commit ? ', commit ' . $commit : '' ) . ".\n"
@@ -2558,7 +2571,10 @@ $header = "/*\n"
 	. " */\n\n";
 
 $target = dirname( __DIR__ ) . '/g2rd-wpjm-geo/assets/css/console.css';
-file_put_contents( $target, $header . file_get_contents( $src ) );
+if ( false === file_put_contents( $target, $header . $css ) ) {
+	fwrite( STDERR, "Écriture impossible : $target\n" );
+	exit( 1 );
+}
 echo 'console.css régénérée (thème ' . $version . ( '' !== $commit ? ' ' . $commit : '' ) . ', ' . filesize( $target ) . " octets)\n";
 ```
 
