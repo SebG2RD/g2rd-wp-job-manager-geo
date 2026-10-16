@@ -153,7 +153,9 @@ class Logger {
 	 * @return string
 	 */
 	public static function redact_url( $url ) {
-		$url   = substr( sanitize_text_field( $url ), 0, 2000 );
+		// Pas de sanitize_text_field() : il supprimerait les octets encodés (%C3%A9, %20) et
+		// l'URL journalisée ne correspondrait plus à la valeur réellement remplacée.
+		$url   = substr( trim( wp_strip_all_tags( (string) $url ) ), 0, 2000 );
 		$parts = wp_parse_url( $url );
 		if ( empty( $parts['host'] ) ) {
 			return $url;

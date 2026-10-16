@@ -99,7 +99,9 @@ class GoogleAssets {
 		$locale = function_exists( 'determine_locale' ) ? determine_locale() : get_locale();
 		return array(
 			'apiKey'   => (string) $this->settings->get( 'browser_api_key' ),
-			'language' => strtolower( substr( $locale, 0, 2 ) ),
+			// Balise BCP-47 complète (fr-FR, pt-BR, zh-TW) : Google distingue les variantes régionales
+			// et retombe seul sur la langue de base s'il ne connaît pas la variante.
+			'language' => str_replace( '_', '-', preg_replace( '/[^A-Za-z_]/', '', (string) $locale ) ),
 		);
 	}
 }

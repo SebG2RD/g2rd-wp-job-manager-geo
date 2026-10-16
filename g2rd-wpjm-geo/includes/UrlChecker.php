@@ -34,7 +34,8 @@ class UrlChecker {
 	public function check( $url ) {
 		$url = is_string( $url ) ? trim( $url ) : '';
 
-		if ( preg_match( '#^([a-z][a-z0-9+.\-]*):#i', $url, $m ) ) {
+		// Un « : » suivi d'un numéro de port (« careers.acme.com:8443/… ») n'est pas un schéma.
+		if ( preg_match( '#^([a-z][a-z0-9+.\-]*):(?!\d+(?:[/?\#]|$))#i', $url, $m ) ) {
 			if ( ! in_array( strtolower( $m[1] ), array( 'http', 'https' ), true ) ) {
 				return $this->result( true, 'bad_scheme' );
 			}
@@ -43,6 +44,7 @@ class UrlChecker {
 			$url = 'http://' . $url;
 		}
 
+		$url  = $this->to_ascii_host( $url );
 		$host = wp_parse_url( $url, PHP_URL_HOST );
 		if ( empty( $host ) || false === filter_var( $url, FILTER_VALIDATE_URL ) ) {
 			return $this->result( true, 'invalid_syntax' );
@@ -67,11 +69,14 @@ class UrlChecker {
 	 * @return array{problem:bool,reason:string}
 	 */
 	private function check_remote( $url, $host ) {
-		$is_ip = (bool) filter_var( trim( $host, '[]' ), FILTER_VALIDATE_IP );
-		if ( ! $is_ip && gethostbyname( $host ) === $host ) {
-			return $this->result( true, 'dns_error' );
-		}
+		// wp_http_validate_url() résout l'hôte (IPv4) et rejette les destinations interdites.
+		// Il ne distingue pas « DNS inexistant » de « cible interdite » : on lève l'ambiguïté ici.
 		if ( ! wp_http_validate_url( $url ) ) {
+			$is_ip = (bool) filter_var( trim( $host, '[]' ), FILTER_VALIDATE_IP );
+			if ( ! $is_ip && ! $this->host_has_record( $host, 'A' ) ) {
+				// Hôte joignable uniquement en IPv6 : WordPress ne sait pas le valider, on ne tranche pas.
+				return $this->host_has_record( $host, 'AAAA' ) ? $this->result( false, 'inconclusive' ) : $this->result( true, 'dns_error' );
+			}
 			return $this->result( true, 'unsafe_target' );
 		}
 
@@ -115,11 +120,12 @@ class UrlChecker {
 			if ( false !== strpos( $message, 'redirect' ) ) {
 				return $this->result( true, 'redirect_error' );
 			}
-			if ( 'http_request_not_executed' === $response->get_error_code() || false !== strpos( $message, 'valid url' ) ) {
+			if ( false !== strpos( $message, 'valid url' ) ) {
 				// wp_safe_remote_* a refusé la cible (souvent une redirection vers une destination interdite).
 				return $this->result( true, 'unsafe_target' );
 			}
-			// Timeout, connexion refusée… : non concluant, on ne touche à rien.
+			// Timeout, connexion refusée, HTTP sortant bloqué par l'hébergeur (WP_HTTP_BLOCK_EXTERNAL)… :
+			// non concluant, on ne touche à rien.
 			return $this->result( false, 'inconclusive' );
 		}
 
@@ -137,6 +143,40 @@ class UrlChecker {
 		}
 		// 401, 403, 429, 5xx… : la page peut exister (protection anti-robot, surcharge).
 		return $this->result( false, 'http_' . $code );
+	}
+
+	/**
+	 * Convertit un nom d'hôte internationalisé (« münchen-jobs.de ») en punycode,
+	 * seule forme acceptée par FILTER_VALIDATE_URL et par la résolution DNS.
+	 *
+	 * @param string $url URL.
+	 * @return string
+	 */
+	private function to_ascii_host( $url ) {
+		$host = wp_parse_url( $url, PHP_URL_HOST );
+		if ( empty( $host ) || ! function_exists( 'idn_to_ascii' ) || ! preg_match( '/[^[:ascii:]]/', $host ) ) {
+			return $url;
+		}
+		$ascii = defined( 'INTL_IDNA_VARIANT_UTS46' ) ? idn_to_ascii( $host, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46 ) : idn_to_ascii( $host );
+		if ( ! $ascii ) {
+			return $url;
+		}
+		$pos = strpos( $url, $host );
+		return false === $pos ? $url : substr_replace( $url, $ascii, $pos, strlen( $host ) );
+	}
+
+	/**
+	 * L'hôte possède-t-il un enregistrement DNS du type demandé ?
+	 *
+	 * @param string $host Nom d'hôte.
+	 * @param string $type A ou AAAA.
+	 * @return bool
+	 */
+	private function host_has_record( $host, $type ) {
+		if ( 'A' === $type ) {
+			return gethostbyname( $host ) !== $host;
+		}
+		return function_exists( 'checkdnsrr' ) && checkdnsrr( $host, $type );
 	}
 
 	/**

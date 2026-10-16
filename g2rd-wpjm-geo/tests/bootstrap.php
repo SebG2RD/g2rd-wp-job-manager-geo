@@ -34,6 +34,7 @@ namespace {
 		public static $http       = array(); // url => array( 'HEAD' => response, 'GET' => response ).
 		public static $http_calls = array();
 		public static $dns        = array(); // host => ip|false.
+		public static $dns6       = array(); // host => bool (AAAA).
 		public static $scheduled  = array();
 		public static $log_rows   = array();
 
@@ -47,6 +48,7 @@ namespace {
 			self::$http       = array();
 			self::$http_calls = array();
 			self::$dns        = array();
+			self::$dns6       = array();
 			self::$scheduled  = array();
 			self::$log_rows   = array();
 		}
@@ -178,6 +180,10 @@ namespace {
 	function sanitize_text_field( $value ) {
 		return trim( preg_replace( '/[\r\n\t ]+/', ' ', strip_tags( (string) $value ) ) );
 	}
+	function wp_strip_all_tags( $text ) {
+		return trim( preg_replace( '/[
+	 ]+/', ' ', strip_tags( preg_replace( '@<(script|style)[^>]*?>.*?</\1>@si', '', (string) $text ) ) ) );
+	}
 	function sanitize_key( $key ) {
 		return preg_replace( '/[^a-z0-9_\-]/', '', strtolower( (string) $key ) );
 	}
@@ -232,6 +238,10 @@ namespace {
 		if ( preg_match( '/^(127\.|10\.|192\.168\.|169\.254\.)/', (string) $host ) || 'localhost' === $host ) {
 			return false;
 		}
+		// Comme WordPress : un hôte non résoluble en IPv4 est refusé.
+		if ( ! filter_var( $host, FILTER_VALIDATE_IP ) && \G2RD\WPJMGeo\gethostbyname( $host ) === $host ) {
+			return false;
+		}
 		return $url;
 	}
 	function g2rd_test_http( $method, $url ) {
@@ -259,6 +269,9 @@ namespace G2RD\WPJMGeo {
 			return false === \G2RD_Test_State::$dns[ $host ] ? $host : \G2RD_Test_State::$dns[ $host ];
 		}
 		return '93.184.216.34';
+	}
+	function checkdnsrr( $host, $type = 'MX' ) {
+		return 'AAAA' === $type && ! empty( \G2RD_Test_State::$dns6[ $host ] );
 	}
 }
 

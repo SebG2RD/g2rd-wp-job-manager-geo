@@ -374,7 +374,11 @@ class Settings {
 		?>
 		<div class="wrap g2rd-wpjm-geo-admin">
 			<h1><?php esc_html_e( 'G2RD WP Job Manager Geo', 'g2rd-wpjm-geo' ); ?></h1>
-			<?php settings_errors( self::OPTION ); ?>
+			<?php
+			// Sans argument : affiche aussi la confirmation native « Réglages enregistrés »,
+			// que WordPress enregistre sous le réglage « general » et non sous le nôtre.
+			settings_errors();
+			?>
 			<form action="options.php" method="post">
 				<?php
 				settings_fields( self::GROUP );

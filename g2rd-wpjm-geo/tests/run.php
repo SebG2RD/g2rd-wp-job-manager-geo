@@ -222,6 +222,45 @@ $before = count( G2RD_Test_State::$http_calls );
 $checker->check( 'https://gone.test/j' );
 check( 'résultat mis en cache (pas de nouvelle requête)', count( G2RD_Test_State::$http_calls ) === $before );
 
+echo PHP_EOL . '14. Correctifs de la revue de code' . PHP_EOL;
+boot();
+$checker = new UrlChecker();
+G2RD_Test_State::$http['http://careers.acme.com:8443/apply/17']['HEAD'] = array( 'response' => array( 'code' => 200 ) );
+$r = $checker->check( 'careers.acme.com:8443/apply/17' );
+check( 'hôte:port sans schéma n’est pas un « schéma non autorisé » (vérifié par HTTP, OK)', ! $r['problem'] && 1 === count( G2RD_Test_State::$http_calls ) );
+check( 'mailto: reste un schéma non autorisé', $checker->check( 'mailto:rh@x.fr' )['reason'] === 'bad_scheme' );
+G2RD_Test_State::$http['https://bloque.test/j']['HEAD'] = new WP_Error( 'http_request_not_executed', 'User has blocked requests through HTTP.' );
+$r = $checker->check( 'https://bloque.test/j' );
+check( 'HTTP sortant bloqué par l’hébergeur => non concluant, URL conservée', ! $r['problem'] );
+G2RD_Test_State::$http['https://redir.test/j']['HEAD'] = new WP_Error( 'http_request_failed', 'A valid URL was not provided.' );
+$r = $checker->check( 'https://redir.test/j' );
+check( 'redirection vers une destination interdite => problème (unsafe_target)', $r['problem'] && 'unsafe_target' === $r['reason'] );
+G2RD_Test_State::$dns['ipv6only.test'] = false;
+G2RD_Test_State::$dns6['ipv6only.test'] = true;
+$r = $checker->check( 'https://ipv6only.test/job' );
+check( 'hôte IPv6 uniquement => non concluant (pas de remplacement), sans requête HTTP', ! $r['problem'] && 'inconclusive' === $r['reason'] );
+G2RD_Test_State::$dns['nulle-part.test'] = false;
+check( 'hôte sans A ni AAAA => erreur DNS', 'dns_error' === $checker->check( 'https://nulle-part.test/job' )['reason'] );
+check( 'journal : l’URL encodée est conservée telle quelle', 'https://jobs.example.com/offre/ing%C3%A9nieur%20r%C3%A9seau?id=42' === Logger::redact_url( 'https://jobs.example.com/offre/ing%C3%A9nieur%20r%C3%A9seau?id=42' ) );
+check( 'journal : les balises sont toujours retirées', false === strpos( Logger::redact_url( 'https://x.test/<script>a</script>/p' ), '<' ) );
+
+// File différée : les IDs empilés pendant un lot ne sont pas perdus, et seuls les IDs traités sont retirés.
+list( , , $queue ) = boot( array( 'gofetch_scope' => 'invalid' ) );
+gofetch_import( 140, 'ftp://site.example/a' );
+gofetch_import( 141, 'ftp://site.example/b' );
+gofetch_import( 142, 'ftp://site.example/c' );
+$queue->flush();
+check( 'file initiale [140,141,142]', array( 140, 141, 142 ) === get_option( UrlCheckQueue::OPTION ) );
+add_action( 'g2rd_wpjm_geo_application_replaced', function ( $job_id ) {
+	// Simule un import concurrent qui écrit dans l’option pendant le traitement du lot.
+	if ( 140 === $job_id ) {
+		update_option( UrlCheckQueue::OPTION, array_merge( get_option( UrlCheckQueue::OPTION ), array( 777 ) ), false );
+	}
+} );
+do_action( UrlCheckQueue::CRON_HOOK );
+check( 'lot de 2 : #140 et #141 traités, #142 et l’ID concurrent #777 toujours en file', DEF === application( 140 ) && DEF === application( 141 ) && 'ftp://site.example/c' === application( 142 ) && array( 142, 777 ) === get_option( UrlCheckQueue::OPTION ) );
+check( 'un nouveau lot est planifié', false !== wp_next_scheduled( UrlCheckQueue::CRON_HOOK ) );
+
 $results = $GLOBALS['g2rd_results'];
 echo PHP_EOL . sprintf( 'Résultat : %d réussis, %d échoués', $results['pass'], $results['fail'] ) . PHP_EOL;
 exit( $results['fail'] ? 1 : 0 );
