@@ -2719,6 +2719,8 @@ class Settings {
 	const DEFAULT_OSM_STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty';
 	const DEFAULT_PHOTON_URL    = 'https://photon.komoot.io/api/';
 
+	const MAX_URL_LENGTH = 2048;
+
 	/**
 	 * Cache mémoire des réglages fusionnés avec les valeurs par défaut.
 	 *
@@ -2833,15 +2835,32 @@ class Settings {
 	}
 
 	/**
-	 * URL https avec hôte, ou chaîne vide.
+	 * URL https avec hôte et sans identifiants, ou chaîne vide.
+	 *
+	 * Le schéma est comparé sans tenir compte de la casse. Une URL contenant un
+	 * utilisateur ou un mot de passe est refusée : elle serait transmise aux
+	 * navigateurs des visiteurs.
 	 *
 	 * @param mixed $raw Valeur saisie.
 	 * @return string
 	 */
 	public static function https_url( $raw ) {
-		$url  = esc_url_raw( trim( (string) $raw ), array( 'https' ) );
-		$host = '' === $url ? '' : (string) wp_parse_url( $url, PHP_URL_HOST );
-		return ( 0 === strpos( $url, 'https://' ) && '' !== $host ) ? $url : '';
+		if ( ! is_string( $raw ) ) {
+			return '';
+		}
+		$raw = trim( $raw );
+		if ( '' === $raw || strlen( $raw ) > self::MAX_URL_LENGTH ) {
+			return '';
+		}
+		$url   = esc_url_raw( $raw, array( 'https' ) );
+		$parts = '' === $url ? false : wp_parse_url( $url );
+		if ( ! is_array( $parts ) || ! isset( $parts['scheme'], $parts['host'] ) || 'https' !== strtolower( $parts['scheme'] ) || '' === $parts['host'] ) {
+			return '';
+		}
+		if ( isset( $parts['user'] ) || isset( $parts['pass'] ) ) {
+			return '';
+		}
+		return $url;
 	}
 
 	/**
@@ -2923,15 +2942,23 @@ class Settings {
 		$clean['provider'] = ( isset( $input['provider'] ) && self::PROVIDER_OSM === $input['provider'] ) ? self::PROVIDER_OSM : self::PROVIDER_GOOGLE;
 
 		$urls = array(
-			'osm_style_url' => __( 'L’URL du style de carte doit commencer par https:// : elle n’a pas été enregistrée.', 'g2rd-wpjm-geo' ),
-			'photon_url'    => __( 'L’URL du serveur Photon doit commencer par https:// : elle n’a pas été enregistrée.', 'g2rd-wpjm-geo' ),
+			'osm_style_url' => __( 'L’URL du style de carte doit être une adresse https:// valide, sans identifiant : elle n’a pas été enregistrée.', 'g2rd-wpjm-geo' ),
+			'photon_url'    => __( 'L’URL du serveur Photon doit être une adresse https:// valide, sans identifiant : elle n’a pas été enregistrée.', 'g2rd-wpjm-geo' ),
 		);
 		foreach ( $urls as $key => $message ) {
-			$raw           = isset( $input[ $key ] ) ? trim( (string) $input[ $key ] ) : '';
-			$url           = self::https_url( $raw );
-			$clean[ $key ] = '' !== $url ? $url : (string) $this->get( $key );
-			if ( '' === $url && '' !== $raw ) {
-				$this->notify( 'invalid_' . $key, $message );
+			$given = isset( $input[ $key ] );
+			$raw   = ( $given && is_string( $input[ $key ] ) ) ? trim( $input[ $key ] ) : null;
+			$url   = self::https_url( $raw );
+			if ( '' !== $url ) {
+				$clean[ $key ] = $url;
+			} elseif ( '' === $raw ) {
+				// Champ vidé : retour à l’instance publique par défaut.
+				$clean[ $key ] = $defaults[ $key ];
+			} else {
+				$clean[ $key ] = (string) $this->get( $key );
+				if ( $given ) {
+					$this->notify( 'invalid_' . $key, $message );
+				}
 			}
 		}
 
@@ -3205,14 +3232,14 @@ class SettingsPage {
 		$this->row(
 			'g2rd-wpjm-geo-osm_style_url',
 			__( 'Style de la carte', 'g2rd-wpjm-geo' ),
-			__( 'URL https d’un style MapLibre. Styles OpenFreeMap : liberty, bright ou positron (https://tiles.openfreemap.org/styles/…).', 'g2rd-wpjm-geo' ),
+			__( 'URL https d’un style MapLibre. Styles OpenFreeMap : liberty, bright ou positron (https://tiles.openfreemap.org/styles/…). Videz le champ pour revenir au style par défaut.', 'g2rd-wpjm-geo' ),
 			$this->input( 'osm_style_url', 'url', ' spellcheck="false"' ),
 			Settings::PROVIDER_OSM
 		);
 		$this->row(
 			'g2rd-wpjm-geo-photon_url',
 			__( 'Serveur Photon', 'g2rd-wpjm-geo' ),
-			__( 'URL https de l’API de recherche Photon, utilisée pour l’autocomplétion et le géocodage des offres. Remplaçable par un serveur auto-hébergé.', 'g2rd-wpjm-geo' ),
+			__( 'URL https de l’API de recherche Photon, utilisée pour l’autocomplétion et le géocodage des offres. Remplaçable par un serveur auto-hébergé ; videz le champ pour revenir à l’instance publique.', 'g2rd-wpjm-geo' ),
 			$this->input( 'photon_url', 'url', ' spellcheck="false"' ),
 			Settings::PROVIDER_OSM
 		);
