@@ -102,15 +102,21 @@
 				body.append( 'cursor', String( cursor ) );
 				return window.fetch( root.getAttribute( 'data-ajax-url' ), { method: 'POST', credentials: 'same-origin', body: body } )
 					.then( function ( response ) {
-						if ( ! response.ok ) {
-							throw new Error( 'HTTP ' + response.status );
-						}
-						return response.json();
+						// Le corps JSON porte le message du serveur, même en erreur HTTP (droits insuffisants, tâche inconnue).
+						return response.json().then( function ( payload ) {
+							return payload;
+						}, function () {
+							return null;
+						} ).then( function ( payload ) {
+							if ( ! response.ok || ! payload || ! payload.success ) {
+								var error = new Error( 'HTTP ' + response.status );
+								error.serverMessage = ( payload && payload.data && 'string' === typeof payload.data.message ) ? payload.data.message : '';
+								throw error;
+							}
+							return payload;
+						} );
 					} )
 					.then( function ( payload ) {
-						if ( ! payload || ! payload.success ) {
-							throw new Error( 'payload' );
-						}
 						var data = payload.data;
 						renderSummary( data.summary || {} );
 						appendRows( data.rows || [] );
@@ -127,8 +133,8 @@
 					} );
 			}
 
-			step( 0 ).catch( function () {
-				statusEl.textContent = i18n.error || '';
+			step( 0 ).catch( function ( error ) {
+				statusEl.textContent = ( error && error.serverMessage ) || i18n.error || '';
 				setBusy( false );
 			} );
 		}

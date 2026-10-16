@@ -804,9 +804,11 @@ G2RD_Test_State::$http_responder = function ( $method, $url ) {
 	}
 	return photon_reply( array() );
 };
-$run = $tool->handle( 'run', 0, $rows );
-$st  = array_column( $run['rows'], 'status', 'id' );
+$before = $sleeps;
+$run    = $tool->handle( 'run', 0, $rows );
+$st     = array_column( $run['rows'], 'status', 'id' );
 check( 'exécution : Rouen et Brest écrits, IDF non trouvée', 'done' === $st[300] && 'done' === $st[303] && 'not_found' === $st[302] && true === $run['done'] );
+check( 'exécution : pause seulement après un vrai appel (Brest), pas sur le cache (Rouen, IDF)', 1 === $sleeps - $before );
 check( 'exécution : coordonnées libres et source osm', '49.4432' === G2RD_Test_State::$meta[300]['geolocation_lat'] && 'osm' === G2RD_Test_State::$meta[300][ $src ] && 'osm' === G2RD_Test_State::$meta[303][ $src ] );
 check( 'exécution : offre non trouvée laissée intacte', '1.5' === G2RD_Test_State::$meta[302]['geolocation_lat'] );
 check( 'exécution : curseur sur la dernière offre traitée', 303 === $run['cursor'] );
@@ -830,6 +832,21 @@ $run = $tool->handle( 'run', 0, $grows );
 $st  = array_column( $run['rows'], 'status', 'id' );
 check( 'Google, exécution : Paris géocodée par WPJM, source google', 'done' === $st[310] && 'google' === G2RD_Test_State::$meta[310][ $src ] && '48.85' === G2RD_Test_State::$meta[310]['geolocation_lat'] );
 check( 'Google, exécution : échec de géocodage listé, offre intacte', 'not_found' === $st[311] && 'osm' === G2RD_Test_State::$meta[311][ $src ] );
+foreach ( array( 312 => 'Lyon', 313 => ',' ) as $id => $loc ) {
+	G2RD_Test_State::$post_types[ $id ]            = 'job_listing';
+	G2RD_Test_State::$meta[ $id ]['_job_location'] = $loc;
+	G2RD_Test_State::$meta[ $id ]['geolocated']    = 1;
+	G2RD_Test_State::$meta[ $id ][ $src ]          = 'osm';
+}
+$lyon = array( array( 'id' => '312', 'location' => 'Lyon', 'source' => 'osm', 'geolocated' => '1' ) );
+G2RD_Test_State::$wpjm_geocode['Lyon'] = new WP_Error( 'error', 'Geocoding error' );
+$run = $tool->handle( 'run', 0, $lyon );
+check( 'Google, clé refusée ou panne : erreur et arrêt, offre intacte', 'error' === $run['rows'][0]['status'] && true === $run['stopped'] && 'osm' === G2RD_Test_State::$meta[312][ $src ] );
+G2RD_Test_State::$wpjm_geocode['Lyon'] = false;
+$run = $tool->handle( 'run', 0, $lyon );
+check( 'Google, quota mémorisé ou géocodage coupé : erreur et arrêt', 'error' === $run['rows'][0]['status'] && true === $run['stopped'] );
+$run = $tool->handle( 'run', 0, array( array( 'id' => '313', 'location' => ',', 'source' => 'osm', 'geolocated' => '1' ) ) );
+check( 'localisation sans rien de géocodable : non trouvée, sans arrêt', 'not_found' === $run['rows'][0]['status'] && false === $run['stopped'] );
 
 $results = $GLOBALS['g2rd_results'];
 echo PHP_EOL . sprintf( 'Résultat : %d réussis, %d échoués', $results['pass'], $results['fail'] ) . PHP_EOL;
