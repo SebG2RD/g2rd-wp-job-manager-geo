@@ -324,6 +324,14 @@ namespace {
 		G2RD_Test_State::$scheduled[ $hook ] = $time;
 		return true;
 	}
+	function wp_clear_scheduled_hook( $hook ) {
+		$had = isset( G2RD_Test_State::$scheduled[ $hook ] );
+		unset( G2RD_Test_State::$scheduled[ $hook ] );
+		return $had ? 1 : 0;
+	}
+	function wp_cache_delete( $key, $group = '' ) {
+		return true;
+	}
 
 	// --- HTTP simulé.
 	function is_wp_error( $thing ) {

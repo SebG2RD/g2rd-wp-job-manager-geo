@@ -257,9 +257,50 @@ add_action( 'g2rd_wpjm_geo_application_replaced', function ( $job_id ) {
 		update_option( UrlCheckQueue::OPTION, array_merge( get_option( UrlCheckQueue::OPTION ), array( 777 ) ), false );
 	}
 } );
+unset( G2RD_Test_State::$scheduled[ UrlCheckQueue::CRON_HOOK ] ); // WP-Cron retire l’événement avant de l’exécuter.
 do_action( UrlCheckQueue::CRON_HOOK );
-check( 'lot de 2 : #140 et #141 traités, #142 et l’ID concurrent #777 toujours en file', DEF === application( 140 ) && DEF === application( 141 ) && 'ftp://site.example/c' === application( 142 ) && array( 142, 777 ) === get_option( UrlCheckQueue::OPTION ) );
+check( 'lot de 2: #140 et #141 traités, #142 et l’ID concurrent #777 toujours en file', DEF === application( 140 ) && DEF === application( 141 ) && 'ftp://site.example/c' === application( 142 ) && array( 142, 777 ) === get_option( UrlCheckQueue::OPTION ) );
 check( 'un nouveau lot est planifié', false !== wp_next_scheduled( UrlCheckQueue::CRON_HOOK ) );
+
+// File générique : nouvel essai, délai imposé, verrou libéré après une exception.
+G2RD_Test_State::reset();
+$probe = new class() extends \G2RD\WPJMGeo\JobQueue {
+	const OPTION     = 'g2rd_test_queue';
+	const CRON_HOOK  = 'g2rd_test_queue_run';
+	const LOCK       = 'g2rd_test_queue_lock';
+	const BATCH_SIZE = 3;
+	public $fail  = array();
+	public $throw = 0;
+	public $seen  = array();
+	protected function process_item( $job_id ) {
+		$this->seen[] = $job_id;
+		if ( $job_id === $this->throw ) {
+			throw new \RuntimeException( 'panne' );
+		}
+		return ! in_array( $job_id, $this->fail, true );
+	}
+};
+$probe->push( 1 );
+$probe->push( 2 );
+$probe->push( 3 );
+$probe->flush();
+G2RD_Test_State::$scheduled['g2rd_test_queue_run'] = time() + MINUTE_IN_SECONDS; // planifié par un import concurrent
+$probe->fail = array( 2 );
+$probe->process();
+check( 'file générique : lot arrêté au premier échec, offre remise en fin de file', array( 1, 2 ) === $probe->seen && array( 3, 2 ) === get_option( 'g2rd_test_queue' ) );
+check( 'file générique : nouvel essai après RETRY_DELAY, même si un passage était prévu plus tôt', wp_next_scheduled( 'g2rd_test_queue_run' ) >= time() + \G2RD\WPJMGeo\JobQueue::RETRY_DELAY - 10 );
+check( 'file générique : verrou libéré', false === get_transient( 'g2rd_test_queue_lock' ) );
+$probe->fail  = array();
+$probe->seen  = array();
+$probe->throw = 3;
+G2RD_Test_State::$scheduled = array();
+$thrown = false;
+try {
+	$probe->process();
+} catch ( \RuntimeException $e ) {
+	$thrown = true;
+}
+check( 'file générique : exception propagée, verrou libéré, file relancée', $thrown && false === get_transient( 'g2rd_test_queue_lock' ) && array( 2 ) === get_option( 'g2rd_test_queue' ) && false !== wp_next_scheduled( 'g2rd_test_queue_run' ) );
 
 echo PHP_EOL . '15. Réglages du fournisseur' . PHP_EOL;
 list( $s ) = boot();
