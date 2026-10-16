@@ -80,7 +80,7 @@ class SettingsPage {
 		settings_errors();
 		$this->toc();
 
-		echo '<form action="options.php" method="post" class="g2rd-wpjm-geo-settings">';
+		echo '<form action="options.php" method="post" class="g2rd-wpjm-geo-settings g2rd-tab-content">'; // g2rd-tab-content : espacement des cartes, comme dans le thème.
 		settings_fields( Settings::GROUP );
 		$this->section_cartography( $is_osm, $stats );
 		$this->section_autocomplete();
@@ -139,7 +139,7 @@ class SettingsPage {
 			'journal'        => __( 'Journal', 'g2rd-wpjm-geo' ),
 			'outils'         => __( 'Outils', 'g2rd-wpjm-geo' ),
 		);
-		echo '<nav class="g2rd-row" aria-label="' . esc_attr__( 'Sommaire', 'g2rd-wpjm-geo' ) . '">';
+		echo '<nav class="g2rd-row g2rd-row--wrap" aria-label="' . esc_attr__( 'Sommaire', 'g2rd-wpjm-geo' ) . '">';
 		foreach ( $items as $id => $label ) {
 			echo '<a class="g2rd-chip g2rd-chip--muted" href="#g2rd-geo-' . esc_attr( $id ) . '">' . esc_html( $label ) . '</a>';
 		}
@@ -178,7 +178,7 @@ class SettingsPage {
 				__( 'Clé utilisée uniquement par le navigateur (autocomplétion et carte). Restreignez-la au référent %s et aux API « Maps JavaScript API » et « Places API (New) ». La clé serveur de WP Job Manager n’est jamais envoyée au navigateur.', 'g2rd-wpjm-geo' ),
 				wp_parse_url( home_url(), PHP_URL_HOST ) . '/*'
 			),
-			$this->input( 'browser_api_key', 'password', ' autocomplete="off" spellcheck="false"' ),
+			$this->input( 'browser_api_key', 'password', ' autocomplete="new-password" spellcheck="false"' ),
 			Settings::PROVIDER_GOOGLE
 		);
 		$this->row(
@@ -192,14 +192,14 @@ class SettingsPage {
 			'g2rd-wpjm-geo-osm_style_url',
 			__( 'Style de la carte', 'g2rd-wpjm-geo' ),
 			__( 'URL https d’un style MapLibre. Styles OpenFreeMap : liberty, bright ou positron (https://tiles.openfreemap.org/styles/…). Videz le champ pour revenir au style par défaut.', 'g2rd-wpjm-geo' ),
-			$this->input( 'osm_style_url', 'url', ' spellcheck="false"' ),
+			$this->input( 'osm_style_url', 'text', ' inputmode="url" spellcheck="false"' ), // text : un champ url invalide et masqué bloquerait l'envoi sans message.
 			Settings::PROVIDER_OSM
 		);
 		$this->row(
 			'g2rd-wpjm-geo-photon_url',
 			__( 'Serveur Photon', 'g2rd-wpjm-geo' ),
 			__( 'URL https de l’API de recherche Photon, utilisée pour l’autocomplétion et le géocodage des offres. Remplaçable par un serveur auto-hébergé ; videz le champ pour revenir à l’instance publique.', 'g2rd-wpjm-geo' ),
-			$this->input( 'photon_url', 'url', ' spellcheck="false"' ),
+			$this->input( 'photon_url', 'text', ' inputmode="url" spellcheck="false"' ),
 			Settings::PROVIDER_OSM
 		);
 		echo '</div>';
@@ -253,7 +253,7 @@ class SettingsPage {
 				__( 'Carte des offres d’emploi', 'g2rd-wpjm-geo' )
 			)
 		);
-		$this->row( 'g2rd-wpjm-geo-map_enabled', __( 'Activer la carte', 'g2rd-wpjm-geo' ), '', $this->toggle( 'map_enabled' ) );
+		$this->row( 'g2rd-wpjm-geo-map_enabled', __( 'Activer la carte', 'g2rd-wpjm-geo' ), '', $this->toggle( 'map_enabled', false ) );
 		$this->row( 'g2rd-wpjm-geo-map_height', __( 'Hauteur de la carte (px)', 'g2rd-wpjm-geo' ), __( 'De 200 à 1200 px. Sur petit écran, la carte est limitée à 70 % de la hauteur de la fenêtre ; la largeur est toujours fluide.', 'g2rd-wpjm-geo' ), $this->input( 'map_height', 'number', ' min="200" max="1200" step="10"' ) );
 		$this->row( 'g2rd-wpjm-geo-clustering_enabled', __( 'Regrouper les offres proches', 'g2rd-wpjm-geo' ), __( 'Les offres aux coordonnées strictement identiques sont toujours réunies dans une même fenêtre.', 'g2rd-wpjm-geo' ), $this->toggle( 'clustering_enabled' ) );
 		echo '</div></section>';
@@ -304,7 +304,7 @@ class SettingsPage {
 	 */
 	private function section_log() {
 		$this->open_section( 'journal', __( 'Journal', 'g2rd-wpjm-geo' ), __( 'Trace de chaque remplacement : offre, date, ancienne et nouvelle valeur, raison, source.', 'g2rd-wpjm-geo' ) );
-		$this->row( 'g2rd-wpjm-geo-log_enabled', __( 'Activer le journal', 'g2rd-wpjm-geo' ), '', $this->toggle( 'log_enabled' ) );
+		$this->row( 'g2rd-wpjm-geo-log_enabled', __( 'Activer le journal', 'g2rd-wpjm-geo' ), '', $this->toggle( 'log_enabled', false ) );
 		$this->row(
 			'g2rd-wpjm-geo-log_retention_days',
 			__( 'Durée de conservation (jours)', 'g2rd-wpjm-geo' ),
@@ -409,14 +409,15 @@ class SettingsPage {
 	/**
 	 * Interrupteur (balisage de FormToggle de WordPress).
 	 *
-	 * @param string $key Clé.
+	 * @param string $key       Clé.
+	 * @param bool   $described La ligne a une description.
 	 * @return string
 	 */
-	private function toggle( $key ) {
+	private function toggle( $key, $described = true ) {
 		$id = 'g2rd-wpjm-geo-' . $key;
 		$on = (bool) $this->settings->get( $key );
 		return '<span class="components-form-toggle g2rd-toggle' . ( $on ? ' is-checked' : '' ) . '">'
-			. '<input class="components-form-toggle__input" type="checkbox" id="' . esc_attr( $id ) . '" name="' . esc_attr( $this->name( $key ) ) . '" value="1"' . checked( $on, true, false ) . ' aria-describedby="' . esc_attr( $id ) . '-desc" />'
+			. '<input class="components-form-toggle__input" type="checkbox" id="' . esc_attr( $id ) . '" name="' . esc_attr( $this->name( $key ) ) . '" value="1"' . checked( $on, true, false ) . ( $described ? ' aria-describedby="' . esc_attr( $id ) . '-desc"' : '' ) . ' />'
 			. '<span class="components-form-toggle__track"></span><span class="components-form-toggle__thumb"></span></span>';
 	}
 

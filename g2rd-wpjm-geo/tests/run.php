@@ -874,6 +874,29 @@ AdminScreen::open( array( 'title' => 'Titre délégué' ) );
 check( 'rattaché : gabarit délégué à la console du thème', 'Titre délégué' === end( \G2RD\AdminConsole::$opened )['title'] );
 AdminMenu::reset();
 
+echo PHP_EOL . '22. Rendu de la page de réglages' . PHP_EOL;
+list( $s ) = boot( array( 'provider' => 'google', 'browser_api_key' => 'AIza"<k>' ) );
+AdminMenu::reset();
+ob_start();
+( new \G2RD\WPJMGeo\SettingsPage( $s ) )->render();
+$html    = ob_get_clean();
+$missing = array();
+foreach ( array_keys( Settings::defaults() ) as $key ) {
+	if ( false === strpos( $html, 'name="' . Settings::OPTION . '[' . $key . ']"' ) ) {
+		$missing[] = $key;
+	}
+}
+check( 'chaque réglage a son champ (une case absente serait enregistrée décochée)', array() === $missing );
+check( 'adresse générique : option dédiée dans le formulaire', false !== strpos( $html, 'name="' . Settings::FALLBACK_EMAIL_OPTION . '"' ) );
+check( 'formulaire options.php du groupe enregistré', false !== strpos( $html, 'action="options.php"' ) && false !== strpos( $html, 'name="option_page" value="' . Settings::GROUP . '"' ) );
+check( 'valeur de la clé échappée', false !== strpos( $html, 'value="AIza&quot;&lt;k&gt;"' ) && false === strpos( $html, 'AIza"<k>' ) );
+check( 'mode Google : lignes OpenStreetMap masquées mais présentes', 3 === substr_count( $html, 'data-g2rd-provider="osm" style="display:none"' ) && false === strpos( $html, 'data-g2rd-provider="google" style=' ) );
+check( 'remplacement Go Fetch Jobs coché par défaut', 1 === preg_match( '/is-checked"><input[^>]+name="g2rd_wpjm_geo_settings\[gofetch_replace\]"[^>]+checked/', $html ) );
+preg_match_all( '/\sid="([^"]+)"/', $html, $ids );
+preg_match_all( '/aria-(?:describedby|labelledby)="([^"]+)"/', $html, $refs );
+check( 'aucune référence ARIA pendante', array() === array_diff( $refs[1], $ids[1] ) );
+AdminMenu::reset();
+
 $results = $GLOBALS['g2rd_results'];
 echo PHP_EOL . sprintf( 'Résultat : %d réussis, %d échoués', $results['pass'], $results['fail'] ) . PHP_EOL;
 exit( $results['fail'] ? 1 : 0 );

@@ -152,6 +152,37 @@ async function map({ mapId, clustering, data, restFail, nonce }) {
   await p3;
   check('API deja chargee par une autre extension : reutilisee, pas de second script', w3.document.querySelectorAll('script[src*="googleapis"]').length === 1);
 
+  console.log('\nF. Page de reglages');
+  const settingsHtml = '<form class="g2rd-wpjm-geo-settings">'
+    + '<label><input type="radio" name="o[provider]" value="google" checked></label><label><input type="radio" name="o[provider]" value="osm"></label>'
+    + '<div data-g2rd-provider="google"><input name="o[browser_api_key]" value="k"></div>'
+    + '<div data-g2rd-provider="osm" style="display:none"><input type="url" name="o[photon_url]" value="https://p.test/api/"></div>'
+    + '<span class="components-form-toggle is-checked"><input class="components-form-toggle__input" type="checkbox" id="t" name="o[gofetch_replace]" value="1" checked></span>'
+    + '<div class="g2rd-savebar"><button type="submit">ok</button></div></form>';
+  const settings = async (before) => {
+    const sw = new JSDOM(settingsHtml, { runScripts: 'outside-only' }).window;
+    if (before) before(sw.document);
+    sw.eval(src('js/admin-settings.js'));
+    await wait(10);
+    const sd = sw.document;
+    return { sw, sd, bar: sd.querySelector('.g2rd-savebar'), t: sd.getElementById('t'), rows: v => [...sd.querySelectorAll('[data-g2rd-provider="' + v + '"]')].map(n => n.style.display).join() };
+  };
+  const fire = (s, el, type) => el.dispatchEvent(new s.sw.Event(type, { bubbles: true }));
+  let s = await settings();
+  check('barre masquee tant que rien ne change', s.bar.style.display === 'none');
+  const osmRadio = s.sd.querySelector('input[value="osm"]');
+  osmRadio.checked = true; fire(s, osmRadio, 'change');
+  check('bascule OSM : lignes Google masquees, OSM affichees, barre visible', s.rows('google') === 'none' && s.rows('osm') === '' && s.bar.style.display === '');
+  check('champs masques toujours soumis', new s.sw.FormData(s.sd.querySelector('form')).get('o[browser_api_key]') === 'k');
+  const googleRadio = s.sd.querySelector('input[value="google"]');
+  googleRadio.checked = true; fire(s, googleRadio, 'change');
+  check('retour a la valeur enregistree : barre masquee', s.bar.style.display === 'none');
+  s.t.checked = false; fire(s, s.t, 'change');
+  check('interrupteur : classe is-checked suit la case', !s.t.parentNode.classList.contains('is-checked'));
+  s = await settings(d => { d.getElementById('t').checked = false; d.querySelector('input[value="osm"]').checked = true; });
+  check('etat restaure par le navigateur : interrupteur, lignes et barre synchronises', !s.t.parentNode.classList.contains('is-checked') && s.rows('google') === 'none' && s.bar.style.display === '');
+  check('formulaire absent : aucune erreur', await (async () => { const ew = new JSDOM('<p></p>', { runScripts: 'outside-only' }).window; ew.eval(src('js/admin-settings.js')); await wait(10); return true; })());
+
   console.log('\nResultat JS : ' + pass + ' reussis, ' + fail + ' echoues');
   process.exit(fail ? 1 : 0);
 })().catch(e => { console.error('ERREUR BANC DE TEST:', e); process.exit(2); });

@@ -86,7 +86,18 @@ namespace {
 	}
 
 	class G2RD_Test_Wpdb {
-		public $prefix = 'wp_';
+		public $prefix   = 'wp_';
+		public $posts    = 'wp_posts';
+		public $postmeta = 'wp_postmeta';
+		public function prepare( $query, ...$args ) {
+			return $query;
+		}
+		public function get_results( $query, $output = null ) {
+			return array();
+		}
+		public function get_var( $query ) {
+			return 0;
+		}
 		public function insert( $table, $data ) {
 			G2RD_Test_State::$log_rows[] = $data;
 			return 1;
@@ -354,6 +365,45 @@ namespace {
 		return str_replace( '&', '&#038;', esc_url_raw( $url, $protocols ) );
 	}
 
+	// --- Rendu de la page d'administration.
+	if ( ! defined( 'ARRAY_A' ) ) {
+		define( 'ARRAY_A', 'ARRAY_A' );
+	}
+	function esc_attr( $text ) {
+		return htmlspecialchars( (string) $text, ENT_QUOTES, 'UTF-8' );
+	}
+	function esc_html( $text ) {
+		return htmlspecialchars( (string) $text, ENT_QUOTES, 'UTF-8' );
+	}
+	function esc_attr__( $text ) {
+		return esc_attr( $text );
+	}
+	function esc_html__( $text ) {
+		return esc_html( $text );
+	}
+	function _n( $single, $plural, $number ) {
+		return 1 === (int) $number ? $single : $plural;
+	}
+	function checked( $checked, $current = true, $echo = true ) {
+		$result = (string) $checked === (string) $current ? " checked='checked'" : '';
+		if ( $echo ) {
+			echo $result;
+		}
+		return $result;
+	}
+	function current_user_can( $capability ) {
+		return true;
+	}
+	function wp_die( $message = '' ) {
+		throw new RuntimeException( (string) $message );
+	}
+	function settings_errors() {
+		echo '<!-- settings_errors -->';
+	}
+	function settings_fields( $group ) {
+		echo '<input type="hidden" name="option_page" value="' . esc_attr( $group ) . '" />';
+	}
+
 	// --- Transients et cron.
 	function get_transient( $key ) {
 		return isset( G2RD_Test_State::$transients[ $key ] ) ? G2RD_Test_State::$transients[ $key ] : false;
@@ -435,7 +485,7 @@ namespace G2RD\WPJMGeo {
 }
 
 namespace {
-	foreach ( array( 'Settings', 'Logger', 'UrlChecker', 'ApplicationNormalizer', 'JobQueue', 'UrlCheckQueue', 'GoFetchIntegration', 'PhotonGeocoder', 'GeocodingIntegration', 'GeocodeQueue', 'RestController', 'AdminMenu', 'RegeocodeTool', 'AdminScreen' ) as $class ) {
+	foreach ( array( 'Settings', 'Logger', 'UrlChecker', 'ApplicationNormalizer', 'JobQueue', 'UrlCheckQueue', 'GoFetchIntegration', 'PhotonGeocoder', 'GeocodingIntegration', 'GeocodeQueue', 'RestController', 'AdminMenu', 'RegeocodeTool', 'AdminScreen', 'Dependencies', 'GoogleAssets', 'SettingsPage' ) as $class ) {
 		require_once dirname( __DIR__ ) . '/includes/' . $class . '.php';
 	}
 }
