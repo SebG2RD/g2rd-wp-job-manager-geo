@@ -27,6 +27,18 @@ use G2RD\WPJMGeo\UrlCheckQueue;
 
 $GLOBALS['g2rd_results'] = array( 'pass' => 0, 'fail' => 0 );
 
+// Tout avertissement PHP compte comme un échec (les tests « sans avertissement » le vérifient vraiment).
+set_error_handler(
+	function ( $errno, $errstr, $errfile, $errline ) {
+		if ( ! ( error_reporting() & $errno ) ) {
+			return false;
+		}
+		$GLOBALS['g2rd_results']['fail']++;
+		echo '  [FAIL] PHP : ' . $errstr . ' (' . basename( $errfile ) . ':' . $errline . ')' . PHP_EOL;
+		return true;
+	}
+);
+
 function check( $label, $condition ) {
 	$GLOBALS['g2rd_results'][ $condition ? 'pass' : 'fail' ]++;
 	echo ( $condition ? '  [OK]   ' : '  [FAIL] ' ) . $label . PHP_EOL;
@@ -469,6 +481,28 @@ G2RD_Test_State::$http_responder = function ( $method, $url ) use ( &$urls ) {
 			)
 		);
 	}
+	if ( false !== strpos( $url, 'q=Saint-Denis' ) ) {
+		return photon_reply(
+			array(
+				photon_feature( 'Saint-Denis', 'place', 'city', 55.4504, -20.8789, array( 'postcode' => '97400', 'state' => 'La Réunion', 'country' => 'France', 'countrycode' => 'FR' ) ),
+				photon_feature( 'Saint-Denis', 'place', 'city', 2.3574, 48.9362, array( 'postcode' => '93200', 'state' => 'Île-de-France', 'country' => 'France', 'countrycode' => 'FR' ) ),
+			)
+		);
+	}
+	if ( false !== strpos( $url, 'q=Montr%C3%A9al' ) ) {
+		return photon_reply(
+			array(
+				photon_feature( 'Montréal', 'place', 'city', -73.5698, 45.5031, array( 'state' => 'Québec', 'country' => 'Canada', 'countrycode' => 'CA' ) ),
+				photon_feature( 'Montréal', 'place', 'village', 2.1431, 43.1997, array( 'state' => 'Occitanie', 'country' => 'France', 'countrycode' => 'FR' ) ),
+			)
+		);
+	}
+	if ( false !== strpos( $url, 'q=La%20D%C3%A9fense' ) ) {
+		return photon_reply( array( photon_feature( 'La Défense', 'place', 'suburb', 2.2384, 48.892, array( 'city' => 'Puteaux', 'country' => 'France', 'countrycode' => 'FR' ) ) ) );
+	}
+	if ( false !== strpos( $url, 'q=Vanoise' ) ) {
+		return photon_reply( array( photon_feature( 'Vanoise', 'boundary', 'national_park', 6.8, 45.4 ) ) );
+	}
 	if ( false !== strpos( $url, 'q=Paris' ) ) {
 		return photon_reply( array( photon_feature( 'Paris', 'place', 'city', 2.3522, 48.8566, array( 'country' => 'France', 'countrycode' => 'FR' ) ) ) );
 	}
@@ -483,6 +517,22 @@ $r = $geo->geocode( 'Laval' );
 check( 'homonymes : sans indice, le pays du site (fr_FR) l’emporte', is_array( $r ) && 'FR' === $r['country_short'] );
 $r = $geo->geocode( 'Valence, Espagne' );
 check( 'homonymes : le pays cité dans le texte l’emporte', is_array( $r ) && 'ES' === $r['country_short'] );
+$r = $geo->geocode( 'Saint-Denis (93)' );
+check( 'homonymes français : le département saisi départage', is_array( $r ) && '48.9362' === $r['lat'] );
+$r = $geo->geocode( 'Saint-Denis, Réunion' );
+check( 'homonymes : la région citée, sans article, départage', is_array( $r ) && '-20.8789' === $r['lat'] );
+$r = $geo->geocode( 'Montréal' );
+check( 'homonymes : un village du pays du site ne l’emporte pas sur la grande ville', is_array( $r ) && 'CA' === $r['country_short'] );
+$r = $geo->geocode( 'La Défense' );
+check( 'quartier : la ville est celle de Photon', is_array( $r ) && 'Puteaux' === $r['city'] );
+check( 'limite non administrative ignorée', null === $geo->geocode( 'Vanoise' ) );
+$prefer_ca = function () {
+	return 'CA';
+};
+add_filter( 'g2rd_wpjm_geo_photon_preferred_country', $prefer_ca );
+$r = $geo->geocode( 'Laval' );
+check( 'filtre du pays préféré pris en compte, cache distinct', is_array( $r ) && 'CA' === $r['country_short'] );
+remove_filter( 'g2rd_wpjm_geo_photon_preferred_country', $prefer_ca );
 $before = count( $urls );
 check( '« Paris France » : premier segment différent, introuvable', null === $geo->geocode( 'Paris France' ) );
 $r = $geo->geocode( 'Paris, France' );
@@ -523,11 +573,12 @@ G2RD_Test_State::$http_responder = function () {
 };
 check( 'coordonnées mal formées : introuvable, sans avertissement', null === $geo->geocode( 'Metz' ) );
 G2RD_Test_State::$locale         = 'en_US';
+G2RD_Test_State::$user_locale    = 'de_DE';
 G2RD_Test_State::$http_responder = function () {
 	return photon_reply( array() );
 };
 $geo->geocode( 'Caen' );
-check( 'langue du site : en_US donne lang=en', false !== strpos( end( G2RD_Test_State::$http_calls ), '&lang=en' ) );
+check( 'langue du site (en_US), pas celle de l’utilisateur (de_DE) : lang=en', false !== strpos( end( G2RD_Test_State::$http_calls ), '&lang=en' ) );
 
 list( $s ) = boot( array( 'photon_url' => 'https://photon.local/api/#ancre' ) );
 $geo = new PhotonGeocoder( $s );

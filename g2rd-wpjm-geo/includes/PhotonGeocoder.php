@@ -42,6 +42,18 @@ class PhotonGeocoder {
 	const SUB_CITY_VALUES = array( 'hamlet', 'suburb', 'locality' );
 
 	/**
+	 * Lieux qui reçoivent le bonus du pays du site : ni les villages ni les
+	 * lieux-dits (« Moscou », « Montréal » dans l'Aude), qui l'emporteraient
+	 * sinon sur la grande ville étrangère du même nom.
+	 */
+	const PREFERRED_VALUES = array( 'city', 'town', 'municipality', 'administrative' );
+
+	/**
+	 * Pays des codes postaux français (métropole et outre-mer).
+	 */
+	const FRENCH_COUNTRIES = array( 'FR', 'RE', 'GP', 'MQ', 'GF', 'YT', 'PM', 'BL', 'MF' );
+
+	/**
 	 * Localisations sans lieu précis (forme normalisée) : jamais envoyées à Photon.
 	 */
 	const VAGUE = array( 'remote', 'full remote', 'teletravail', 'a distance', 'hybride' );
@@ -120,7 +132,7 @@ class PhotonGeocoder {
 	 * @return string Préfixe de code postal, ou chaîne vide.
 	 */
 	public static function hint( $text ) {
-		if ( ! preg_match( '/\(\s*(\d{2,3}|2[AB])\s*\)|(?<!\d)(\d{5})(?!\d)/i', (string) $text, $m ) ) {
+		if ( ! preg_match( '/\(\s*(\d{2}|97\d|2[AB])\s*\)|(?<!\d)(\d{5})(?!\d)/i', (string) $text, $m ) ) {
 			return '';
 		}
 		$code = ! empty( $m[2] ) ? $m[2] : strtoupper( $m[1] );
@@ -174,7 +186,7 @@ class PhotonGeocoder {
 		$base   = $this->base_url();
 		$hint   = self::hint( $text );
 		$lang   = self::language( get_locale() );
-		$key    = self::CACHE_PREFIX . md5( $base . '|' . $lang . '|' . implode( ',', $segments ) . '|' . $hint );
+		$key    = self::CACHE_PREFIX . md5( $base . '|' . $lang . '|' . self::preferred_country() . '|' . implode( ',', $segments ) . '|' . $hint );
 		$cached = get_transient( $key );
 		if ( is_array( $cached ) && array_key_exists( 'r', $cached ) ) {
 			return $cached['r'];
@@ -198,9 +210,10 @@ class PhotonGeocoder {
 	/**
 	 * Meilleur résultat dont le nom correspond au premier segment du texte.
 	 *
-	 * À nom égal : code postal commençant par l'indice (+4), pays, région ou
-	 * département cité dans les autres segments (+2), pays du site (+1). À rang
-	 * égal, l'ordre de Photon (pertinence) est conservé.
+	 * À nom égal : lieu français dont le code postal commence par l'indice (+4),
+	 * pays, région ou département cité dans les autres segments, article ignoré
+	 * (+2), ville ou commune du pays du site (+1). À rang égal, l'ordre de
+	 * Photon (pertinence) est conservé.
 	 *
 	 * @param array  $features Entités GeoJSON renvoyées par Photon.
 	 * @param string $cleaned  Texte nettoyé.
@@ -213,7 +226,7 @@ class PhotonGeocoder {
 		if ( '' === $wanted ) {
 			return null;
 		}
-		$context   = array_filter( $segments );
+		$context   = array_map( array( __CLASS__, 'without_article' ), array_filter( $segments ) );
 		$preferred = self::preferred_country();
 		$best      = null;
 		$best_rank = -1;
@@ -223,17 +236,19 @@ class PhotonGeocoder {
 			if ( '' === $name || self::normalize( $name ) !== $wanted || null === self::to_address( $feature ) ) {
 				continue;
 			}
-			$rank = 0;
-			if ( '' !== $hint && isset( $props['postcode'] ) && is_scalar( $props['postcode'] ) && 0 === strpos( (string) $props['postcode'], $hint ) ) {
+			$code  = ( isset( $props['countrycode'] ) && is_string( $props['countrycode'] ) ) ? strtoupper( $props['countrycode'] ) : '';
+			$value = ( isset( $props['osm_value'] ) && is_string( $props['osm_value'] ) ) ? $props['osm_value'] : '';
+			$rank  = 0;
+			if ( '' !== $hint && in_array( $code, self::FRENCH_COUNTRIES, true ) && isset( $props['postcode'] ) && is_scalar( $props['postcode'] ) && 0 === strpos( (string) $props['postcode'], $hint ) ) {
 				$rank += 4;
 			}
 			foreach ( array( 'country', 'state', 'county' ) as $field ) {
-				if ( isset( $props[ $field ] ) && is_string( $props[ $field ] ) && in_array( self::normalize( $props[ $field ] ), $context, true ) ) {
+				if ( isset( $props[ $field ] ) && is_string( $props[ $field ] ) && in_array( self::without_article( self::normalize( $props[ $field ] ) ), $context, true ) ) {
 					$rank += 2;
 					break;
 				}
 			}
-			if ( '' !== $preferred && isset( $props['countrycode'] ) && is_string( $props['countrycode'] ) && strtoupper( $props['countrycode'] ) === $preferred ) {
+			if ( '' !== $preferred && $code === $preferred && in_array( $value, self::PREFERRED_VALUES, true ) ) {
 				++$rank;
 			}
 			if ( $rank > $best_rank ) {
@@ -285,6 +300,16 @@ class PhotonGeocoder {
 			'country_long'      => $country,
 			'country_short'     => strtoupper( substr( (string) preg_replace( '/[^A-Za-z]/', '', $text( 'countrycode' ) ), 0, 2 ) ),
 		);
+	}
+
+	/**
+	 * Forme normalisée sans article en tête (« la reunion » → « reunion »).
+	 *
+	 * @param string $text Texte normalisé.
+	 * @return string
+	 */
+	public static function without_article( $text ) {
+		return (string) preg_replace( '/^(?:le|la|les|l) /', '', (string) $text );
 	}
 
 	/**

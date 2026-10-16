@@ -40,7 +40,8 @@ namespace {
 		public static $http_responder = null; // callable( $method, $url ) : réponse, ou null pour la réponse par défaut.
 		public static $doing_cron     = false;
 		public static $locale         = 'fr_FR';
-		public static $menus          = array();
+		public static $user_locale    = null;
+		public static $menus         = array();
 		public static $wpjm_geocode   = array(); // texte => tableau d'adresse renvoyé par WP_Job_Manager_Geocode::get_location_data().
 
 		public static function reset() {
@@ -59,7 +60,8 @@ namespace {
 			self::$http_responder = null;
 			self::$doing_cron     = false;
 			self::$locale         = 'fr_FR';
-			self::$menus          = array();
+			self::$user_locale    = null;
+			self::$menus         = array();
 			self::$wpjm_geocode   = array();
 		}
 	}
@@ -261,7 +263,7 @@ namespace {
 		return G2RD_Test_State::$doing_cron;
 	}
 	function determine_locale() {
-		return G2RD_Test_State::$locale;
+		return null !== G2RD_Test_State::$user_locale ? G2RD_Test_State::$user_locale : G2RD_Test_State::$locale;
 	}
 	function get_locale() {
 		return G2RD_Test_State::$locale;
