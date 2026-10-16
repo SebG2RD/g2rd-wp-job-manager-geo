@@ -20,6 +20,7 @@
 | — | `JobQueue` relit l'option en base (purge du cache objet), libère son verrou dans un `finally`, planifie un passage de secours et impose `RETRY_DELAY` (correctifs de revue, tâche 3) | un ID perdu ou une file bloquée retirerait des offres de la carte |
 | — | Photon : un HTTP 400 persistant (même sans filtre) vaut « introuvable », sauf s'il porte sur la langue ou les paramètres (erreur de configuration) | une offre au texte refusé bloquerait la file à chaque passage |
 | Clé de cache md5( langue + texte nettoyé ) | md5( URL Photon + langue du site + segments normalisés + indice de département ) ; langue du site (`get_locale()`), pas celle de l'utilisateur, y compris pour l'autocomplétion | deux textes de même clé donnaient des résultats différents ; le nom renvoyé par Photon, que le garde-fou compare, dépend de la langue (correctifs de revue, tâche 4) |
+| — | `GeocodingIntegration` retire la source dès que `geolocation_lat` est écrite hors de `write()` (WP Job Manager en mode Google, Go Fetch Jobs, WP All Import) ; drapeau « Photon en panne » de 5 min qui fait passer les saisies par la file ; `WP_IMPORTING` et le filtre `g2rd_wpjm_geo_defer_geocoding` diffèrent aussi le géocodage (correctifs de revue, tâche 5) | des coordonnées Google étiquetées `osm` s'afficheraient sur la carte libre ; chaque enregistrement attendrait 5 à 10 s pendant une panne |
 | Garde-fou : nom = premier segment | idem, puis à nom égal : département ou code postal saisi (lieux français), autres segments (article ignoré), ville ou commune du pays du site (filtre `g2rd_wpjm_geo_photon_preferred_country`, inclus dans la clé de cache ; un village homonyme ne gagne pas : « Montréal » seul reste au Québec, mais « Laval » seul est en France) ; « Paris 15e », « St Etienne » reconnus ; « Remote », « Télétravail » jamais envoyés | « Laval (53) » ou « Valence (26) » seraient placées sur un homonyme étranger plus peuplé |
 
 Les autres ajustements (MapLibre 5.24.0, copie intégrale de la feuille, chemin Google du re-géocodage) sont déjà reportés dans la spécification.
@@ -1495,6 +1496,24 @@ check( 'panne : lot arrêté, offre remise en fin de file', array( 212, 211 ) ==
 check( 'panne : nouvel essai dans 10 minutes', wp_next_scheduled( GeocodeQueue::CRON_HOOK ) >= time() + 590 );
 G2RD_Test_State::$doing_cron = false;
 
+list( , , $queue ) = geo_boot();
+job_with_google_coords( 213 );
+G2RD_Test_State::$meta[213][ $src ] = 'osm';
+do_action( 'job_manager_job_location_edited', 213, 'Brest' );
+check( 'saisie, Photon en panne : coordonnées et source effacées', ! isset( G2RD_Test_State::$meta[213]['geolocated'] ) && ! isset( G2RD_Test_State::$meta[213][ $src ] ) );
+$queue->flush();
+check( 'saisie, Photon en panne : offre mise en file', array( 213 ) === get_option( GeocodeQueue::OPTION ) && false !== wp_next_scheduled( GeocodeQueue::CRON_HOOK ) );
+job_with_google_coords( 214 );
+$calls = count( G2RD_Test_State::$http_calls );
+do_action( 'job_manager_job_location_edited', 214, 'Rouen' );
+check( 'Photon signalé en panne : saisie suivante différée, sans appel réseau', count( G2RD_Test_State::$http_calls ) === $calls && ! isset( G2RD_Test_State::$meta[214]['geolocated'] ) );
+
+geo_boot();
+add_filter( 'g2rd_wpjm_geo_defer_geocoding', '__return_true' );
+job_with_google_coords( 215 );
+do_action( 'job_manager_job_location_edited', 215, 'Rouen' );
+check( 'filtre g2rd_wpjm_geo_defer_geocoding : géocodage différé', 0 === count( G2RD_Test_State::$http_calls ) && ! isset( G2RD_Test_State::$meta[215]['geolocated'] ) );
+
 geo_boot( 'google' );
 check( 'mode Google : géocodage de WP Job Manager actif', true === apply_filters( 'job_manager_geolocation_enabled', true ) );
 G2RD_Test_State::$post_types[220]   = 'job_listing';
@@ -1508,11 +1527,63 @@ G2RD_Test_State::$meta[221]['_job_location'] = 'Rouen';
 update_option( GeocodeQueue::OPTION, array( 221 ) );
 do_action( GeocodeQueue::CRON_HOOK );
 check( 'file héritée du mode libre : vidée sans géocoder en mode Google', array() === get_option( GeocodeQueue::OPTION ) && ! isset( G2RD_Test_State::$meta[221]['geolocated'] ) );
+
+geo_boot( 'google' );
+G2RD_Test_State::$post_types[230] = 'job_listing';
+G2RD_Test_State::$meta[230]       = array( 'geolocated' => 1, 'geolocation_lat' => '49.4432', $src => 'osm' );
+WP_Job_Manager_Geocode::save_location_data( 230, array( 'lat' => '49.4431', 'long' => '1.0993' ) ); // update_location_data() de WP Job Manager, en mode Google.
+check( 'coordonnées écrites par un tiers : source osm retirée', ! isset( G2RD_Test_State::$meta[230][ $src ] ) );
 ```
 
 - [ ] **Step 2: Charger les classes et vérifier l'échec**
 
 Dans `tests/bootstrap.php`, ajouter `'GeocodingIntegration', 'GeocodeQueue'` à la fin de la liste des classes.
+
+Toujours dans `tests/bootstrap.php`, faire déclencher par les métadonnées simulées les actions de WordPress, et faire passer la classe `WP_Job_Manager_Geocode` simulée par ces fonctions (comme le vrai WP Job Manager) :
+
+```php
+	function update_post_meta( $id, $key, $value ) {
+		if ( isset( G2RD_Test_State::$meta[ $id ][ $key ] ) && G2RD_Test_State::$meta[ $id ][ $key ] === $value ) {
+			return false;
+		}
+		$added                                = ! isset( G2RD_Test_State::$meta[ $id ][ $key ] );
+		G2RD_Test_State::$meta[ $id ][ $key ] = $value;
+		do_action( $added ? 'added_post_meta' : 'updated_post_meta', 0, $id, $key, $value );
+		return true;
+	}
+```
+
+```php
+	function delete_post_meta( $id, $key ) {
+		if ( ! isset( G2RD_Test_State::$meta[ $id ][ $key ] ) ) {
+			return false;
+		}
+		$value = G2RD_Test_State::$meta[ $id ][ $key ];
+		unset( G2RD_Test_State::$meta[ $id ][ $key ] );
+		do_action( 'deleted_post_meta', array(), $id, $key, $value );
+		return true;
+	}
+```
+
+```php
+		public static function clear_location_data( $job_id ) {
+			foreach ( array_keys( isset( G2RD_Test_State::$meta[ $job_id ] ) ? G2RD_Test_State::$meta[ $job_id ] : array() ) as $key ) {
+				if ( 'geolocated' === $key || 0 === strpos( $key, 'geolocation_' ) ) {
+					delete_post_meta( $job_id, $key );
+				}
+			}
+		}
+		public static function save_location_data( $job_id, $address_data ) {
+			if ( is_array( $address_data ) && $address_data ) {
+				update_post_meta( $job_id, 'geolocated', 1 );
+				foreach ( $address_data as $key => $value ) {
+					if ( $value ) {
+						update_post_meta( $job_id, 'geolocation_' . $key, $value );
+					}
+				}
+			}
+		}
+```
 
 Run: `php g2rd-wpjm-geo/tests/run.php | tail -3`
 Expected: erreur `failed to open stream` sur `GeocodingIntegration.php`.
@@ -1545,6 +1616,20 @@ if ( ! defined( 'ABSPATH' ) ) {
 class GeocodingIntegration {
 
 	const META_SOURCE = '_g2rd_wpjm_geo_source';
+
+	/**
+	 * Drapeau posé quand Photon ne répond pas : les enregistrements suivants
+	 * passent directement par la file, sans attendre le délai réseau.
+	 */
+	const DOWN_FLAG = 'g2rd_wpjm_geo_photon_down';
+	const DOWN_TTL  = 300;
+
+	/**
+	 * Vrai pendant write() : nos propres écritures ne retirent pas la source.
+	 *
+	 * @var bool
+	 */
+	private static $writing = false;
 
 	/**
 	 * Réglages.
@@ -1586,6 +1671,11 @@ class GeocodingIntegration {
 	 * @return void
 	 */
 	public function register() {
+		// Dans les deux modes : des coordonnées écrites par un tiers (WP Job Manager,
+		// Go Fetch Jobs, WP All Import) ne sont plus garanties par la source.
+		foreach ( array( 'added_post_meta', 'updated_post_meta', 'deleted_post_meta' ) as $hook ) {
+			add_action( $hook, array( __CLASS__, 'on_foreign_coords' ), 10, 3 );
+		}
 		if ( Settings::PROVIDER_OSM === $this->settings->get_provider() ) {
 			add_filter( 'job_manager_geolocation_enabled', '__return_false', 99 );
 			add_action( 'job_manager_job_location_edited', array( $this, 'on_location_edited' ), 20, 2 );
@@ -1608,6 +1698,21 @@ class GeocodingIntegration {
 	}
 
 	/**
+	 * Coordonnées écrites hors de write() : la source ne garantit plus leur origine.
+	 *
+	 * @param int|int[] $meta_id   ID(s) de la métadonnée.
+	 * @param int       $object_id ID de l'offre.
+	 * @param string    $meta_key  Clé.
+	 * @return void
+	 */
+	public static function on_foreign_coords( $meta_id, $object_id, $meta_key ) {
+		$object_id = absint( $object_id );
+		if ( ! self::$writing && $object_id && 'geolocation_lat' === $meta_key ) {
+			delete_post_meta( $object_id, self::META_SOURCE );
+		}
+	}
+
+	/**
 	 * Mode libre : géocode la nouvelle localisation.
 	 *
 	 * @param int    $job_id   ID de l'offre.
@@ -1625,7 +1730,7 @@ class GeocodingIntegration {
 			self::write( $job_id, null, Settings::PROVIDER_OSM );
 			return;
 		}
-		if ( self::is_deferred_context() ) {
+		if ( self::is_deferred_context() || get_transient( self::DOWN_FLAG ) ) {
 			// Les anciennes coordonnées ne correspondent plus : effacées tout de suite, recalculées par la file.
 			self::write( $job_id, null, Settings::PROVIDER_OSM );
 			$this->queue->push( $job_id );
@@ -1634,6 +1739,7 @@ class GeocodingIntegration {
 
 		$result = $this->geocoder->geocode( $location );
 		if ( is_wp_error( $result ) ) {
+			set_transient( self::DOWN_FLAG, 1, self::DOWN_TTL );
 			self::write( $job_id, null, Settings::PROVIDER_OSM );
 			$this->queue->push( $job_id );
 			return;
@@ -1642,14 +1748,21 @@ class GeocodingIntegration {
 	}
 
 	/**
-	 * Import Go Fetch Jobs, WP-Cron ou WP-CLI : pas d'appel réseau pendant l'enregistrement.
+	 * Import (Go Fetch Jobs, importeur WordPress), WP-Cron ou WP-CLI : pas d'appel réseau pendant l'enregistrement.
 	 *
 	 * @return bool
 	 */
 	public static function is_deferred_context() {
-		return defined( 'GOFJ_IMPORTING' )
+		$deferred = defined( 'GOFJ_IMPORTING' )
+			|| ( defined( 'WP_IMPORTING' ) && WP_IMPORTING )
 			|| ( function_exists( 'wp_doing_cron' ) && wp_doing_cron() )
 			|| ( defined( 'WP_CLI' ) && WP_CLI );
+		/**
+		 * Géocodage différé (file WP-Cron) plutôt qu'immédiat.
+		 *
+		 * @param bool $deferred Contexte d'import, de WP-Cron ou de WP-CLI.
+		 */
+		return (bool) apply_filters( 'g2rd_wpjm_geo_defer_geocoding', $deferred );
 	}
 
 	/**
@@ -1664,11 +1777,16 @@ class GeocodingIntegration {
 		if ( ! class_exists( 'WP_Job_Manager_Geocode' ) ) {
 			return false;
 		}
-		\WP_Job_Manager_Geocode::clear_location_data( $job_id );
-		delete_post_meta( $job_id, self::META_SOURCE );
-		if ( is_array( $address ) && $address ) {
-			\WP_Job_Manager_Geocode::save_location_data( $job_id, $address );
-			update_post_meta( $job_id, self::META_SOURCE, $source );
+		self::$writing = true;
+		try {
+			\WP_Job_Manager_Geocode::clear_location_data( $job_id );
+			delete_post_meta( $job_id, self::META_SOURCE );
+			if ( is_array( $address ) && $address ) {
+				\WP_Job_Manager_Geocode::save_location_data( $job_id, $address );
+				update_post_meta( $job_id, self::META_SOURCE, $source );
+			}
+		} finally {
+			self::$writing = false;
 		}
 		return true;
 	}
