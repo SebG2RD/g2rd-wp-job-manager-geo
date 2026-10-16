@@ -25,6 +25,20 @@ class GeocodingIntegration {
 	const META_SOURCE = '_g2rd_wpjm_geo_source';
 
 	/**
+	 * Drapeau posé quand Photon ne répond pas : les enregistrements suivants
+	 * passent directement par la file, sans attendre le délai réseau.
+	 */
+	const DOWN_FLAG = 'g2rd_wpjm_geo_photon_down';
+	const DOWN_TTL  = 300;
+
+	/**
+	 * Vrai pendant write() : nos propres écritures ne retirent pas la source.
+	 *
+	 * @var bool
+	 */
+	private static $writing = false;
+
+	/**
 	 * Réglages.
 	 *
 	 * @var Settings
@@ -64,6 +78,11 @@ class GeocodingIntegration {
 	 * @return void
 	 */
 	public function register() {
+		// Dans les deux modes : des coordonnées écrites par un tiers (WP Job Manager,
+		// Go Fetch Jobs, WP All Import) ne sont plus garanties par la source.
+		foreach ( array( 'added_post_meta', 'updated_post_meta', 'deleted_post_meta' ) as $hook ) {
+			add_action( $hook, array( __CLASS__, 'on_foreign_coords' ), 10, 3 );
+		}
 		if ( Settings::PROVIDER_OSM === $this->settings->get_provider() ) {
 			add_filter( 'job_manager_geolocation_enabled', '__return_false', 99 );
 			add_action( 'job_manager_job_location_edited', array( $this, 'on_location_edited' ), 20, 2 );
@@ -86,6 +105,21 @@ class GeocodingIntegration {
 	}
 
 	/**
+	 * Coordonnées écrites hors de write() : la source ne garantit plus leur origine.
+	 *
+	 * @param int|int[] $meta_id   ID(s) de la métadonnée.
+	 * @param int       $object_id ID de l'offre.
+	 * @param string    $meta_key  Clé.
+	 * @return void
+	 */
+	public static function on_foreign_coords( $meta_id, $object_id, $meta_key ) {
+		$object_id = absint( $object_id );
+		if ( ! self::$writing && $object_id && 'geolocation_lat' === $meta_key ) {
+			delete_post_meta( $object_id, self::META_SOURCE );
+		}
+	}
+
+	/**
 	 * Mode libre : géocode la nouvelle localisation.
 	 *
 	 * @param int    $job_id   ID de l'offre.
@@ -103,7 +137,7 @@ class GeocodingIntegration {
 			self::write( $job_id, null, Settings::PROVIDER_OSM );
 			return;
 		}
-		if ( self::is_deferred_context() ) {
+		if ( self::is_deferred_context() || get_transient( self::DOWN_FLAG ) ) {
 			// Les anciennes coordonnées ne correspondent plus : effacées tout de suite, recalculées par la file.
 			self::write( $job_id, null, Settings::PROVIDER_OSM );
 			$this->queue->push( $job_id );
@@ -112,6 +146,7 @@ class GeocodingIntegration {
 
 		$result = $this->geocoder->geocode( $location );
 		if ( is_wp_error( $result ) ) {
+			set_transient( self::DOWN_FLAG, 1, self::DOWN_TTL );
 			self::write( $job_id, null, Settings::PROVIDER_OSM );
 			$this->queue->push( $job_id );
 			return;
@@ -120,14 +155,21 @@ class GeocodingIntegration {
 	}
 
 	/**
-	 * Import Go Fetch Jobs, WP-Cron ou WP-CLI : pas d'appel réseau pendant l'enregistrement.
+	 * Import (Go Fetch Jobs, importeur WordPress), WP-Cron ou WP-CLI : pas d'appel réseau pendant l'enregistrement.
 	 *
 	 * @return bool
 	 */
 	public static function is_deferred_context() {
-		return defined( 'GOFJ_IMPORTING' )
+		$deferred = defined( 'GOFJ_IMPORTING' )
+			|| ( defined( 'WP_IMPORTING' ) && WP_IMPORTING )
 			|| ( function_exists( 'wp_doing_cron' ) && wp_doing_cron() )
 			|| ( defined( 'WP_CLI' ) && WP_CLI );
+		/**
+		 * Géocodage différé (file WP-Cron) plutôt qu'immédiat.
+		 *
+		 * @param bool $deferred Contexte d'import, de WP-Cron ou de WP-CLI.
+		 */
+		return (bool) apply_filters( 'g2rd_wpjm_geo_defer_geocoding', $deferred );
 	}
 
 	/**
@@ -142,11 +184,16 @@ class GeocodingIntegration {
 		if ( ! class_exists( 'WP_Job_Manager_Geocode' ) ) {
 			return false;
 		}
-		\WP_Job_Manager_Geocode::clear_location_data( $job_id );
-		delete_post_meta( $job_id, self::META_SOURCE );
-		if ( is_array( $address ) && $address ) {
-			\WP_Job_Manager_Geocode::save_location_data( $job_id, $address );
-			update_post_meta( $job_id, self::META_SOURCE, $source );
+		self::$writing = true;
+		try {
+			\WP_Job_Manager_Geocode::clear_location_data( $job_id );
+			delete_post_meta( $job_id, self::META_SOURCE );
+			if ( is_array( $address ) && $address ) {
+				\WP_Job_Manager_Geocode::save_location_data( $job_id, $address );
+				update_post_meta( $job_id, self::META_SOURCE, $source );
+			}
+		} finally {
+			self::$writing = false;
 		}
 		return true;
 	}

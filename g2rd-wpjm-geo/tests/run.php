@@ -680,6 +680,24 @@ check( 'panne : lot arrêté, offre remise en fin de file', array( 212, 211 ) ==
 check( 'panne : nouvel essai dans 10 minutes', wp_next_scheduled( GeocodeQueue::CRON_HOOK ) >= time() + 590 );
 G2RD_Test_State::$doing_cron = false;
 
+list( , , $queue ) = geo_boot();
+job_with_google_coords( 213 );
+G2RD_Test_State::$meta[213][ $src ] = 'osm';
+do_action( 'job_manager_job_location_edited', 213, 'Brest' );
+check( 'saisie, Photon en panne : coordonnées et source effacées', ! isset( G2RD_Test_State::$meta[213]['geolocated'] ) && ! isset( G2RD_Test_State::$meta[213][ $src ] ) );
+$queue->flush();
+check( 'saisie, Photon en panne : offre mise en file', array( 213 ) === get_option( GeocodeQueue::OPTION ) && false !== wp_next_scheduled( GeocodeQueue::CRON_HOOK ) );
+job_with_google_coords( 214 );
+$calls = count( G2RD_Test_State::$http_calls );
+do_action( 'job_manager_job_location_edited', 214, 'Rouen' );
+check( 'Photon signalé en panne : saisie suivante différée, sans appel réseau', count( G2RD_Test_State::$http_calls ) === $calls && ! isset( G2RD_Test_State::$meta[214]['geolocated'] ) );
+
+geo_boot();
+add_filter( 'g2rd_wpjm_geo_defer_geocoding', '__return_true' );
+job_with_google_coords( 215 );
+do_action( 'job_manager_job_location_edited', 215, 'Rouen' );
+check( 'filtre g2rd_wpjm_geo_defer_geocoding : géocodage différé', 0 === count( G2RD_Test_State::$http_calls ) && ! isset( G2RD_Test_State::$meta[215]['geolocated'] ) );
+
 geo_boot( 'google' );
 check( 'mode Google : géocodage de WP Job Manager actif', true === apply_filters( 'job_manager_geolocation_enabled', true ) );
 G2RD_Test_State::$post_types[220]   = 'job_listing';
@@ -693,6 +711,12 @@ G2RD_Test_State::$meta[221]['_job_location'] = 'Rouen';
 update_option( GeocodeQueue::OPTION, array( 221 ) );
 do_action( GeocodeQueue::CRON_HOOK );
 check( 'file héritée du mode libre : vidée sans géocoder en mode Google', array() === get_option( GeocodeQueue::OPTION ) && ! isset( G2RD_Test_State::$meta[221]['geolocated'] ) );
+
+geo_boot( 'google' );
+G2RD_Test_State::$post_types[230] = 'job_listing';
+G2RD_Test_State::$meta[230]       = array( 'geolocated' => 1, 'geolocation_lat' => '49.4432', $src => 'osm' );
+WP_Job_Manager_Geocode::save_location_data( 230, array( 'lat' => '49.4431', 'long' => '1.0993' ) ); // update_location_data() de WP Job Manager, en mode Google.
+check( 'coordonnées écrites par un tiers : source osm retirée', ! isset( G2RD_Test_State::$meta[230][ $src ] ) );
 
 $results = $GLOBALS['g2rd_results'];
 echo PHP_EOL . sprintf( 'Résultat : %d réussis, %d échoués', $results['pass'], $results['fail'] ) . PHP_EOL;

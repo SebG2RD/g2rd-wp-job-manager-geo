@@ -92,18 +92,18 @@ namespace {
 		public static function clear_location_data( $job_id ) {
 			foreach ( array_keys( isset( G2RD_Test_State::$meta[ $job_id ] ) ? G2RD_Test_State::$meta[ $job_id ] : array() ) as $key ) {
 				if ( 'geolocated' === $key || 0 === strpos( $key, 'geolocation_' ) ) {
-					unset( G2RD_Test_State::$meta[ $job_id ][ $key ] );
+					delete_post_meta( $job_id, $key );
 				}
 			}
 		}
 		public static function save_location_data( $job_id, $address_data ) {
 			if ( is_array( $address_data ) && $address_data ) {
+				update_post_meta( $job_id, 'geolocated', 1 );
 				foreach ( $address_data as $key => $value ) {
 					if ( $value ) {
-						G2RD_Test_State::$meta[ $job_id ][ 'geolocation_' . $key ] = $value;
+						update_post_meta( $job_id, 'geolocation_' . $key, $value );
 					}
 				}
-				G2RD_Test_State::$meta[ $job_id ]['geolocated'] = 1;
 			}
 		}
 		public static function get_location_data( $raw_address ) {
@@ -136,7 +136,9 @@ namespace {
 		if ( isset( G2RD_Test_State::$meta[ $id ][ $key ] ) && G2RD_Test_State::$meta[ $id ][ $key ] === $value ) {
 			return false;
 		}
+		$added                                = ! isset( G2RD_Test_State::$meta[ $id ][ $key ] );
 		G2RD_Test_State::$meta[ $id ][ $key ] = $value;
+		do_action( $added ? 'added_post_meta' : 'updated_post_meta', 0, $id, $key, $value );
 		return true;
 	}
 	function get_post_type( $id ) {
@@ -256,7 +258,12 @@ namespace {
 		return isset( $response['body'] ) ? $response['body'] : '';
 	}
 	function delete_post_meta( $id, $key ) {
+		if ( ! isset( G2RD_Test_State::$meta[ $id ][ $key ] ) ) {
+			return false;
+		}
+		$value = G2RD_Test_State::$meta[ $id ][ $key ];
 		unset( G2RD_Test_State::$meta[ $id ][ $key ] );
+		do_action( 'deleted_post_meta', array(), $id, $key, $value );
 		return true;
 	}
 	function wp_doing_cron() {
