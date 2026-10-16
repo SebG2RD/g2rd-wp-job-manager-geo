@@ -213,3 +213,16 @@ a.g2rd-wpjm-geo-iw__title:focus {
 	text-align: right;
 	border-top: 1px solid #f0f0f1;
 }
+
+/* ---------- État vide : lien administrateur ---------- */
+.g2rd-wpjm-geo-map__status a {
+	color: #a93226;
+	font-weight: 600;
+}
+
+/* ---------- Fenêtre MapLibre ---------- */
+.g2rd-wpjm-geo-map .maplibregl-popup-content {
+	padding: 12px 14px;
+	border-radius: 6px;
+	box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}

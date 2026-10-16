@@ -72,6 +72,56 @@ async function map({ mapId, clustering, data, restFail, nonce }) {
   return { w, st, el: w.document.querySelector('.g2rd-wpjm-geo-map'), status: w.document.querySelector('.g2rd-wpjm-geo-map__status') };
 }
 
+async function osmMap({ data, clustering = true, noWebgl = false, styleFail = false, restFail = false, preload = true, admin = '' }) {
+  const i18n = JSON.stringify({ loading: 'Chargement', error: 'ERREUR', empty: 'VIDE', view: 'Voir offre', manyJobs: '%d offres ici', regeocode: 'Re-geocoder' }).replace(/"/g, '&quot;');
+  const html = '<div class="g2rd-wpjm-geo-map" data-rest-url="https://x.test/wp-json/g2rd-wpjm-geo/v1/jobs" data-per-page="4" data-clustering="' + (clustering ? 1 : 0) + '" data-admin-url="' + admin + '" data-nonce="" data-i18n="' + i18n + '"><div class="g2rd-wpjm-geo-map__canvas"></div><p class="g2rd-wpjm-geo-map__status">Chargement</p></div>';
+  const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://x.test/' });
+  const w = dom.window;
+  const st = { map: null, mapOpts: null, sources: {}, layers: [], layout: [], popups: [], fit: null, jump: null, ease: null };
+  class FakeMap {
+    constructor(o) { st.mapOpts = o; st.map = this; this.events = {}; }
+    on(ev, a, b) { const k = b ? ev + ':' + a : ev; (this.events[k] = this.events[k] || []).push(b || a); }
+    fire(k, arg) { (this.events[k] || []).forEach(f => f(arg)); }
+    getStyle() { return { layers: [
+      { id: 'place-label', type: 'symbol', layout: { 'text-field': ['get', 'name'], 'text-font': ['Noto Sans Regular'] } },
+      { id: 'road-ref', type: 'symbol', layout: { 'text-field': ['get', 'ref'], 'text-font': ['Noto Sans Bold'] } },
+      { id: 'water', type: 'fill' }
+    ] }; }
+    setLayoutProperty(id, prop, value) { st.layout.push({ id, prop, value }); }
+    addSource(id, s) { st.sources[id] = s; }
+    addLayer(l) { st.layers.push(l); }
+    getSource() { return { getClusterExpansionZoom: () => Promise.resolve(7) }; }
+    easeTo(o) { st.ease = o; }
+    fitBounds(b, o) { st.fit = { b, o }; }
+    jumpTo(o) { st.jump = o; }
+    getCanvas() { return { style: {} }; }
+  }
+  class Popup { constructor(o) { this.o = o; st.popups.push(this); } setLngLat(c) { this.c = c; return this; } setDOMContent(n) { this.node = n; return this; } addTo() { return this; } }
+  class LngLatBounds { constructor() { this.pts = []; } extend(p) { this.pts.push(p); return this; } }
+  const fake = { Map: FakeMap, Popup, LngLatBounds };
+  if (preload) w.maplibregl = fake;
+  w.WebGL2RenderingContext = noWebgl ? undefined : function () {};
+  w.HTMLCanvasElement.prototype.getContext = function () { return noWebgl ? null : {}; };
+  w.g2rdWpjmGeoOsm = { styleUrl: 'https://tiles.openfreemap.org/styles/liberty', maplibreJs: 'https://x.test/vendor/maplibre-gl.js', maplibreCss: 'https://x.test/vendor/maplibre-gl.css', language: 'fr' };
+  w.IntersectionObserver = undefined;
+  w.fetch = (url) => {
+    if (restFail) return Promise.resolve({ ok: false, status: 500, headers: { get: () => null } });
+    const page = +new URL(url).searchParams.get('page'), per = 4;
+    return Promise.resolve({ ok: true, status: 200, headers: { get: h => h === 'X-WP-TotalPages' ? String(Math.ceil(data.length / per) || 1) : null }, json: () => Promise.resolve(data.slice((page - 1) * per, page * per)) });
+  };
+  w.eval(src('js/map-common.js'));
+  w.eval(src('js/jobs-map-osm.js'));
+  await wait(50);
+  if (!preload) {
+    const script = w.document.querySelector('script[src="https://x.test/vendor/maplibre-gl.js"]');
+    st.injected = { script: !!script, css: !!w.document.querySelector('link[href="https://x.test/vendor/maplibre-gl.css"]') };
+    if (script) { w.maplibregl = fake; script.onload(); await wait(50); }
+  }
+  if (st.map) { st.map.fire(styleFail ? 'error' : 'load', {}); }
+  await wait(20);
+  return { w, st, el: w.document.querySelector('.g2rd-wpjm-geo-map'), status: w.document.querySelector('.g2rd-wpjm-geo-map__status') };
+}
+
 (async () => {
   console.log('\nA. Autocompletion - cas nominal');
   let t = await autocomplete({});
@@ -204,6 +254,81 @@ async function map({ mapId, clustering, data, restFail, nonce }) {
     check('outil : en-tetes sans deux-points, scope="col"', 'Offre|Valeur actuelle|Nouvelle valeur|Raison' === [...toolRows.querySelectorAll('th')].map(t => t.textContent).join('|') && 4 === toolRows.querySelectorAll('th[scope="col"]').length);
     check('outil : valeurs importees inserees en texte', 0 === toolRows.querySelectorAll('img,svg,script').length && toolRows.querySelector('td.is-mono').textContent.startsWith('javascript:'));
   }
+
+  console.log('\nH. Fonctions communes (map-common.js)');
+  {
+    const cw = new JSDOM('<div class="g2rd-wpjm-geo-map" id="m1"></div><div class="g2rd-wpjm-geo-map" id="m2"></div>', { runScripts: 'outside-only', url: 'https://x.test/' }).window;
+    let io = null;
+    cw.IntersectionObserver = function (cb, opt) { io = { cb, opt, targets: [] }; this.observe = t => io.targets.push(t); this.unobserve = () => {}; };
+    cw.fetch = () => Promise.reject(new Error('unused'));
+    cw.eval(src('js/map-common.js'));
+    const C = cw.g2rdWpjmGeoMapCommon;
+    check('API exposee : un seul objet global, 9 fonctions', 'parseJson,sprintf,safeUrl,placeLabel,buildInfoContent,groupByCoordinates,createFetcher,observe,status' === Object.keys(C).join(','));
+    check('safeUrl : http(s) absolu seulement (relatif, //hote, javascript:, espace initial, non-chaine refuses)',
+      C.safeUrl('HTTPS://a.test/x') === 'HTTPS://a.test/x' && ['/job/1', '//evil.test', 'javascript:alert(1)', ' javascript:alert(1)', 'https:evil', 'data:text/html,x', null, 42].every(u => C.safeUrl(u) === ''));
+    const g = C.groupByCoordinates([{ latitude: '48.856614', longitude: '2.352222' }, { latitude: 48.8566141, longitude: 2.3522224 }, { latitude: 48.85662, longitude: 2.352222 }, { latitude: 90, longitude: 180 }, { latitude: 90.0001, longitude: 0 }, { latitude: '', longitude: '' }]);
+    check('regroupement a 5 decimales, ordre conserve, bornes 90/180 incluses, hors bornes et vides ignores', 3 === g.length && 2 === g[0].jobs.length && 1 === g[1].jobs.length && 90 === g[2].position.lat);
+    const urls = [];
+    cw.fetch = url => { urls.push(url); return Promise.resolve({ ok: true, status: 200, headers: { get: () => '500' }, json: () => Promise.resolve([{}]) }); };
+    const box = cw.document.createElement('div');
+    box.setAttribute('data-rest-url', 'https://x.test/?rest_route=/g2rd-wpjm-geo/v1/jobs');
+    const all = await C.createFetcher(box).fetchAll();
+    check('pagination plafonnee a 200 pages, "&" si l URL contient deja "?", per_page par defaut 250', 200 === urls.length && 200 === all.length && /\?rest_route=[^?]+&page=1&per_page=250$/.test(urls[0]));
+    urls.length = 0;
+    cw.fetch = url => { urls.push(url); return Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, json: () => Promise.resolve({ code: 'x' }) }); };
+    check('en-tete X-WP-TotalPages absent et reponse non tableau : une page, aucune offre', 0 === (await C.createFetcher(box).fetchAll()).length && 1 === urls.length);
+    const started = [];
+    C.observe(c => started.push(c.id));
+    await wait(20);
+    check('demarrage paresseux : 2 cartes observees (marge 300px), aucune demarree avant d etre visible', !!io && 2 === io.targets.length && '300px' === io.opt.rootMargin && 0 === started.length);
+    io.cb([{ isIntersecting: true, target: io.targets[1] }, { isIntersecting: false, target: io.targets[0] }]);
+    io.cb([{ isIntersecting: true, target: io.targets[1] }]);
+    check('seule la carte visible demarre, une seule fois', 'm2' === started.join(','));
+    const sbox = cw.document.createElement('div');
+    sbox.innerHTML = '<p class="g2rd-wpjm-geo-map__status"></p>';
+    sbox.setAttribute('data-admin-url', 'https://x.test/wp-admin/admin.php?page=g2rd-wpjm-geo#g2rd-geo-outils');
+    C.status(sbox, { empty: 'VIDE', error: 'ERREUR', regeocode: 'Re-geocoder' }).empty();
+    const sp = sbox.querySelector('p');
+    check('etat vide : message et lien Re-geocoder (http(s) seulement)', sbox.classList.contains('is-empty') && 'VIDE Re-geocoder' === sp.textContent && 1 === sp.querySelectorAll('a').length && !sp.hidden);
+    sbox.setAttribute('data-admin-url', 'javascript:alert(1)');
+    C.status(sbox, { empty: 'VIDE', regeocode: 'Re-geocoder' }).empty();
+    check('etat vide : lien javascript: refuse', 0 === sp.querySelectorAll('a').length);
+  }
+
+  console.log('\nI. Carte en mode libre (MapLibre)');
+  let o = await osmMap({ data: jobs });
+  check('MapLibre initialise : style OpenFreeMap, gestes cooperatifs', !!o.st.map && o.st.mapOpts.style === 'https://tiles.openfreemap.org/styles/liberty' && o.st.mapOpts.cooperativeGestures === true);
+  const srcJobs = o.st.sources['g2rd-jobs'];
+  check('4 points pour 6 offres valides, clustering actif, clusters comptant les offres', !!srcJobs && srcJobs.data.features.length === 4 && srcJobs.cluster === true && JSON.stringify(srcJobs.clusterProperties.jobs) === JSON.stringify(['+', ['get', 'count']]));
+  check('le point de Paris porte 3 offres', srcJobs.data.features[1].properties.count === 3);
+  check('libelles traduits sur les seules couches de noms', o.st.layout.length === 1 && o.st.layout[0].id === 'place-label' && JSON.stringify(o.st.layout[0].value) === JSON.stringify(['coalesce', ['get', 'name:fr'], ['get', 'name']]));
+  const countLayer = o.st.layers.find(l => l.id === 'g2rd-cluster-count');
+  check('police des compteurs reprise du style', !!countLayer && JSON.stringify(countLayer.layout['text-font']) === JSON.stringify(['Noto Sans Regular']));
+  o.st.map.fire('click:g2rd-points', { features: [{ properties: { gid: 1, count: 3 }, geometry: { coordinates: [2.352222, 48.856614] } }] });
+  const pop = o.st.popups[0];
+  check('clic sur Paris : fenetre avec les 3 offres, sans HTML injecte', !!pop && pop.node.querySelectorAll('li').length === 3 && pop.node.querySelectorAll('img').length === 0);
+  o.st.map.fire('click:g2rd-clusters', { features: [{ properties: { cluster_id: 9 }, geometry: { coordinates: [2, 48] } }] });
+  await wait(10);
+  check('clic sur un cluster : zoom d expansion', !!o.st.ease && o.st.ease.zoom === 7);
+  check('cadrage automatique sur les 4 lieux', !!o.st.fit && o.st.fit.b.pts.length === 4 && o.st.fit.o.padding === 48);
+  check('carte prete, message masque', o.status.hidden && o.el.classList.contains('is-ready'));
+  o = await osmMap({ data: jobs, clustering: false });
+  check('clustering desactive', o.st.sources['g2rd-jobs'].cluster === false);
+  o = await osmMap({ data: [jobs[0]] });
+  check('une offre : centrage zoom 10', !!o.st.jump && o.st.jump.zoom === 10 && !o.st.fit);
+  o = await osmMap({ data: [], admin: 'https://x.test/wp-admin/admin.php?page=g2rd-wpjm-geo#g2rd-geo-outils' });
+  const adminLink = o.status.querySelector('a');
+  check('aucune offre : message vide et lien de re-geocodage pour l administrateur', /VIDE/.test(o.status.textContent) && !!adminLink && adminLink.href.indexOf('#g2rd-geo-outils') !== -1);
+  o = await osmMap({ data: [] });
+  check('aucune offre, visiteur : pas de lien', !o.status.querySelector('a'));
+  o = await osmMap({ data: jobs, noWebgl: true });
+  check('sans WebGL 2 : message d erreur, MapLibre non initialise', !o.st.map && o.status.textContent === 'ERREUR');
+  o = await osmMap({ data: jobs, styleFail: true });
+  check('style injoignable : message d erreur', o.status.textContent === 'ERREUR' && o.el.classList.contains('has-error'));
+  o = await osmMap({ data: jobs, restFail: true });
+  check('endpoint en erreur : message d erreur', o.status.textContent === 'ERREUR');
+  o = await osmMap({ data: jobs, preload: false });
+  check('MapLibre charge a la demande depuis le plugin (script et feuille)', o.st.injected.script && o.st.injected.css && !!o.st.map);
 
   console.log('\nResultat JS : ' + pass + ' reussis, ' + fail + ' echoues');
   process.exit(fail ? 1 : 0);

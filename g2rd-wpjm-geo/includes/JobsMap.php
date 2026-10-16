@@ -116,7 +116,8 @@ class JobsMap {
 		if ( ! $this->settings->get( 'map_enabled' ) ) {
 			return $this->admin_notice( __( 'La carte des offres est désactivée dans les réglages de G2RD WP Job Manager Geo.', 'g2rd-wpjm-geo' ) );
 		}
-		if ( ! GoogleAssets::has_key( $this->settings ) ) {
+		$is_osm = Settings::PROVIDER_OSM === $this->settings->get_provider();
+		if ( ! $is_osm && ! GoogleAssets::has_key( $this->settings ) ) {
 			return $this->admin_notice( __( 'Carte des offres : aucune clé « Google Maps Browser API Key » n’est configurée.', 'g2rd-wpjm-geo' ) );
 		}
 		if ( function_exists( 'job_manager_user_can_browse_job_listings' ) && ! job_manager_user_can_browse_job_listings() ) {
@@ -127,7 +128,7 @@ class JobsMap {
 		$height = min( 1200, max( 200, $height ) );
 
 		wp_enqueue_style( GoogleAssets::HANDLE_STYLE );
-		wp_enqueue_script( GoogleAssets::HANDLE_MAP );
+		wp_enqueue_script( $is_osm ? OsmAssets::HANDLE_MAP : GoogleAssets::HANDLE_MAP );
 
 		++self::$instances;
 
@@ -141,6 +142,7 @@ class JobsMap {
 			/* translators: %d: number of jobs in the cluster. */
 			'cluster'   => __( 'Groupe de %d offres : cliquer pour zoomer', 'g2rd-wpjm-geo' ),
 			'mapLabel'  => __( 'Carte des offres d’emploi', 'g2rd-wpjm-geo' ),
+			'regeocode' => __( 'Re-géocoder les offres', 'g2rd-wpjm-geo' ),
 		);
 
 		$attributes = array(
@@ -149,6 +151,8 @@ class JobsMap {
 			'data-per-page'   => (string) RestController::MAX_PER_PAGE,
 			'data-clustering' => $this->settings->get( 'clustering_enabled' ) ? '1' : '0',
 			'data-map-id'     => (string) $this->settings->get( 'map_id' ),
+			// Lien vers l'outil de re-géocodage dans l'état vide, pour les seuls administrateurs.
+			'data-admin-url'  => current_user_can( Settings::CAPABILITY ) ? esc_url_raw( Settings::page_url() . '#g2rd-geo-outils' ) : '',
 			// Le nonce n'est fourni qu'aux utilisateurs connectés (pages non mises en cache) : il permet à l'API REST
 			// de reconnaître leur session. Les visiteurs anonymes n'en ont pas besoin, même sur une page en cache.
 			'data-nonce'      => is_user_logged_in() ? wp_create_nonce( 'wp_rest' ) : '',

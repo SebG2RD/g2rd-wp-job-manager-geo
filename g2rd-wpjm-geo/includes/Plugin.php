@@ -75,6 +75,7 @@ final class Plugin {
 
 		$google = new GoogleAssets( $this->settings );
 		$google->register();
+		( new OsmAssets( $this->settings ) )->register();
 
 		if ( $this->settings->get( 'autocomplete_enabled' ) ) {
 			if ( $this->settings->get( 'autocomplete_frontend' ) ) {

@@ -198,6 +198,40 @@
 		}
 	}
 
+	/**
+	 * Messages de la carte (chargement, vide, erreur), communs aux deux moteurs.
+	 * L'état vide propose le lien « Re-géocoder » quand la page le fournit (administrateurs).
+	 */
+	function statusController( container, i18n ) {
+		var status = container.querySelector( '.g2rd-wpjm-geo-map__status' );
+		function set( message, linkUrl ) {
+			if ( ! status ) {
+				return;
+			}
+			status.textContent = message || '';
+			var url = message ? safeUrl( linkUrl ) : '';
+			if ( url && i18n.regeocode ) {
+				var link = document.createElement( 'a' );
+				link.href = url;
+				link.textContent = i18n.regeocode;
+				status.appendChild( document.createTextNode( ' ' ) );
+				status.appendChild( link );
+			}
+			status.hidden = ! message;
+		}
+		return {
+			set: set,
+			fail: function () {
+				container.classList.add( 'has-error' );
+				set( i18n.error );
+			},
+			empty: function () {
+				container.classList.add( 'is-empty' );
+				set( i18n.empty, container.getAttribute( 'data-admin-url' ) );
+			}
+		};
+	}
+
 	window.g2rdWpjmGeoMapCommon = {
 		parseJson: parseJson,
 		sprintf: sprintf,
@@ -206,6 +240,7 @@
 		buildInfoContent: buildInfoContent,
 		groupByCoordinates: groupByCoordinates,
 		createFetcher: createFetcher,
-		observe: observe
+		observe: observe,
+		status: statusController
 	};
 }( window, document ) );

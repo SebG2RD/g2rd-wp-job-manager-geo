@@ -26,21 +26,10 @@
 	function initMap( container ) {
 		var i18n = C.parseJson( container.getAttribute( 'data-i18n' ) );
 		var canvas = container.querySelector( '.g2rd-wpjm-geo-map__canvas' );
-		var status = container.querySelector( '.g2rd-wpjm-geo-map__status' );
 		var mapId = container.getAttribute( 'data-map-id' ) || '';
 		var clustering = '1' === container.getAttribute( 'data-clustering' ) && !! window.markerClusterer;
-
-		function setStatus( message ) {
-			if ( status ) {
-				status.textContent = message || '';
-				status.hidden = ! message;
-			}
-		}
-
-		function fail() {
-			container.classList.add( 'has-error' );
-			setStatus( i18n.error );
-		}
+		var ui = C.status( container, i18n );
+		var fail = ui.fail;
 
 		if ( ! canvas || ! container.getAttribute( 'data-rest-url' ) || ! loader ) {
 			fail();
@@ -145,10 +134,9 @@
 			}
 
 			if ( ! markers.length ) {
-				setStatus( i18n.empty );
-				container.classList.add( 'is-empty' );
+				ui.empty();
 			} else {
-				setStatus( '' );
+				ui.set( '' );
 				if ( 1 === markers.length ) {
 					map.setCenter( groups[ 0 ].position );
 					map.setZoom( 10 );
