@@ -24,6 +24,7 @@ class GoogleAssets {
 	const HANDLE_CLUSTERER    = 'g2rd-wpjm-geo-markerclusterer';
 	const HANDLE_MAP          = 'g2rd-wpjm-geo-map';
 	const HANDLE_STYLE        = 'g2rd-wpjm-geo-frontend';
+	const HANDLE_COMMON       = 'g2rd-wpjm-geo-map-common';
 
 	/**
 	 * Réglages.
@@ -72,7 +73,9 @@ class GoogleAssets {
 		wp_register_script( self::HANDLE_AUTOCOMPLETE, $base . 'js/location-autocomplete.js', array( self::HANDLE_LOADER ), $version, true );
 		wp_register_script( self::HANDLE_CLUSTERER, $base . 'vendor/markerclusterer.min.js', array(), '2.5.3', true );
 
-		$map_deps = array( self::HANDLE_LOADER );
+		wp_register_script( self::HANDLE_COMMON, $base . 'js/map-common.js', array(), $version, true );
+
+		$map_deps = array( self::HANDLE_LOADER, self::HANDLE_COMMON );
 		if ( $this->settings->get( 'clustering_enabled' ) ) {
 			$map_deps[] = self::HANDLE_CLUSTERER;
 		}

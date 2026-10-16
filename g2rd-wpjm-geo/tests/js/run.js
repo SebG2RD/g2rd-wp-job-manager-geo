@@ -66,6 +66,7 @@ async function map({ mapId, clustering, data, restFail, nonce }) {
     const page = +new URL(url).searchParams.get('page'), per = 4;
     return Promise.resolve({ ok: true, status: 200, headers: { get: h => h === 'X-WP-TotalPages' ? String(Math.ceil(data.length / per) || 1) : null }, json: () => Promise.resolve(data.slice((page - 1) * per, page * per)) });
   };
+  w.eval(src('js/map-common.js'));
   w.eval(src('js/jobs-map.js'));
   await wait(80);
   return { w, st, el: w.document.querySelector('.g2rd-wpjm-geo-map'), status: w.document.querySelector('.g2rd-wpjm-geo-map__status') };
