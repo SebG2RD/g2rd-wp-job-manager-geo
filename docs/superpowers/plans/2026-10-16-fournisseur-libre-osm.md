@@ -17,6 +17,8 @@
 | `Settings.php` porte le rendu | `SettingsPage.php` (rendu) + `Settings.php` (stockage) | une responsabilité par fichier ; `Settings` reste testable sans HTML |
 | — | `JobQueue.php` (base commune) ; `UrlCheckQueue` et `GeocodeQueue` en héritent | la file des URL a déjà le bon comportement (retrait avant traitement, écriture unique) |
 | Lignes masquées par `hidden` | `style="display:none"` | la console donne `display:flex` aux lignes, ce qui l'emporte sur `[hidden]` |
+| — | `JobQueue` relit l'option en base (purge du cache objet), libère son verrou dans un `finally`, planifie un passage de secours et impose `RETRY_DELAY` (correctifs de revue, tâche 3) | un ID perdu ou une file bloquée retirerait des offres de la carte |
+| — | Photon : un HTTP 400 persistant (même sans filtre) vaut « introuvable » | une offre au texte refusé bloquerait la file à chaque passage |
 
 Les autres ajustements (MapLibre 5.24.0, copie intégrale de la feuille, chemin Google du re-géocodage) sont déjà reportés dans la spécification.
 
@@ -715,6 +717,15 @@ $r = $geo->geocode( 'TRAPPES' );
 check( 'HTTP 400 : nouvel essai sans filtre', 2 === count( $urls ) && false === strpos( $urls[1], 'osm_tag' ) );
 check( 'repli : seuls les lieux sont gardés', is_array( $r ) && '48.7775' === $r['lat'] && 'Trappes' === $r['city'] );
 
+G2RD_Test_State::$http_responder = function () {
+	return array( 'response' => array( 'code' => 400 ), 'body' => '{"message":"bad"}' );
+};
+check( 'HTTP 400 même sans filtre : introuvable, pas une panne', null === $geo->geocode( 'Texte refusé' ) );
+G2RD_Test_State::$http_responder = function () {
+	return array( 'response' => array( 'code' => 503 ), 'body' => '' );
+};
+check( 'HTTP 503 : panne (WP_Error)', is_wp_error( $geo->geocode( 'Nantes' ) ) );
+
 list( $s ) = boot( array( 'photon_url' => 'https://photon.local/api/' ) );
 $geo = new PhotonGeocoder( $s );
 add_filter( 'g2rd_wpjm_geo_photon_allow_private_host', '__return_true' );
@@ -978,6 +989,11 @@ class PhotonGeocoder {
 		$code = (int) wp_remote_retrieve_response_code( $response );
 		if ( 400 === $code && $filtered ) {
 			return new \WP_Error( 'g2rd_photon_bad_request', 'Photon : HTTP 400' );
+		}
+		if ( 400 === $code ) {
+			// Refusé même sans filtre : propre à ce texte, traité comme introuvable
+			// (sinon l'offre bloquerait la file de géocodage à chaque passage).
+			return array();
 		}
 		if ( 200 !== $code ) {
 			return new \WP_Error( 'g2rd_photon_http', 'Photon : HTTP ' . $code );
