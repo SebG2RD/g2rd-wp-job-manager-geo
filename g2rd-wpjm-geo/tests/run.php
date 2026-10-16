@@ -282,7 +282,24 @@ check( 'sanitize : style http refusé, valeur précédente gardée, message', Se
 check( 'sanitize : URL Photon https acceptée', 'https://photon.mon-serveur.fr/api/' === $c['photon_url'] );
 $c = $s->sanitize( array() );
 check( 'sanitize : champs absents, valeurs par défaut sans message', 'google' === $c['provider'] && Settings::DEFAULT_PHOTON_URL === $c['photon_url'] && 1 === count( G2RD_Test_State::$errors ) );
+check( 'URL https en majuscules acceptée', '' !== Settings::https_url( 'HTTPS://photon.example.org/api/' ) );
+check( 'URL avec identifiants refusée', '' === Settings::https_url( 'https://user:secret@photon.example.org/api/' ) );
+check( 'URL avec utilisateur seul refusée', '' === Settings::https_url( 'https://user@photon.example.org/api/' ) );
+check( 'valeur non textuelle refusée', '' === Settings::https_url( array( 'https://photon.example.org/api/' ) ) );
+check( 'URL trop longue refusée', '' === Settings::https_url( 'https://photon.example.org/' . str_repeat( 'a', 2048 ) ) );
+list( $s ) = boot( array( 'photon_url' => 'https://photon.perso.fr/api/', 'osm_style_url' => 'https://tuiles.perso.fr/style' ) );
+G2RD_Test_State::$errors = array();
+$c = $s->sanitize( array( 'photon_url' => 'ftp://x', 'osm_style_url' => '' ) );
+check( 'sanitize : URL invalide, valeur personnalisée gardée, un message', 'https://photon.perso.fr/api/' === $c['photon_url'] && 1 === count( G2RD_Test_State::$errors ) );
+check( 'sanitize : champ vidé, style par défaut', Settings::DEFAULT_OSM_STYLE_URL === $c['osm_style_url'] );
+G2RD_Test_State::$errors = array();
+$c = $s->sanitize( array( 'photon_url' => array( 'https://a.test/' ) ) );
+check( 'sanitize : tableau refusé, valeur gardée, message', 'https://photon.perso.fr/api/' === $c['photon_url'] && 'invalid_photon_url' === G2RD_Test_State::$errors[0]['code'] );
+check( 'sanitize : champ absent, valeur personnalisée gardée', 'https://tuiles.perso.fr/style' === $c['osm_style_url'] );
+G2RD_Test_State::$errors = array();
+$again = $s->sanitize( $s->sanitize( array( 'provider' => 'osm', 'photon_url' => 'https://photon.perso.fr/api/' ) ) );
+check( 'sanitize idempotent, sans message', 'osm' === $again['provider'] && 'https://photon.perso.fr/api/' === $again['photon_url'] && 0 === count( G2RD_Test_State::$errors ) );
 
-$results = $GLOBALS['g2rd_results'];
+$results =$GLOBALS['g2rd_results'];
 echo PHP_EOL . sprintf( 'Résultat : %d réussis, %d échoués', $results['pass'], $results['fail'] ) . PHP_EOL;
 exit( $results['fail'] ? 1 : 0 );
