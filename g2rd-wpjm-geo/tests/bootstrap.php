@@ -37,6 +37,11 @@ namespace {
 		public static $dns6       = array(); // host => bool (AAAA).
 		public static $scheduled  = array();
 		public static $log_rows   = array();
+		public static $http_responder = null; // callable( $method, $url ) : réponse, ou null pour la réponse par défaut.
+		public static $doing_cron     = false;
+		public static $locale         = 'fr_FR';
+		public static $menus          = array();
+		public static $wpjm_geocode   = array(); // texte => tableau d'adresse renvoyé par WP_Job_Manager_Geocode::get_location_data().
 
 		public static function reset() {
 			self::$options    = array();
@@ -51,6 +56,11 @@ namespace {
 			self::$dns6       = array();
 			self::$scheduled  = array();
 			self::$log_rows   = array();
+			self::$http_responder = null;
+			self::$doing_cron     = false;
+			self::$locale         = 'fr_FR';
+			self::$menus          = array();
+			self::$wpjm_geocode   = array();
 		}
 	}
 
@@ -74,6 +84,28 @@ namespace {
 		public function insert( $table, $data ) {
 			G2RD_Test_State::$log_rows[] = $data;
 			return 1;
+		}
+	}
+	class WP_Job_Manager_Geocode {
+		public static function clear_location_data( $job_id ) {
+			foreach ( array_keys( isset( G2RD_Test_State::$meta[ $job_id ] ) ? G2RD_Test_State::$meta[ $job_id ] : array() ) as $key ) {
+				if ( 'geolocated' === $key || 0 === strpos( $key, 'geolocation_' ) ) {
+					unset( G2RD_Test_State::$meta[ $job_id ][ $key ] );
+				}
+			}
+		}
+		public static function save_location_data( $job_id, $address_data ) {
+			if ( is_array( $address_data ) && $address_data ) {
+				foreach ( $address_data as $key => $value ) {
+					if ( $value ) {
+						G2RD_Test_State::$meta[ $job_id ][ 'geolocation_' . $key ] = $value;
+					}
+				}
+				G2RD_Test_State::$meta[ $job_id ]['geolocated'] = 1;
+			}
+		}
+		public static function get_location_data( $raw_address ) {
+			return array_key_exists( $raw_address, G2RD_Test_State::$wpjm_geocode ) ? G2RD_Test_State::$wpjm_geocode[ $raw_address ] : new WP_Error( 'error', 'No results found' );
 		}
 	}
 	$GLOBALS['wpdb'] = new G2RD_Test_Wpdb();
@@ -208,6 +240,71 @@ namespace {
 	function add_settings_error( $setting, $code, $message, $type = 'error' ) {
 		G2RD_Test_State::$errors[] = array( 'code' => $code, 'type' => $type );
 	}
+	function remove_accents( $text ) {
+		return strtr(
+			(string) $text,
+			array(
+				'à' => 'a', 'â' => 'a', 'ä' => 'a', 'á' => 'a', 'ã' => 'a', 'ç' => 'c', 'é' => 'e', 'è' => 'e',
+				'ê' => 'e', 'ë' => 'e', 'î' => 'i', 'ï' => 'i', 'í' => 'i', 'ô' => 'o', 'ö' => 'o', 'ó' => 'o',
+				'ù' => 'u', 'û' => 'u', 'ü' => 'u', 'ú' => 'u', 'ÿ' => 'y', 'ñ' => 'n', 'À' => 'A', 'Â' => 'A',
+				'Ç' => 'C', 'É' => 'E', 'È' => 'E', 'Ê' => 'E', 'Î' => 'I', 'Ô' => 'O', 'Û' => 'U', 'Ü' => 'U',
+			)
+		);
+	}
+	function wp_remote_retrieve_body( $response ) {
+		return isset( $response['body'] ) ? $response['body'] : '';
+	}
+	function delete_post_meta( $id, $key ) {
+		unset( G2RD_Test_State::$meta[ $id ][ $key ] );
+		return true;
+	}
+	function wp_doing_cron() {
+		return G2RD_Test_State::$doing_cron;
+	}
+	function determine_locale() {
+		return G2RD_Test_State::$locale;
+	}
+	function esc_url_raw( $url, $protocols = null ) {
+		$url = trim( (string) $url );
+		if ( '' === $url ) {
+			return '';
+		}
+		$scheme = strtolower( (string) parse_url( $url, PHP_URL_SCHEME ) );
+		if ( is_array( $protocols ) && ! in_array( $scheme, $protocols, true ) ) {
+			return '';
+		}
+		return str_replace( ' ', '%20', $url );
+	}
+	function remove_filter( $hook, $callback, $priority = 10 ) {
+		if ( isset( G2RD_Test_State::$hooks[ $hook ][ $priority ] ) ) {
+			foreach ( G2RD_Test_State::$hooks[ $hook ][ $priority ] as $i => $entry ) {
+				if ( $entry[0] === $callback ) {
+					unset( G2RD_Test_State::$hooks[ $hook ][ $priority ][ $i ] );
+				}
+			}
+		}
+		return true;
+	}
+	function __return_true() {
+		return true;
+	}
+	function __return_false() {
+		return false;
+	}
+	function admin_url( $path = '' ) {
+		return 'https://example.test/wp-admin/' . $path;
+	}
+	function get_edit_post_link( $id, $context = 'display' ) {
+		return 'https://example.test/wp-admin/post.php?post=' . (int) $id . '&action=edit';
+	}
+	function add_menu_page( $page_title, $menu_title, $capability, $slug, $callback = '', $icon = '', $position = null ) {
+		G2RD_Test_State::$menus[] = array( 'type' => 'top', 'slug' => $slug, 'title' => $menu_title, 'icon' => $icon, 'position' => $position );
+		return 'toplevel_page_' . $slug;
+	}
+	function add_submenu_page( $parent, $page_title, $menu_title, $capability, $slug, $callback = '' ) {
+		G2RD_Test_State::$menus[] = array( 'type' => 'sub', 'parent' => $parent, 'slug' => $slug, 'title' => $menu_title );
+		return $parent . '_page_' . $slug;
+	}
 
 	// --- Transients et cron.
 	function get_transient( $key ) {
@@ -246,6 +343,12 @@ namespace {
 	}
 	function g2rd_test_http( $method, $url ) {
 		G2RD_Test_State::$http_calls[] = $method . ' ' . $url;
+		if ( is_callable( G2RD_Test_State::$http_responder ) ) {
+			$reply = call_user_func( G2RD_Test_State::$http_responder, $method, $url );
+			if ( null !== $reply ) {
+				return $reply;
+			}
+		}
 		if ( isset( G2RD_Test_State::$http[ $url ][ $method ] ) ) {
 			return G2RD_Test_State::$http[ $url ][ $method ];
 		}
