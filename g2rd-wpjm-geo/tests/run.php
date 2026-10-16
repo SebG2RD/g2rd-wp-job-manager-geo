@@ -440,6 +440,110 @@ $geo->geocode( 'Rouen' );
 check( 'Photon auto-hébergé : seul son hôte est autorisé pendant la requête', array( true, false ) === $during );
 check( 'autorisation retirée après la requête', false === apply_filters( 'http_request_host_is_external', false, 'photon.local' ) );
 
+// Clé de cache par segment, arrondissements, homonymes, textes vagues, erreurs, robustesse.
+check( 'clean : « Paris 15e » donne « Paris »', 'Paris' === PhotonGeocoder::clean( 'Paris 15e' ) );
+check( 'clean : « Lyon 1er » et « Marseille 13e Arrondissement »', 'Lyon' === PhotonGeocoder::clean( 'Lyon 1er' ) && 'Marseille' === PhotonGeocoder::clean( 'Marseille 13e Arrondissement' ) );
+check( 'clean : UTF-8 invalide, chaîne vide sans avertissement', '' === PhotonGeocoder::clean( "Lyon \xC3\x28" ) );
+check( 'normalize : St et Ste lus Saint et Sainte', 'saint etienne' === PhotonGeocoder::normalize( 'St-Étienne' ) && 'sainte genevieve des bois' === PhotonGeocoder::normalize( 'Ste-Geneviève-des-Bois' ) );
+check( 'normalize : accents combinants retirés', 'saint etienne' === PhotonGeocoder::normalize( "Saint-E\u{0301}tienne" ) );
+check( 'hint : département, code postal, Corse, outre-mer', '53' === PhotonGeocoder::hint( 'Laval (53)' ) && '75' === PhotonGeocoder::hint( '75008 Paris' ) && '20' === PhotonGeocoder::hint( 'Ajaccio (2A)' ) && '974' === PhotonGeocoder::hint( 'Saint-Denis (974)' ) && '' === PhotonGeocoder::hint( 'Lyon' ) );
+
+list( $s ) = boot();
+$geo  = new PhotonGeocoder( $s );
+$urls = array();
+G2RD_Test_State::$http_responder = function ( $method, $url ) use ( &$urls ) {
+	$urls[] = $url;
+	if ( false !== strpos( $url, 'q=Laval' ) ) {
+		return photon_reply(
+			array(
+				photon_feature( 'Laval', 'place', 'city', -73.75, 45.57, array( 'postcode' => 'H7T', 'country' => 'Canada', 'countrycode' => 'CA' ) ),
+				photon_feature( 'Laval', 'place', 'town', -0.77, 48.07, array( 'postcode' => '53000', 'country' => 'France', 'countrycode' => 'FR' ) ),
+			)
+		);
+	}
+	if ( false !== strpos( $url, 'q=Valence' ) ) {
+		return photon_reply(
+			array(
+				photon_feature( 'Valence', 'place', 'city', 4.89, 44.93, array( 'country' => 'France', 'countrycode' => 'FR' ) ),
+				photon_feature( 'Valence', 'place', 'city', -0.38, 39.47, array( 'country' => 'Espagne', 'countrycode' => 'ES' ) ),
+			)
+		);
+	}
+	if ( false !== strpos( $url, 'q=Paris' ) ) {
+		return photon_reply( array( photon_feature( 'Paris', 'place', 'city', 2.3522, 48.8566, array( 'country' => 'France', 'countrycode' => 'FR' ) ) ) );
+	}
+	if ( false !== strpos( $url, 'q=Lyon' ) ) {
+		return photon_reply( array( photon_feature( 'Lyon', 'amenity', 'bar', 2.35, 48.85 ) ) );
+	}
+	return photon_reply( array() );
+};
+$r = $geo->geocode( 'Laval (53)' );
+check( 'homonymes : le département saisi l’emporte', is_array( $r ) && '48.07' === $r['lat'] && 'FR' === $r['country_short'] );
+$r = $geo->geocode( 'Laval' );
+check( 'homonymes : sans indice, le pays du site (fr_FR) l’emporte', is_array( $r ) && 'FR' === $r['country_short'] );
+$r = $geo->geocode( 'Valence, Espagne' );
+check( 'homonymes : le pays cité dans le texte l’emporte', is_array( $r ) && 'ES' === $r['country_short'] );
+$before = count( $urls );
+check( '« Paris France » : premier segment différent, introuvable', null === $geo->geocode( 'Paris France' ) );
+$r = $geo->geocode( 'Paris, France' );
+check( '« Paris, France » : clé de cache distincte, trouvé', is_array( $r ) && '48.8566' === $r['lat'] && count( $urls ) === $before + 2 );
+$r = $geo->geocode( 'Paris 15e' );
+check( '« Paris 15e » : trouvé', is_array( $r ) && 'Paris' === $r['city'] );
+check( 'commerce renvoyé malgré le filtre : ignoré', null === $geo->geocode( 'Lyon' ) );
+$before = count( $urls );
+check( 'texte vague (Remote, Télétravail) : null sans requête', null === $geo->geocode( 'Remote' ) && null === $geo->geocode( 'Télétravail' ) && count( $urls ) === $before && $geo->last_was_cached() );
+check( 'écriture non latine : null sans requête', null === $geo->geocode( '東京' ) && count( $urls ) === $before );
+
+G2RD_Test_State::$http_responder = function () {
+	return array( 'response' => array( 'code' => 429 ), 'body' => '' );
+};
+$e = $geo->geocode( 'Nancy' );
+check( 'HTTP 429 : WP_Error g2rd_photon_http après un vrai appel', is_wp_error( $e ) && 'g2rd_photon_http' === $e->get_error_code() && false === $geo->last_was_cached() );
+G2RD_Test_State::$http_responder = function () {
+	return array( 'response' => array( 'code' => 200 ), 'body' => '<html>maintenance</html>' );
+};
+$e = $geo->geocode( 'Nancy' );
+check( 'HTML au lieu de JSON : g2rd_photon_invalid', is_wp_error( $e ) && 'g2rd_photon_invalid' === $e->get_error_code() );
+G2RD_Test_State::$http_responder = function ( $method, $url ) {
+	if ( false !== strpos( $url, 'osm_tag' ) ) {
+		return array( 'response' => array( 'code' => 400 ), 'body' => '' );
+	}
+	return array( 'response' => array( 'code' => 400 ), 'body' => '{"message":"Language is not supported. Supported are: default, en, de, fr"}' );
+};
+$e = $geo->geocode( 'Nancy' );
+check( 'HTTP 400 sur la langue : erreur de configuration, pas « introuvable »', is_wp_error( $e ) && 'g2rd_photon_config' === $e->get_error_code() );
+G2RD_Test_State::$http_responder = function () {
+	return photon_reply( array( photon_feature( 'Greenwich', 'place', 'village', 0.00001, 51.4769, array( 'state' => str_repeat( 'a', 500 ) ) ) ) );
+};
+$r = $geo->geocode( 'Greenwich' );
+check( 'coordonnée proche de zéro en notation décimale', is_array( $r ) && '0.00001' === $r['long'] );
+check( 'champs tronqués à 200 caractères', is_array( $r ) && 200 === strlen( $r['state_long'] ) );
+G2RD_Test_State::$http_responder = function () {
+	return array( 'response' => array( 'code' => 200 ), 'body' => json_encode( array( 'features' => array( array( 'geometry' => array( 'coordinates' => array( 'a' => 1, 'b' => 2 ) ), 'properties' => array( 'name' => 'Metz', 'osm_key' => 'place', 'osm_value' => 'city' ) ) ) ) ) );
+};
+check( 'coordonnées mal formées : introuvable, sans avertissement', null === $geo->geocode( 'Metz' ) );
+G2RD_Test_State::$locale         = 'en_US';
+G2RD_Test_State::$http_responder = function () {
+	return photon_reply( array() );
+};
+$geo->geocode( 'Caen' );
+check( 'langue du site : en_US donne lang=en', false !== strpos( end( G2RD_Test_State::$http_calls ), '&lang=en' ) );
+
+list( $s ) = boot( array( 'photon_url' => 'https://photon.local/api/#ancre' ) );
+$geo = new PhotonGeocoder( $s );
+add_filter( 'g2rd_wpjm_geo_photon_allow_private_host', '__return_true' );
+G2RD_Test_State::$http_responder = function () {
+	throw new \RuntimeException( 'filtre tiers en erreur' );
+};
+$thrown = false;
+try {
+	$geo->geocode( 'Rouen' );
+} catch ( \RuntimeException $e ) {
+	$thrown = true;
+}
+check( 'exception pendant la requête : autorisation d’hôte retirée quand même', $thrown && false === apply_filters( 'http_request_host_is_external', false, 'photon.local' ) );
+check( 'fragment retiré de l’URL Photon', 0 === strpos( end( G2RD_Test_State::$http_calls ), 'GET https://photon.local/api/?q=Rouen' ) );
+
 $results = $GLOBALS['g2rd_results'];
 echo PHP_EOL . sprintf( 'Résultat : %d réussis, %d échoués', $results['pass'], $results['fail'] ) . PHP_EOL;
 exit( $results['fail'] ? 1 : 0 );

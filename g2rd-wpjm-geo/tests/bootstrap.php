@@ -263,6 +263,13 @@ namespace {
 	function determine_locale() {
 		return G2RD_Test_State::$locale;
 	}
+	function get_locale() {
+		return G2RD_Test_State::$locale;
+	}
+	function wp_check_invalid_utf8( $text, $strip = false ) {
+		$text = (string) $text;
+		return ( '' === $text || 1 === preg_match( '/^./us', $text ) ) ? $text : '';
+	}
 	function esc_url_raw( $url, $protocols = null ) {
 		$url = trim( (string) $url );
 		if ( '' === $url ) {
