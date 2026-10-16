@@ -2668,9 +2668,11 @@ G2RD_Test_State::$http_responder = function ( $method, $url ) {
 	}
 	return photon_reply( array() );
 };
-$run = $tool->handle( 'run', 0, $rows );
-$st  = array_column( $run['rows'], 'status', 'id' );
+$before = $sleeps;
+$run    = $tool->handle( 'run', 0, $rows );
+$st     = array_column( $run['rows'], 'status', 'id' );
 check( 'exécution : Rouen et Brest écrits, IDF non trouvée', 'done' === $st[300] && 'done' === $st[303] && 'not_found' === $st[302] && true === $run['done'] );
+check( 'exécution : pause seulement après un vrai appel (Brest), pas sur le cache (Rouen, IDF)', 1 === $sleeps - $before );
 check( 'exécution : coordonnées libres et source osm', '49.4432' === G2RD_Test_State::$meta[300]['geolocation_lat'] && 'osm' === G2RD_Test_State::$meta[300][ $src ] && 'osm' === G2RD_Test_State::$meta[303][ $src ] );
 check( 'exécution : offre non trouvée laissée intacte', '1.5' === G2RD_Test_State::$meta[302]['geolocation_lat'] );
 check( 'exécution : curseur sur la dernière offre traitée', 303 === $run['cursor'] );
@@ -2694,6 +2696,21 @@ $run = $tool->handle( 'run', 0, $grows );
 $st  = array_column( $run['rows'], 'status', 'id' );
 check( 'Google, exécution : Paris géocodée par WPJM, source google', 'done' === $st[310] && 'google' === G2RD_Test_State::$meta[310][ $src ] && '48.85' === G2RD_Test_State::$meta[310]['geolocation_lat'] );
 check( 'Google, exécution : échec de géocodage listé, offre intacte', 'not_found' === $st[311] && 'osm' === G2RD_Test_State::$meta[311][ $src ] );
+foreach ( array( 312 => 'Lyon', 313 => ',' ) as $id => $loc ) {
+	G2RD_Test_State::$post_types[ $id ]            = 'job_listing';
+	G2RD_Test_State::$meta[ $id ]['_job_location'] = $loc;
+	G2RD_Test_State::$meta[ $id ]['geolocated']    = 1;
+	G2RD_Test_State::$meta[ $id ][ $src ]          = 'osm';
+}
+$lyon = array( array( 'id' => '312', 'location' => 'Lyon', 'source' => 'osm', 'geolocated' => '1' ) );
+G2RD_Test_State::$wpjm_geocode['Lyon'] = new WP_Error( 'error', 'Geocoding error' );
+$run = $tool->handle( 'run', 0, $lyon );
+check( 'Google, clé refusée ou panne : erreur et arrêt, offre intacte', 'error' === $run['rows'][0]['status'] && true === $run['stopped'] && 'osm' === G2RD_Test_State::$meta[312][ $src ] );
+G2RD_Test_State::$wpjm_geocode['Lyon'] = false;
+$run = $tool->handle( 'run', 0, $lyon );
+check( 'Google, quota mémorisé ou géocodage coupé : erreur et arrêt', 'error' === $run['rows'][0]['status'] && true === $run['stopped'] );
+$run = $tool->handle( 'run', 0, array( array( 'id' => '313', 'location' => ',', 'source' => 'osm', 'geolocated' => '1' ) ) );
+check( 'localisation sans rien de géocodable : non trouvée, sans arrêt', 'not_found' === $run['rows'][0]['status'] && false === $run['stopped'] );
 ```
 
 Dans `tests/bootstrap.php`, ajouter `'RegeocodeTool'` à la fin de la liste des classes.
@@ -2730,6 +2747,7 @@ class RegeocodeTool {
 	const AJAX_ACTION  = 'g2rd_wpjm_geo_regeocode';
 	const NONCE_ACTION = 'g2rd_wpjm_geo_regeocode';
 	const BATCH        = 5;
+	const TIME_BUDGET  = 20; // Secondes par requête AJAX.
 
 	/**
 	 * Réglages.
@@ -2871,7 +2889,12 @@ class RegeocodeTool {
 		if ( ! in_array( $task, array( 'analyze', 'simulate', 'run' ), true ) ) {
 			wp_send_json_error( array( 'message' => __( 'Tâche inconnue.', 'g2rd-wpjm-geo' ) ), 400 );
 		}
-		wp_send_json_success( $this->handle( $task, $cursor, self::rows() ) );
+		$result = $this->handle( $task, $cursor, self::rows() );
+		if ( 'run' === $task && $result['rows'] ) {
+			// Compteurs relus après les écritures du lot : sinon le dernier lot affiche un reste périmé.
+			$result['summary'] = array_diff_key( self::summarize( self::rows(), $this->settings->get_provider() ), array( 'todo_ids' => true ) );
+		}
+		wp_send_json_success( $result );
 	}
 
 	/**
@@ -2902,7 +2925,12 @@ class RegeocodeTool {
 		);
 		$results = array();
 		$stopped = false;
+		$start   = microtime( true );
 		foreach ( array_slice( $ids, 0, self::BATCH ) as $id ) {
+			if ( $results && microtime( true ) - $start > self::TIME_BUDGET ) {
+				// Requête AJAX courte : la suite au lot suivant.
+				break;
+			}
 			$cursor    = $id;
 			$row       = $this->process( $id, 'run' === $task, $provider );
 			$results[] = $row;
@@ -2917,7 +2945,7 @@ class RegeocodeTool {
 			'summary' => $public,
 			'rows'    => $results,
 			'cursor'  => $cursor,
-			'done'    => $stopped || count( $ids ) <= self::BATCH,
+			'done'    => $stopped || count( $results ) >= count( $ids ),
 			'stopped' => $stopped,
 		);
 	}
@@ -2939,6 +2967,11 @@ class RegeocodeTool {
 			'status'   => '',
 			'edit'     => (string) get_edit_post_link( $job_id, 'raw' ),
 		);
+		if ( '' === trim( str_replace( array( ',', '?', '&', '=', '#' ), '', $location ) ) ) {
+			// Rien de géocodable : listée « Non trouvée », sans arrêter le traitement.
+			$row['status'] = 'not_found';
+			return $row;
+		}
 
 		if ( Settings::PROVIDER_OSM === $provider ) {
 			$result = $this->geocoder->geocode( $location );
@@ -2951,12 +2984,18 @@ class RegeocodeTool {
 			return $row;
 		} else {
 			$data = class_exists( 'WP_Job_Manager_Geocode' ) ? \WP_Job_Manager_Geocode::get_location_data( $location ) : false;
+			// Message exact de WP Job Manager pour ZERO_RESULTS (même domaine, même traduction) ; tout autre
+			// WP_Error vient d'une clé refusée, d'un quota ou du réseau.
+			$zero = __( 'No results found', 'wp-job-manager' ); // phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
 			if ( is_array( $data ) && $data ) {
 				$result = $data;
+			} elseif ( is_wp_error( $data ) && $zero === $data->get_error_message() ) {
+				$result = null; // Aucun résultat chez Google : offre listée « Non trouvée ».
 			} elseif ( is_wp_error( $data ) ) {
-				$result = null; // Pas de résultat chez Google : offre listée « Non trouvée ».
+				/* translators: %s: WP Job Manager error message. */
+				$result = new \WP_Error( 'g2rd_geocode_unavailable', sprintf( __( 'Géocodage Google en échec (clé refusée, quota ou réseau) : %s', 'g2rd-wpjm-geo' ), $data->get_error_message() ) );
 			} else {
-				$result = new \WP_Error( 'g2rd_geocode_unavailable', __( 'Géocodage Google indisponible (clé absente ou quota atteint).', 'g2rd-wpjm-geo' ) );
+				$result = new \WP_Error( 'g2rd_geocode_unavailable', __( 'Géocodage Google indisponible (quota atteint ou géocodage désactivé).', 'g2rd-wpjm-geo' ) );
 			}
 		}
 
@@ -3171,15 +3210,21 @@ Expected: section 20 en `[OK]`, `0 échoués`.
 				body.append( 'cursor', String( cursor ) );
 				return window.fetch( root.getAttribute( 'data-ajax-url' ), { method: 'POST', credentials: 'same-origin', body: body } )
 					.then( function ( response ) {
-						if ( ! response.ok ) {
-							throw new Error( 'HTTP ' + response.status );
-						}
-						return response.json();
+						// Le corps JSON porte le message du serveur, même en erreur HTTP (droits insuffisants, tâche inconnue).
+						return response.json().then( function ( payload ) {
+							return payload;
+						}, function () {
+							return null;
+						} ).then( function ( payload ) {
+							if ( ! response.ok || ! payload || ! payload.success ) {
+								var error = new Error( 'HTTP ' + response.status );
+								error.serverMessage = ( payload && payload.data && 'string' === typeof payload.data.message ) ? payload.data.message : '';
+								throw error;
+							}
+							return payload;
+						} );
 					} )
 					.then( function ( payload ) {
-						if ( ! payload || ! payload.success ) {
-							throw new Error( 'payload' );
-						}
 						var data = payload.data;
 						renderSummary( data.summary || {} );
 						appendRows( data.rows || [] );
@@ -3196,8 +3241,8 @@ Expected: section 20 en `[OK]`, `0 échoués`.
 					} );
 			}
 
-			step( 0 ).catch( function () {
-				statusEl.textContent = i18n.error || '';
+			step( 0 ).catch( function ( error ) {
+				statusEl.textContent = ( error && error.serverMessage ) || i18n.error || '';
 				setBusy( false );
 			} );
 		}
