@@ -1,0 +1,35 @@
+name: g2rdgeo-test
+services:
+  db:
+    image: mariadb:11
+    environment: { MARIADB_DATABASE: wp, MARIADB_USER: wp, MARIADB_PASSWORD: wp, MARIADB_ROOT_PASSWORD: root }
+    healthcheck: { test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"], interval: 3s, retries: 30 }
+  wp:
+    image: wordpress:6-php8.2-apache
+    depends_on: { db: { condition: service_healthy } }
+    ports: ["8899:80"]
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_USER: wp
+      WORDPRESS_DB_PASSWORD: wp
+      WORDPRESS_DB_NAME: wp
+      WORDPRESS_DEBUG: "1"
+      WORDPRESS_CONFIG_EXTRA: |
+        define( 'WP_DEBUG_LOG', true );
+        define( 'WP_DEBUG_DISPLAY', false );
+        define( 'DISABLE_WP_CRON', true );
+    volumes: &mounts
+      - wpdata:/var/www/html
+      - "../../g2rd-wpjm-geo:/var/www/html/wp-content/plugins/g2rd-wpjm-geo:ro"
+      - "./plugins/wp-job-manager:/var/www/html/wp-content/plugins/wp-job-manager:ro"
+      - "./plugins/go-fetch-jobs-wp-job-manager:/var/www/html/wp-content/plugins/go-fetch-jobs-wp-job-manager:ro"
+      - "${G2RD_THEME_DIR:-../../../G2RD-theme}:/var/www/html/wp-content/themes/g2rd-theme:ro"
+  cli:
+    image: wordpress:cli-php8.2
+    user: "33:33"
+    depends_on: [wp]
+    environment: { WORDPRESS_DB_HOST: db, WORDPRESS_DB_USER: wp, WORDPRESS_DB_PASSWORD: wp, WORDPRESS_DB_NAME: wp }
+    volumes: *mounts
+    entrypoint: ["sleep", "infinity"]
+volumes:
+  wpdata:
