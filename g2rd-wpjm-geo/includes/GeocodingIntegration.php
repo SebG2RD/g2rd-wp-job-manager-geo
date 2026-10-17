@@ -150,8 +150,8 @@ class GeocodingIntegration {
 	/**
 	 * Mode libre : géocode la nouvelle localisation.
 	 *
-	 * @param int    $job_id   ID de l'offre.
-	 * @param string $location Nouvelle localisation.
+	 * @param int   $job_id   ID de l'offre.
+	 * @param mixed $location Nouvelle localisation (transmise par le hook de WP Job Manager).
 	 * @return void
 	 */
 	public function on_location_edited( $job_id, $location ) {
@@ -203,9 +203,9 @@ class GeocodingIntegration {
 	/**
 	 * Remplace les coordonnées d'une offre par les méthodes publiques de WP Job Manager.
 	 *
-	 * @param int        $job_id  ID de l'offre.
-	 * @param array|null $address Adresse au format WPJM, ou null pour seulement effacer.
-	 * @param string     $source  Fournisseur ayant produit l'adresse.
+	 * @param int                      $job_id  ID de l'offre.
+	 * @param array<string,mixed>|null $address Adresse au format WPJM, ou null pour seulement effacer.
+	 * @param string                   $source  Fournisseur ayant produit l'adresse.
 	 * @return bool false si WP Job Manager est absent.
 	 */
 	public static function write( $job_id, $address, $source ) {

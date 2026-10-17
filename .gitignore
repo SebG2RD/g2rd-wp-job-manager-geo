@@ -1,5 +1,25 @@
+# Artefacts de build
 g2rd-wpjm-geo.zip
+dist/
+
+# Dépendances installées (versions figées par composer.lock et tools/jsdom/package-lock.json)
+vendor/
 node_modules/
-tools/jsdom/
+
+# Environnement Docker local de vérification
 tools/docker/plugins/
 tools/docker/cookies.txt
+
+# Secrets et configuration locale (aucun n'est attendu dans ce dépôt)
+.env
+.env.*
+auth.json
+*.pem
+*.key
+
+# Fichiers d'éditeur et de système
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db

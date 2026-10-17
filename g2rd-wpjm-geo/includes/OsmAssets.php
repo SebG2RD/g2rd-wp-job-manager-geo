@@ -59,7 +59,7 @@ class OsmAssets {
 	/**
 	 * Configuration transmise au navigateur.
 	 *
-	 * @return array
+	 * @return array<string,string|array<string,string>>
 	 */
 	public function config() {
 		$vendor = G2RD_WPJM_GEO_URL . 'assets/vendor/maplibre-gl/';

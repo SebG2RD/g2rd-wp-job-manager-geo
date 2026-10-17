@@ -73,7 +73,7 @@ class RegeocodeTool {
 	/**
 	 * Offres à localisation renseignée (hors corbeille et brouillons automatiques).
 	 *
-	 * @return array[] Lignes id, status, location, source, geolocated.
+	 * @return array<int,array<string,string|null>> Lignes id, status, location, source, geolocated.
 	 */
 	public static function rows() {
 		global $wpdb;
@@ -100,9 +100,9 @@ class RegeocodeTool {
 	/**
 	 * Résumé par source.
 	 *
-	 * @param array  $rows     Lignes de rows().
-	 * @param string $provider Fournisseur actif.
-	 * @return array total, google, osm, none, shown, todo, todo_ids, todo_keys.
+	 * @param array<int,array<string,string|null>> $rows     Lignes de rows().
+	 * @param string                               $provider Fournisseur actif.
+	 * @return array{total:int,google:int,osm:int,none:int,shown:int,todo:int,todo_ids:list<int>,todo_keys:list<int>}
 	 */
 	public static function summarize( array $rows, $provider ) {
 		$summary = array(
@@ -161,7 +161,7 @@ class RegeocodeTool {
 	 * Résumé pour le fournisseur actif (bandeau de la page).
 	 *
 	 * @param string $provider Fournisseur actif.
-	 * @return array
+	 * @return array{total:int,google:int,osm:int,none:int,shown:int,todo:int,todo_ids:list<int>,todo_keys:list<int>}
 	 */
 	public static function stats( $provider ) {
 		return self::summarize( self::rows(), $provider );
@@ -186,7 +186,13 @@ class RegeocodeTool {
 		$result = $this->handle( $task, $cursor, self::rows() );
 		if ( 'run' === $task && $result['rows'] ) {
 			// Compteurs relus après les écritures du lot : sinon le dernier lot affiche un reste périmé.
-			$result['summary'] = array_diff_key( self::summarize( self::rows(), $this->settings->get_provider() ), array( 'todo_ids' => true, 'todo_keys' => true ) );
+			$result['summary'] = array_diff_key(
+				self::summarize( self::rows(), $this->settings->get_provider() ),
+				array(
+					'todo_ids' => true,
+					'todo_keys' => true,
+				)
+			);
 		}
 		wp_send_json_success( $result );
 	}
@@ -194,18 +200,30 @@ class RegeocodeTool {
 	/**
 	 * Traite un lot.
 	 *
-	 * @param string $task   analyze, simulate ou run.
-	 * @param int    $cursor Dernier ID traité.
-	 * @param array  $rows   Lignes de rows().
-	 * @return array summary, rows, cursor, done, stopped.
+	 * @param string                               $task   analyze, simulate ou run.
+	 * @param int                                  $cursor Dernier ID traité.
+	 * @param array<int,array<string,string|null>> $rows   Lignes de rows().
+	 * @return array<string,mixed> summary, rows, cursor, done, stopped.
 	 */
 	public function handle( $task, $cursor, array $rows ) {
 		$provider = $this->settings->get_provider();
 		$summary  = self::summarize( $rows, $provider );
-		$public   = array_diff_key( $summary, array( 'todo_ids' => true, 'todo_keys' => true ) );
+		$public   = array_diff_key(
+			$summary,
+			array(
+				'todo_ids' => true,
+				'todo_keys' => true,
+			)
+		);
 
 		if ( 'analyze' === $task ) {
-			return array( 'summary' => $public, 'rows' => array(), 'cursor' => 0, 'done' => true, 'stopped' => false );
+			return array(
+				'summary' => $public,
+				'rows' => array(),
+				'cursor' => 0,
+				'done' => true,
+				'stopped' => false,
+			);
 		}
 
 		$cursor  = absint( $cursor );
@@ -251,7 +269,7 @@ class RegeocodeTool {
 	 * @param int    $job_id   ID de l'offre.
 	 * @param bool   $write    Écrire le résultat.
 	 * @param string $provider Fournisseur actif.
-	 * @return array id, location, result, status (ok|done|not_found|error|pending), edit.
+	 * @return array{id:int,location:string,result:string,status:string,edit:string} Statut : ok|done|not_found|error|pending.
 	 */
 	private function process( $job_id, $write, $provider ) {
 		$location = trim( (string) get_post_meta( $job_id, '_job_location', true ) );

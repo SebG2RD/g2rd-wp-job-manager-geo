@@ -98,7 +98,7 @@ class GoogleAssets {
 	 * Configuration transmise au chargeur. Seule la clé « navigateur » du
 	 * plugin est exposée ; la clé de géocodage de WP Job Manager ne l'est jamais.
 	 *
-	 * @return array
+	 * @return array<string,string>
 	 */
 	private function loader_config() {
 		$locale = function_exists( 'determine_locale' ) ? determine_locale() : get_locale();

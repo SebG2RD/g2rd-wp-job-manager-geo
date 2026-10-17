@@ -72,7 +72,11 @@ async function map({ mapId, clustering, data, restFail, nonce }) {
   return { w, st, el: w.document.querySelector('.g2rd-wpjm-geo-map'), status: w.document.querySelector('.g2rd-wpjm-geo-map__status') };
 }
 
-async function osmMap({ data, clustering = true, noWebgl = false, styleFail = false, restFail = false, preload = true, admin = '' }) {
+// Attribution d'un style tiers : crédits réels mêlés à du balisage hostile (le plugin ne doit garder que du texte et des liens https).
+const HOSTILE_ATTRIBUTION = '<a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> <a href="https://www.openmaptiles.org/" target="_blank">&copy; OpenMapTiles</a> Data from <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>'
+  + '<img src="x" onerror="window.pwned=1"><iframe srcdoc="<b>cadre</b>"></iframe><a href="javascript:window.pwned=2">piege</a><b data-poc="1" onmouseover="window.pwned=3">gras</b>';
+
+async function osmMap({ data, clustering = true, noWebgl = false, styleFail = false, restFail = false, preload = true, admin = '', narrow = false }) {
   const i18n = JSON.stringify({ loading: 'Chargement', error: 'ERREUR', empty: 'VIDE', view: 'Voir offre', manyJobs: '%d offres ici', regeocode: 'Re-geocoder', places: 'Liste' }).replace(/"/g, '&quot;');
   const html = '<div class="g2rd-wpjm-geo-map" data-rest-url="https://x.test/wp-json/g2rd-wpjm-geo/v1/jobs" data-per-page="4" data-clustering="' + (clustering ? 1 : 0) + '" data-admin-url="' + admin + '" data-nonce="" data-i18n="' + i18n + '"><div class="g2rd-wpjm-geo-map__canvas"></div><p class="g2rd-wpjm-geo-map__status">Chargement</p></div>';
   const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://x.test/' });
@@ -85,10 +89,14 @@ async function osmMap({ data, clustering = true, noWebgl = false, styleFail = fa
       this.touchZoomRotate = { disableRotation: () => {} };
       this.touchPitch = { disable: () => {} };
     }
-    addControl(c) { st.controls.push(c.kind); return this; }
+    addControl(c, pos) {
+      st.controls.push(c.kind || (typeof c.onAdd === 'function' ? 'attrib' : '?'));
+      if (typeof c.onAdd === 'function') { st.attribNode = c.onAdd(this); st.attribPos = pos; }
+      return this;
+    }
     on(ev, a, b) { const k = b ? ev + ':' + a : ev; (this.events[k] = this.events[k] || []).push(b || a); }
     fire(k, arg) { (this.events[k] || []).forEach(f => f(arg)); }
-    getStyle() { return { layers: [
+    getStyle() { return { sources: { openmaptiles: { type: 'vector', url: 'https://tiles.openfreemap.org/planet' } }, layers: [
       { id: 'place-label', type: 'symbol', layout: { 'text-field': ['get', 'name'], 'text-font': ['Noto Sans Regular'] } },
       { id: 'road-ref', type: 'symbol', layout: { 'text-field': ['get', 'ref'], 'text-font': ['Noto Sans Bold'] } },
       { id: 'water', type: 'fill' }
@@ -96,7 +104,7 @@ async function osmMap({ data, clustering = true, noWebgl = false, styleFail = fa
     setLayoutProperty(id, prop, value) { st.layout.push({ id, prop, value }); }
     addSource(id, s) { st.sources[id] = s; }
     addLayer(l) { st.layers.push(l); }
-    getSource() { return { getClusterExpansionZoom: () => Promise.resolve(7) }; }
+    getSource(id) { return id === 'openmaptiles' ? { attribution: HOSTILE_ATTRIBUTION } : { getClusterExpansionZoom: () => Promise.resolve(7) }; }
     easeTo(o) { st.ease = o; }
     fitBounds(b, o) { st.fit = { b, o }; }
     jumpTo(o) { st.jump = o; }
@@ -110,6 +118,7 @@ async function osmMap({ data, clustering = true, noWebgl = false, styleFail = fa
   if (preload) w.maplibregl = fake;
   w.WebGL2RenderingContext = noWebgl ? undefined : function () {};
   w.HTMLCanvasElement.prototype.getContext = function () { return noWebgl ? null : {}; };
+  if (narrow) w.innerWidth = 600;
   w.g2rdWpjmGeoOsm = { styleUrl: 'https://tiles.openfreemap.org/styles/liberty', maplibreJs: 'https://x.test/vendor/maplibre-gl.js', maplibreCss: 'https://x.test/vendor/maplibre-gl.css', language: 'fr', locale: { 'Popup.Close': 'Fermer', 'Map.Title': '' } };
   w.IntersectionObserver = undefined;
   w.fetch = (url) => {
@@ -363,8 +372,22 @@ async function photonAc({ status400 = false, fail = false, slowFirst = false, re
   check('MapLibre charge a la demande depuis le plugin (script et feuille)', o.st.injected.script && o.st.injected.css && !!o.st.map);
   o = await osmMap({ data: jobs });
   check('interface MapLibre traduite, valeurs vides retirees', 'Fermer' === o.st.mapOpts.locale['Popup.Close'] && !('Map.Title' in o.st.mapOpts.locale));
-  check('attribution conservee (obligation OpenStreetMap)', false !== o.st.mapOpts.attributionControl);
-  check('boutons de zoom et plein ecran, sans rotation', 'nav,full' === o.st.controls.join() && true === o.st.noRotate);
+  check('attribution native de MapLibre desactivee (elle passe par innerHTML)', false === o.st.mapOpts.attributionControl);
+  const at = o.st.attribNode;
+  const links = at ? Array.from(at.querySelectorAll('a')) : [];
+  check('attribution rendue par le plugin : credits du style en texte (obligation OpenStreetMap)', !!at && /OpenFreeMap/.test(at.textContent) && /OpenMapTiles/.test(at.textContent) && /OpenStreetMap/.test(at.textContent));
+  check('attribution : seuls les liens http(s) du style sont conserves (javascript: retire)', 3 === links.length && links.every(a => a.href.indexOf('https://') === 0 && a.rel.indexOf('noopener') !== -1));
+  check('attribution : aucun balisage du style (img, iframe, gras, gestionnaires) ni lien javascript:', !!at && 0 === at.querySelectorAll('img,iframe,b,script').length && !/javascript:|onerror|onmouseover|srcdoc/i.test(at.innerHTML) && !o.w.pwned);
+  check('boutons de zoom et plein ecran, sans rotation, attribution en bas a droite', 'nav,full,attrib' === o.st.controls.join() && true === o.st.noRotate && 'bottom-right' === o.st.attribPos);
+  check('grand ecran : attribution deployee, sans bouton', !!at && !at.classList.contains('maplibregl-compact') && !at.querySelector('button'));
+  const narrowMap = await osmMap({ data: jobs, narrow: true });
+  const nAt = narrowMap.st.attribNode;
+  const nBtn = nAt ? nAt.querySelector('button.maplibregl-ctrl-attrib-button') : null;
+  check('petit ecran : attribution compacte avec bouton nomme', !!nAt && nAt.classList.contains('maplibregl-compact') && !!nBtn && 'button' === nBtn.type && !!nBtn.getAttribute('aria-label'));
+  if (nBtn) nBtn.click();
+  const shown = !!nAt && nAt.classList.contains('maplibregl-compact-show');
+  if (nBtn) nBtn.click();
+  check('petit ecran : le bouton affiche puis masque les credits', shown && !nAt.classList.contains('maplibregl-compact-show'));
   const places = o.w.document.querySelector('.g2rd-wpjm-geo-map + .g2rd-wpjm-geo-map__places');
   check('liste des offres sous la carte, pour le clavier', !!places && 'Liste' === places.querySelector('summary').textContent && places.children.length > 1);
   o = await osmMap({ data: jobs, styleFail: true });

@@ -1,0 +1,135 @@
+name: CI
+
+# Tests + lint + analyse statique, sur push et PR. Adapté du CI de
+# g2rd-facturation / g2rd-connector : job detect-changes, puis job PHP en
+# matrice (harnais maison g2rd-wpjm-geo/tests/run.php, sans PHPUnit) et job JS
+# (harnais jsdom g2rd-wpjm-geo/tests/js/run.js). Le plugin vit dans le
+# sous-dossier g2rd-wpjm-geo/ ; l'outillage de dev est à la racine.
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  detect-changes:
+    name: Detect changed paths
+    runs-on: ubuntu-latest
+    outputs:
+      php: ${{ steps.filter.outputs.php }}
+      js: ${{ steps.filter.outputs.js }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: filter
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            BASE="$PR_BASE"
+            HEAD="$PR_HEAD"
+          else
+            BASE="$PUSH_BEFORE"
+            HEAD="$PUSH_SHA"
+            if [ "$BASE" = "0000000000000000000000000000000000000000" ] || [ -z "$BASE" ]; then
+              BASE="${HEAD}^"
+            fi
+          fi
+          echo "Comparing $BASE..$HEAD"
+          # Diff impossible (premier commit, historique réécrit) : les deux jobs tournent.
+          CHANGED="$(git diff --name-only "$BASE" "$HEAD" 2>/dev/null || printf 'g2rd-wpjm-geo/includes/\ng2rd-wpjm-geo/assets/js/\n')"
+          echo "$CHANGED"
+          if echo "$CHANGED" | grep -qE '^(g2rd-wpjm-geo/(includes/|tests/|blocks/|g2rd-wpjm-geo\.php|uninstall\.php)|tools/phpstan-bootstrap\.php|composer\.(json|lock)|phpcs\.xml\.dist|phpcs-security\.xml|phpstan\.neon\.dist|\.github/workflows/ci\.yml$)'; then
+            echo "php=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "php=false" >> "$GITHUB_OUTPUT"
+          fi
+          if echo "$CHANGED" | grep -qE '^(g2rd-wpjm-geo/(assets/js/|tests/js/)|tools/jsdom/package(-lock)?\.json$|\.github/workflows/ci\.yml$)'; then
+            echo "js=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "js=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  php:
+    name: PHP ${{ matrix.php }}
+    needs: detect-changes
+    if: needs.detect-changes.outputs.php == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Requires PHP: 7.4 (en-tête du plugin) ; le site cible tourne en 8.4.
+        php: ['7.4', '8.0', '8.1', '8.2', '8.3', '8.4']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mbstring, zip
+          ini-values: memory_limit=1G, error_reporting=-1, display_errors=On
+          coverage: none
+          tools: composer:v2
+
+      - name: Validate composer.json
+        run: composer validate --strict --no-check-publish
+
+      - name: Install dependencies (dev tooling only, versions du composer.lock)
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Tests (harnais PHP)
+        run: composer run test
+
+      - name: PHPCS (WordPress Coding Standards)
+        if: matrix.php == '8.2'
+        run: composer run lint
+
+      - name: PHPStan
+        if: matrix.php == '8.2'
+        run: composer run analyse
+
+      - name: Composer audit
+        if: matrix.php == '8.2'
+        run: composer audit --abandoned=report
+        continue-on-error: true
+
+  js:
+    name: JS (jsdom)
+    needs: detect-changes
+    if: needs.detect-changes.outputs.js == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+
+      - name: Install jsdom (version et empreintes du package-lock.json, sans scripts)
+        run: npm ci --prefix tools/jsdom --ignore-scripts --no-audit --no-fund
+
+      - name: Tests JS (harnais jsdom)
+        env:
+          NODE_PATH: tools/jsdom/node_modules
+        run: node g2rd-wpjm-geo/tests/js/run.js

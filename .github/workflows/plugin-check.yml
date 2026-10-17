@@ -1,0 +1,143 @@
+name: Plugin Check
+
+# Plugin Check officiel de WordPress.org à chaque push/PR, via WP-CLI (même
+# approche que g2rd-facturation / g2rd-connector). Le plugin est vérifié tel
+# qu'il est livré : construit par tools/build-zip.php, puis installé à côté de
+# WP Job Manager (dépendance fonctionnelle). Gate sur les ERREURS uniquement.
+#
+# Codes ignorés volontairement : ce plugin est distribué hors de WordPress.org
+# (release GitHub), les règles propres à l'annuaire ne s'appliquent pas.
+# - outdated_tested_upto_header : « Tested up to » n'est relevé qu'après un
+#   test réel sur la nouvelle version de WordPress (l'activation sur la
+#   dernière version est déjà vérifiée ici et dans release.yml).
+# - readme_description_non_official_language : le readme est volontairement en
+#   français (site francophone, distribution hors annuaire).
+# - plugin_updater_detected : déclenché par l'en-tête « Update URI », interdit aux
+#   seuls plugins hébergés sur l'annuaire. Ici il est voulu : il empêche WordPress
+#   de demander mises à jour et paquets de langue à wordpress.org pour ce slug
+#   (même choix que g2rd-facturation / g2rd-connector).
+#
+# Le contrôle est lancé depuis le dossier WordPress : à la racine du dépôt,
+# « g2rd-wpjm-geo » désigne aussi le dossier source (tests/ compris), que
+# Plugin Check prendrait pour le plugin.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: plugin-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plugin-check:
+    name: WordPress Plugin Check
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: wp_pc
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup PHP 8.2 + WP-CLI
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, mysqli, zip
+          tools: wp-cli
+          coverage: none
+
+      - name: Build the plugin archive (tools/build-zip.php)
+        run: |
+          set -euo pipefail
+          php tools/build-zip.php
+          mkdir -p dist
+          unzip -q g2rd-wpjm-geo.zip -d dist/
+
+      - name: Install WordPress (latest) + WP Job Manager
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 30); do
+            mysql -h 127.0.0.1 -uroot -proot -e "SELECT 1" >/dev/null 2>&1 && { echo "MySQL prêt."; break; }
+            [ "$i" -eq 30 ] && { echo "::error::MySQL indisponible"; exit 1; }
+            sleep 2
+          done
+          wp core download --path=wp --version=latest
+          wp config create --path=wp --dbname=wp_pc --dbuser=root --dbpass=root --dbhost=127.0.0.1 --skip-check
+          wp core install --path=wp \
+            --url=http://example.test --title="Plugin Check" \
+            --admin_user=admin --admin_password='AdminPass!2026' \
+            --admin_email=admin@example.test --skip-email
+          wp plugin install wp-job-manager --activate --path=wp
+          cp -r dist/g2rd-wpjm-geo wp/wp-content/plugins/g2rd-wpjm-geo
+
+      - name: Install Plugin Check tool + activate plugin
+        run: |
+          set -euo pipefail
+          wp plugin install plugin-check --activate --path=wp
+          wp plugin activate g2rd-wpjm-geo --path=wp
+          wp --path=wp plugin list
+
+      - name: Run Plugin Check (gate sur les erreurs)
+        working-directory: wp
+        run: |
+          set -uo pipefail
+
+          echo "::group::Rapport Plugin Check complet (table, warnings inclus)"
+          wp plugin check g2rd-wpjm-geo --path=. --format=table || true
+          echo "::endgroup::"
+
+          set +e
+          wp plugin check g2rd-wpjm-geo --path=. --ignore-warnings --format=json > pc.json 2> pc.err
+          CHECK_RC=$?
+          set -e
+          echo "wp plugin check exit code : ${CHECK_RC}"
+
+          RESULT=$(php -r '
+            $ignored = ["outdated_tested_upto_header", "readme_description_non_official_language", "plugin_updater_detected"];
+            $errors = 0; $ign = 0;
+            foreach ((@file("pc.json", FILE_IGNORE_NEW_LINES) ?: []) as $l) {
+              $l = trim($l);
+              if ($l === "" || $l[0] !== "[") { continue; }
+              $arr = json_decode($l, true);
+              if (!is_array($arr)) { continue; }
+              foreach ($arr as $f) {
+                if (($f["type"] ?? "") !== "ERROR") { continue; }
+                if (in_array($f["code"] ?? "", $ignored, true)) { $ign++; continue; }
+                $errors++;
+              }
+            }
+            echo $errors . " " . $ign;
+          ')
+          ERRORS=$(echo "$RESULT" | awk '{print $1}')
+          IGNORED=$(echo "$RESULT" | awk '{print $2}')
+          echo "Erreurs bloquantes : ${ERRORS:-0} | ignorées (règles propres à l'annuaire) : ${IGNORED:-0}"
+
+          if [ "${CHECK_RC}" -ne 0 ] && [ "${ERRORS:-0}" -eq 0 ] && [ "${IGNORED:-0}" -eq 0 ] && ! grep -q '^\[' pc.json; then
+            echo "::error::wp plugin check a échoué sans findings exploitables (voir stderr)."
+            cat pc.err || true
+            exit 1
+          fi
+
+          if [ "${ERRORS:-0}" -gt 0 ]; then
+            echo "::error::Plugin Check : ${ERRORS} erreur(s) bloquante(s) — voir le tableau ci-dessus."
+            exit 1
+          fi
+          echo "Aucune erreur bloquante Plugin Check (warnings non bloquants)."

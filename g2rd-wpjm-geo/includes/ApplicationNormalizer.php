@@ -38,6 +38,7 @@ class ApplicationNormalizer {
 	const TYPE_EMPTY = 'empty';
 	const TYPE_EMAIL = 'email';
 	const TYPE_URL   = 'url';
+	/** Plus renvoyé par classify() depuis 1.1.1 : conservé pour le code tiers qui y ferait référence. */
 	const TYPE_OTHER = 'other';
 
 	const ACTION_SKIP    = 'skip';
@@ -148,18 +149,14 @@ class ApplicationNormalizer {
 		if ( '' === $value ) {
 			return self::TYPE_EMPTY;
 		}
+		// Même test que WP Job Manager (get_the_job_application_method()).
 		if ( false !== strpos( $value, '@' ) && is_email( $value ) ) {
 			return self::TYPE_EMAIL;
 		}
-		// URL avec schéma (http, https, mais aussi ftp:, javascript:… que WPJM afficherait comme lien).
-		if ( preg_match( '#^[a-z][a-z0-9+.\-]*:#i', $value ) ) {
-			return self::TYPE_URL;
-		}
-		// URL sans schéma (« www.site.com/job/1 ») : WPJM la préfixe par http:// à l'affichage.
-		if ( preg_match( '#^[a-z0-9\-]+(\.[a-z0-9\-]+)+(:\d+)?([/?\#]|$)#i', $value ) ) {
-			return self::TYPE_URL;
-		}
-		return self::TYPE_OTHER;
+		// Toute autre valeur est affichée par WP Job Manager comme lien de candidature, préfixé par
+		// « http:// » s'il ne commence pas par « http » : « //hôte/x », « /hôte/x », « a@hôte/?r=a:b »,
+		// hôtes IDN ou avec « _ », texte libre… C'est donc une URL pour les règles de remplacement.
+		return self::TYPE_URL;
 	}
 
 	/**
@@ -237,7 +234,7 @@ class ApplicationNormalizer {
 	 *
 	 * @param int  $job_id  ID de l'offre.
 	 * @param bool $dry_run Simulation : aucune écriture.
-	 * @return array Décision enrichie (`action` vaut ACTION_REPLACE ou ACTION_SKIP).
+	 * @return array{action:string,reason:string,type:string,old:string,new:string} Décision enrichie (`action` vaut ACTION_REPLACE ou ACTION_SKIP).
 	 */
 	public function handle_with_check( $job_id, $dry_run = false ) {
 		$decision = $this->evaluate( $job_id );
@@ -266,37 +263,37 @@ class ApplicationNormalizer {
 	/**
 	 * Écrit la nouvelle valeur et journalise.
 	 *
-	 * @param int    $job_id ID de l'offre.
-	 * @param string $old    Ancienne valeur.
-	 * @param string $new    Nouvelle valeur (adresse email valide).
-	 * @param string $reason Code de raison.
+	 * @param int    $job_id    ID de l'offre.
+	 * @param string $old_value Ancienne valeur.
+	 * @param string $new_value Nouvelle valeur (adresse email valide).
+	 * @param string $reason    Code de raison.
 	 * @return bool
 	 */
-	private function replace( $job_id, $old, $new, $reason ) {
+	private function replace( $job_id, $old_value, $new_value, $reason ) {
 		$job_id = absint( $job_id );
-		if ( ! $job_id || ! is_email( $new ) || $old === $new || ! empty( $this->processing[ $job_id ] ) ) {
+		if ( ! $job_id || ! is_email( $new_value ) || $old_value === $new_value || ! empty( $this->processing[ $job_id ] ) ) {
 			return false;
 		}
 
 		$this->processing[ $job_id ] = true;
-		$updated                     = update_post_meta( $job_id, $this->meta_key(), $new );
+		$updated                     = update_post_meta( $job_id, $this->meta_key(), $new_value );
 		unset( $this->processing[ $job_id ] );
 
 		if ( false === $updated ) {
 			return false;
 		}
 
-		$this->logger->log( $job_id, $old, $new, $reason, $this->detect_source( $job_id ) );
+		$this->logger->log( $job_id, $old_value, $new_value, $reason, $this->detect_source( $job_id ) );
 
 		/**
 		 * Après le remplacement d'une URL de candidature par l'adresse générique.
 		 *
-		 * @param int    $job_id ID de l'offre.
-		 * @param string $old    Ancienne valeur.
-		 * @param string $new    Nouvelle valeur.
-		 * @param string $reason Raison.
+		 * @param int    $job_id    ID de l'offre.
+		 * @param string $old_value Ancienne valeur.
+		 * @param string $new_value Nouvelle valeur.
+		 * @param string $reason    Raison.
 		 */
-		do_action( 'g2rd_wpjm_geo_application_replaced', $job_id, $old, $new, $reason );
+		do_action( 'g2rd_wpjm_geo_application_replaced', $job_id, $old_value, $new_value, $reason );
 		return true;
 	}
 

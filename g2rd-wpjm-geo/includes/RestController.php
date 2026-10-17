@@ -130,8 +130,8 @@ class RestController {
 		}
 
 		$response = rest_ensure_response( $payload['jobs'] );
-		$response->header( 'X-WP-Total', (int) $payload['total'] );
-		$response->header( 'X-WP-TotalPages', (int) $payload['pages'] );
+		$response->header( 'X-WP-Total', (string) (int) $payload['total'] );
+		$response->header( 'X-WP-TotalPages', (string) (int) $payload['pages'] );
 		return $response;
 	}
 
@@ -140,7 +140,7 @@ class RestController {
 	 *
 	 * @param int $page     Page.
 	 * @param int $per_page Taille de page.
-	 * @return array{jobs:array,total:int,pages:int}
+	 * @return array{jobs:list<array<string,mixed>>,total:int,pages:int}
 	 */
 	private function query( $page, $per_page ) {
 		if ( ! function_exists( 'get_job_listings' ) ) {
@@ -189,8 +189,8 @@ class RestController {
 	/**
 	 * Restreint la requête native aux offres géocodées par le fournisseur actif.
 	 *
-	 * @param array $query_args Arguments WP_Query.
-	 * @return array
+	 * @param array<string,mixed> $query_args Arguments WP_Query.
+	 * @return array<string,mixed>
 	 */
 	public function require_coordinates( $query_args ) {
 		$ours = array(
@@ -210,7 +210,11 @@ class RestController {
 		// Groupe à part : un relation OR imposé au premier niveau par une autre extension ne rend pas ces clauses facultatives.
 		$query_args['meta_query'] = ( empty( $query_args['meta_query'] ) || ! is_array( $query_args['meta_query'] ) ) // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
 			? $ours
-			: array( 'relation' => 'AND', $query_args['meta_query'], $ours );
+			: array(
+				'relation' => 'AND',
+				$query_args['meta_query'],
+				$ours,
+			);
 		return $query_args;
 	}
 
@@ -219,7 +223,7 @@ class RestController {
 	 * que ses résultats de géocodage soient affichés sur une Google Map.
 	 *
 	 * @param string $provider Fournisseur actif.
-	 * @return array Clause meta_query.
+	 * @return array<int|string,mixed> Clause meta_query.
 	 */
 	public static function source_meta_query( $provider ) {
 		if ( Settings::PROVIDER_OSM === $provider ) {
@@ -247,7 +251,7 @@ class RestController {
 	 * Données publiques d'une offre.
 	 *
 	 * @param int $id ID de l'offre.
-	 * @return array|null
+	 * @return array<string,mixed>|null
 	 */
 	private function prepare_job( $id ) {
 		$post = get_post( $id );
@@ -298,6 +302,7 @@ class RestController {
 		 * @param \WP_Post $post Offre.
 		 */
 		$job = apply_filters( 'g2rd_wpjm_geo_rest_job', $job, $post );
+		// @phpstan-ignore ternary.elseUnreachable (un filtre tiers peut renvoyer autre chose qu'un tableau.)
 		return is_array( $job ) ? $job : null;
 	}
 

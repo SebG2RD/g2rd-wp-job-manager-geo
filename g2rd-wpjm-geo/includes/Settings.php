@@ -48,14 +48,14 @@ class Settings {
 	/**
 	 * Cache mémoire des réglages fusionnés avec les valeurs par défaut.
 	 *
-	 * @var array|null
+	 * @var array<string,mixed>|null
 	 */
 	private $cache = null;
 
 	/**
 	 * Valeurs par défaut.
 	 *
-	 * @return array
+	 * @return array<string,string|bool|int>
 	 */
 	public static function defaults() {
 		return array(
@@ -110,15 +110,15 @@ class Settings {
 	 * Vide le cache de pages de WP Rocket quand un réglage visible côté public change
 	 * (appel de sa fonction publique, sans rien modifier de l'extension).
 	 *
-	 * @param mixed $old Anciens réglages.
-	 * @param mixed $new Nouveaux réglages.
+	 * @param mixed $old_settings Anciens réglages.
+	 * @param mixed $new_settings Nouveaux réglages.
 	 * @return void
 	 */
-	public static function maybe_purge_page_cache( $old, $new ) {
-		$old = wp_parse_args( is_array( $old ) ? $old : array(), self::defaults() );
-		$new = wp_parse_args( is_array( $new ) ? $new : array(), self::defaults() );
+	public static function maybe_purge_page_cache( $old_settings, $new_settings ) {
+		$old_settings = wp_parse_args( is_array( $old_settings ) ? $old_settings : array(), self::defaults() );
+		$new_settings = wp_parse_args( is_array( $new_settings ) ? $new_settings : array(), self::defaults() );
 		foreach ( self::FRONT_KEYS as $key ) {
-			if ( (string) $old[ $key ] !== (string) $new[ $key ] ) {
+			if ( (string) $old_settings[ $key ] !== (string) $new_settings[ $key ] ) {
 				if ( function_exists( 'rocket_clean_domain' ) ) {
 					rocket_clean_domain();
 				}
@@ -141,7 +141,7 @@ class Settings {
 	/**
 	 * Tous les réglages.
 	 *
-	 * @return array
+	 * @return array<string,mixed>
 	 */
 	public function all() {
 		if ( null === $this->cache ) {
@@ -280,7 +280,7 @@ class Settings {
 	 * vérifiés par options.php (Settings API) avant cet appel.
 	 *
 	 * @param mixed $input Données brutes.
-	 * @return array
+	 * @return array<string,mixed>
 	 */
 	public function sanitize( $input ) {
 		$input    = is_array( $input ) ? $input : array();
@@ -369,7 +369,8 @@ class Settings {
 	 */
 	private function notify( $code, $message, $type = 'error' ) {
 		if ( function_exists( 'add_settings_error' ) ) {
-			add_settings_error( self::OPTION, $code, $message, $type );
+			// settings_errors() affiche le message sans l'échapper : un paquet de langue ne doit pas pouvoir y injecter du balisage.
+			add_settings_error( self::OPTION, $code, esc_html( $message ), $type );
 		}
 	}
 }

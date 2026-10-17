@@ -1,0 +1,21 @@
+includes:
+    # Stubs WordPress + règles spécifiques WP (échappement, hooks…).
+    - vendor/szepeviktor/phpstan-wordpress/extension.neon
+
+parameters:
+    level: 6
+    phpVersion: 70400
+    bootstrapFiles:
+        - tools/phpstan-bootstrap.php
+    paths:
+        - g2rd-wpjm-geo/g2rd-wpjm-geo.php
+        - g2rd-wpjm-geo/uninstall.php
+        - g2rd-wpjm-geo/includes
+    reportUnmatchedIgnoredErrors: false
+    ignoreErrors:
+        # Console d'administration fournie par le thème G2RD (pas une dépendance Composer), toujours protégée par class_exists()/defined().
+        - '#unknown class G2RD\\AdminConsole#'
+        # PHP 7.4 n'a pas de constantes abstraites : OPTION, CRON_HOOK, LOCK et BATCH_SIZE sont définies par chaque sous-classe (voir le docblock de JobQueue).
+        -
+            message: '#^Access to undefined constant static\(G2RD\\WPJMGeo\\JobQueue\)::(OPTION|CRON_HOOK|LOCK|BATCH_SIZE)\.$#'
+            path: g2rd-wpjm-geo/includes/JobQueue.php

@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<ruleset name="G2RD WP Job Manager Geo Security">
+    <description>SAST OWASP (phpcs-security-audit) pour le plugin G2RD WP Job Manager Geo. Bloquant en CI.</description>
+
+    <file>./g2rd-wpjm-geo/g2rd-wpjm-geo.php</file>
+    <file>./g2rd-wpjm-geo/uninstall.php</file>
+    <file>./g2rd-wpjm-geo/includes</file>
+
+    <arg name="extensions" value="php"/>
+    <arg name="colors"/>
+    <arg value="ps"/>
+
+    <!-- Standard fourni par pheromone/phpcs-security-audit -->
+    <rule ref="Security">
+        <!-- Faux positifs : chemins issus de G2RD_WPJM_GEO_DIR / __FILE__ (autoloader, feuille, traductions). -->
+        <exclude name="Security.BadFunctions.FilesystemFunctions"/>
+        <!-- Faux positifs : array_map / array_filter sur des callables internes (absint, strval, closures). -->
+        <exclude name="Security.BadFunctions.CallbackFunctions"/>
+        <!-- call_user_func sur la fonction de pause injectée au constructeur (sleep() par défaut). -->
+        <exclude name="Security.BadFunctions.FunctionHandlingFunctions"/>
+    </rule>
+
+    <exclude-pattern>*/vendor/*</exclude-pattern>
+    <exclude-pattern>*/tests/*</exclude-pattern>
+</ruleset>
