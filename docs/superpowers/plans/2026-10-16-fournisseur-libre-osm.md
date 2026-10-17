@@ -6711,6 +6711,7 @@ Dans `uninstall.php`, après `wp_clear_scheduled_hook( 'g2rd_wpjm_geo_check_urls
 ```php
 delete_option( 'g2rd_wpjm_geo_geocode_queue' );
 delete_transient( 'g2rd_wpjm_geo_geocode_lock' );
+delete_transient( 'g2rd_wpjm_geo_photon_down' );
 wp_clear_scheduled_hook( 'g2rd_wpjm_geo_geocode' );
 delete_post_meta_by_key( '_g2rd_wpjm_geo_source' );
 
@@ -6734,7 +6735,24 @@ Dans `readme.txt` :
 - dans `== Description ==`, ajouter en tête de liste : `* Fournisseur au choix : Google Maps, ou OpenStreetMap libre et gratuit (MapLibre GL JS 5.24.0, fonds OpenFreeMap, recherche et géocodage Photon), sans clé ni compte.` et `* Administration à la charte de la console G2RD : sous-menu du menu « G2RD » si le thème G2RD (console v2) est actif, menu « G2RD Geo » sinon.` ;
 - dans `== Installation ==`, ajouter : `5. Mode libre : Offres géolocalisées → Cartographie → OpenStreetMap, puis Outils → Re-géocoder les offres.` ;
 - dans `== Options WordPress ==`, ajouter : `* Métadonnée \`_g2rd_wpjm_geo_source\` (google | osm) sur chaque offre géocodée par le plugin.` et `* \`g2rd_wpjm_geo_geocode_queue\` : file des géocodages différés.` ;
-- dans `== Hooks pour développeurs ==`, ajouter : `* \`g2rd_wpjm_geo_photon_allow_private_host\` : autorise un serveur Photon auto-hébergé à une adresse privée (seul son hôte).` ;
+- dans `== Hooks pour développeurs ==`, ajouter : `* \`g2rd_wpjm_geo_photon_allow_private_host\` : autorise un serveur Photon auto-hébergé à une adresse privée (seul son hôte).`, `* \`g2rd_wpjm_geo_photon_preferred_country\` : pays (code ISO à deux lettres) favorisé entre deux lieux du même nom ; défaut : région de la langue du site (FR pour fr_FR).` et `* \`g2rd_wpjm_geo_defer_geocoding\` : force (true) ou empêche (false) le géocodage différé par WP-Cron ; défaut : imports, WP-Cron et WP-CLI.` ;
+- juste avant `== Changelog ==`, ajouter la section :
+
+```text
+== Frequently Asked Questions ==
+
+= La carte libre reste vide ou affiche une erreur =
+MapLibre a besoin de WebGL (WebGL 2, ou WebGL 1 à défaut) et crée un worker à partir d'une URL blob: : si le site envoie une politique de sécurité du contenu (CSP), elle doit autoriser `worker-src blob:` ainsi que les hôtes du style (tiles.openfreemap.org par défaut) et de Photon (photon.komoot.io par défaut).
+
+= Réglages conseillés pour WP Rocket =
+Le cache de pages est vidé automatiquement quand le fournisseur change. Avec « Retarder l'exécution du JavaScript », la carte ne démarre qu'à la première interaction : exclure `g2rd-wpjm-geo` si la carte est en haut de page. Avec « Supprimer le CSS inutilisé », ajouter `g2rd-wpjm-geo-` et `maplibregl-` à la liste des sélecteurs à conserver.
+
+= Photon auto-hébergé =
+Photon écoute par défaut en HTTP sur le port 2322 ; le plugin n'accepte qu'une URL https, sur le port 443 (proxy inverse). Pour une adresse privée (même serveur, réseau local), activer le filtre `g2rd_wpjm_geo_photon_allow_private_host`.
+
+= Une offre n'apparaît pas sur la carte libre =
+Le géocodage refuse un homonyme lointain plutôt que de mal placer l'offre ; « Télétravail » ou « Remote » ne sont jamais placés. Corriger la localisation de l'offre (de préférence via l'autocomplétion), puis lancer Outils → Re-géocoder les offres.
+```
 - dans `== Tests ==`, remplacer la ligne par : `\`php tests/run.php\` ; \`npm --prefix ../tools/jsdom i jsdom@24\` puis \`NODE_PATH=../tools/jsdom/node_modules node tests/js/run.js\` ; \`tools/docker/verify.sh\` (dépôt).` ;
 - dans `== Changelog ==`, ajouter au-dessus de 1.0.0 :
 
