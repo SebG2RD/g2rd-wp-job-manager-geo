@@ -31,7 +31,7 @@ class PhotonGeocoder {
 	const MAX_LENGTH   = 200;
 	const MAX_RESPONSE = 262144;  // 256 Kio.
 
-	const CACHE_VERSION = '2'; // À incrémenter quand le choix du lieu change (résultats gardés 30 jours).
+	const CACHE_VERSION = '3'; // À incrémenter quand le choix du lieu ou la clé change (résultats gardés 30 jours).
 
 	/**
 	 * Valeurs osm_value d'un lieu dont le nom est celui de la ville.
@@ -188,7 +188,11 @@ class PhotonGeocoder {
 		$base   = $this->base_url();
 		$hint   = self::hint( $text );
 		$lang   = self::language( get_locale() );
-		$key    = self::CACHE_PREFIX . md5( self::CACHE_VERSION . '|' . $base . '|' . $lang . '|' . self::preferred_country() . '|' . implode( ',', $segments ) . '|' . $hint );
+		// Clé = texte réellement envoyé à Photon (casse ignorée). Une clé tirée des segments
+		// normalisés, qui perdent toute lettre non latine, laisserait une variante saisie par un
+		// soumetteur (« Paris Москва », « Paris ＴＥＸＡＳ ») fixer le résultat des autres offres.
+		$query  = function_exists( 'mb_strtolower' ) ? mb_strtolower( $cleaned, 'UTF-8' ) : strtolower( $cleaned );
+		$key    = self::CACHE_PREFIX . md5( self::CACHE_VERSION . '|' . $base . '|' . $lang . '|' . self::preferred_country() . '|' . $query . '|' . $hint );
 		$cached = get_transient( $key );
 		if ( is_array( $cached ) && array_key_exists( 'r', $cached ) ) {
 			return $cached['r'];
