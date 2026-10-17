@@ -75,6 +75,7 @@ Le plugin est prévu pour un site seul : en multisite, la désinstallation ne ne
 * Sécurité : en-tête « Update URI » vers le dépôt GitHub. WordPress ne propose plus de mise à jour ni de paquet de langue venant de wordpress.org pour ce slug.
 * Sécurité : carte OpenStreetMap, crédits du style affichés en texte (liens http(s) seulement) au lieu du HTML fourni par l'hôte du style.
 * Sécurité : messages des réglages et titres de menu traduits échappés.
+* Sécurité : cache du géocodage Photon indexé sur le texte réellement interrogé. Une variante saisie par un soumetteur (« Paris Москва », « Paris ＴＥＸＡＳ ») ne peut plus faire disparaître de la carte, ni placer au Texas, les offres « Paris » des autres employeurs. Le cache existant est ignoré (version 3).
 * Qualité : code conforme aux normes WordPress, à PHPCS Security Audit et à PHPStan niveau 6 ; CI/CD GitHub Actions.
 
 = 1.1.0 =

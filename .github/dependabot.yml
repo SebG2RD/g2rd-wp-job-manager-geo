@@ -6,6 +6,10 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    # Une version n'est proposée qu'après 14 jours de publication (temps de détection
+    # d'une version compromise ou retirée), même règle que l'épinglage des actions.
+    cooldown:
+      default-days: 14
     groups:
       dev-tooling:
         patterns:
@@ -23,9 +27,17 @@ updates:
     directory: "/tools/jsdom"
     schedule:
       interval: "weekly"
+    # Une version n'est proposée qu'après 14 jours de publication (temps de détection
+    # d'une version compromise ou retirée), même règle que l'épinglage des actions.
+    cooldown:
+      default-days: 14
 
   # Actions GitHub utilisées par les workflows (épinglées par SHA).
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+    # Une version n'est proposée qu'après 14 jours de publication (temps de détection
+    # d'une version compromise ou retirée), même règle que l'épinglage des actions.
+    cooldown:
+      default-days: 14

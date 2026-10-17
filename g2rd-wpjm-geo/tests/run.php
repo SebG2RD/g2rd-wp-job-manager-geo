@@ -1038,6 +1038,35 @@ $update_uri = preg_match( '/^\s*\*\s*Update URI:\s*(\S+)/m', $header, $m ) ? $m[
 $update_host = (string) parse_url( $update_uri, PHP_URL_HOST );
 check( 'en-tête Update URI vers le dépôt GitHub : ni mise à jour ni paquet de langue par slug wordpress.org', 'https://github.com/SebG2RD/g2rd-wp-job-manager-geo' === $update_uri && ! in_array( $update_host, array( 'wordpress.org', 'w.org' ), true ) );
 
+echo PHP_EOL . '31. Cache Photon : une variante ne décide pas du résultat des autres offres' . PHP_EOL;
+list( $s ) = boot();
+$geo         = new PhotonGeocoder( $s );
+$paris_calls = 0;
+// Réponses relevées sur photon.komoot.io le 2026-10-17 pour ces trois textes.
+G2RD_Test_State::$http_responder = function ( $method, $url ) use ( &$paris_calls ) {
+	if ( false !== strpos( $url, 'q=Paris&' ) || false !== strpos( $url, 'q=PARIS&' ) ) {
+		$paris_calls++;
+		return photon_reply( array( photon_feature( 'Paris', 'place', 'city', 2.3522, 48.8566, array( 'state' => 'Île-de-France', 'country' => 'France', 'countrycode' => 'FR' ) ) ) );
+	}
+	if ( false !== strpos( $url, '%D0%9C' ) ) { // « Москва… » : aucun résultat.
+		return photon_reply( array() );
+	}
+	if ( false !== strpos( $url, '%EF%BC%B4' ) ) { // « ＴＥＸＡＳ » pleine chasse : seul Paris (Texas).
+		return photon_reply( array( photon_feature( 'Paris', 'place', 'town', -95.5555, 33.6609, array( 'state' => 'Texas', 'country' => 'États-Unis', 'countrycode' => 'US' ) ) ) );
+	}
+	return photon_reply( array() );
+};
+check( 'variante cyrillique : introuvable', null === $geo->geocode( 'Paris Москва Токио Пекин' ) );
+$paris = $geo->geocode( 'Paris' );
+check( 'puis « Paris » : sa propre requête, Paris (France)', 1 === $paris_calls && is_array( $paris ) && 'FR' === $paris['country_short'] );
+$texas = $geo->geocode( 'Paris ＴＥＸＡＳ' );
+check( 'variante pleine chasse : sa propre requête, pas le résultat mis en cache pour « Paris »', is_array( $texas ) && 'US' === $texas['country_short'] );
+$again = $geo->geocode( 'Paris' );
+check( '« Paris » de nouveau : servi par le cache, toujours la France', is_array( $again ) && 'FR' === $again['country_short'] && 1 === $paris_calls );
+$upper = $geo->geocode( 'PARIS' );
+check( 'même texte en majuscules : servi par le même cache', is_array( $upper ) && 'FR' === $upper['country_short'] && 1 === $paris_calls );
+G2RD_Test_State::$http_responder = null;
+
 $results = $GLOBALS['g2rd_results'];
 echo PHP_EOL . sprintf( 'Résultat : %d réussis, %d échoués', $results['pass'], $results['fail'] ) . PHP_EOL;
 exit( $results['fail'] ? 1 : 0 );
