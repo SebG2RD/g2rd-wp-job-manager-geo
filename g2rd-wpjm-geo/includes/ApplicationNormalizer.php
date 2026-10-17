@@ -38,6 +38,7 @@ class ApplicationNormalizer {
 	const TYPE_EMPTY = 'empty';
 	const TYPE_EMAIL = 'email';
 	const TYPE_URL   = 'url';
+	/** Plus renvoyé par classify() depuis 1.1.1 : conservé pour le code tiers qui y ferait référence. */
 	const TYPE_OTHER = 'other';
 
 	const ACTION_SKIP    = 'skip';
@@ -148,18 +149,14 @@ class ApplicationNormalizer {
 		if ( '' === $value ) {
 			return self::TYPE_EMPTY;
 		}
+		// Même test que WP Job Manager (get_the_job_application_method()).
 		if ( false !== strpos( $value, '@' ) && is_email( $value ) ) {
 			return self::TYPE_EMAIL;
 		}
-		// URL avec schéma (http, https, mais aussi ftp:, javascript:… que WPJM afficherait comme lien).
-		if ( preg_match( '#^[a-z][a-z0-9+.\-]*:#i', $value ) ) {
-			return self::TYPE_URL;
-		}
-		// URL sans schéma (« www.site.com/job/1 ») : WPJM la préfixe par http:// à l'affichage.
-		if ( preg_match( '#^[a-z0-9\-]+(\.[a-z0-9\-]+)+(:\d+)?([/?\#]|$)#i', $value ) ) {
-			return self::TYPE_URL;
-		}
-		return self::TYPE_OTHER;
+		// Toute autre valeur est affichée par WP Job Manager comme lien de candidature, préfixé par
+		// « http:// » s'il ne commence pas par « http » : « //hôte/x », « /hôte/x », « a@hôte/?r=a:b »,
+		// hôtes IDN ou avec « _ », texte libre… C'est donc une URL pour les règles de remplacement.
+		return self::TYPE_URL;
 	}
 
 	/**

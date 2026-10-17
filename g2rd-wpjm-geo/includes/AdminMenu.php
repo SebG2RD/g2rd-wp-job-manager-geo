@@ -90,7 +90,7 @@ class AdminMenu {
 		$hook           = add_submenu_page(
 			'' !== (string) $parent_slug ? (string) $parent_slug : \G2RD\AdminConsole::MENU_SLUG,
 			__( 'Console G2RD — Offres géolocalisées', 'g2rd-wpjm-geo' ),
-			__( 'Offres géolocalisées', 'g2rd-wpjm-geo' ),
+			esc_html__( 'Offres géolocalisées', 'g2rd-wpjm-geo' ), // Titre de menu affiché tel quel par WordPress.
 			Settings::CAPABILITY,
 			Settings::PAGE_SLUG,
 			$this->render
@@ -109,7 +109,7 @@ class AdminMenu {
 		}
 		self::$hook_suffix = (string) add_menu_page(
 			__( 'G2RD WP Job Manager Geo', 'g2rd-wpjm-geo' ),
-			__( 'G2RD Geo', 'g2rd-wpjm-geo' ),
+			esc_html__( 'G2RD Geo', 'g2rd-wpjm-geo' ), // Titre de menu affiché tel quel par WordPress.
 			Settings::CAPABILITY,
 			Settings::PAGE_SLUG,
 			$this->render,

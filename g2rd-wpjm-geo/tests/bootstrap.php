@@ -45,6 +45,7 @@ namespace {
 		public static $wpjm_geocode   = array(); // texte => tableau d'adresse renvoyé par WP_Job_Manager_Geocode::get_location_data().
 		public static $cache_bumps = 0;
 		public static $enqueued = array();
+		public static $translations = array(); // texte source => traduction simulée (paquet de langue).
 
 		public static function reset() {
 			self::$options    = array();
@@ -67,6 +68,7 @@ namespace {
 			self::$wpjm_geocode   = array();
 			self::$cache_bumps = 0;
 			self::$enqueued = array();
+			self::$translations = array();
 		}
 	}
 
@@ -263,7 +265,7 @@ namespace {
 		return array_merge( $defaults, (array) $args );
 	}
 	function __( $text ) {
-		return $text;
+		return isset( G2RD_Test_State::$translations[ $text ] ) ? G2RD_Test_State::$translations[ $text ] : $text;
 	}
 	function current_time( $type, $gmt = 0 ) {
 		return gmdate( 'Y-m-d H:i:s' );
@@ -272,7 +274,7 @@ namespace {
 		return 'https://example.test' . $path;
 	}
 	function add_settings_error( $setting, $code, $message, $type = 'error' ) {
-		G2RD_Test_State::$errors[] = array( 'code' => $code, 'type' => $type );
+		G2RD_Test_State::$errors[] = array( 'code' => $code, 'type' => $type, 'message' => $message );
 	}
 	function remove_accents( $text ) {
 		return strtr(
@@ -408,7 +410,7 @@ namespace {
 		return esc_attr( $text );
 	}
 	function esc_html__( $text ) {
-		return esc_html( $text );
+		return esc_html( __( $text ) );
 	}
 	function _n( $single, $plural, $number ) {
 		return 1 === (int) $number ? $single : $plural;

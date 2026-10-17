@@ -369,7 +369,8 @@ class Settings {
 	 */
 	private function notify( $code, $message, $type = 'error' ) {
 		if ( function_exists( 'add_settings_error' ) ) {
-			add_settings_error( self::OPTION, $code, $message, $type );
+			// settings_errors() affiche le message sans l'échapper : un paquet de langue ne doit pas pouvoir y injecter du balisage.
+			add_settings_error( self::OPTION, $code, esc_html( $message ), $type );
 		}
 	}
 }

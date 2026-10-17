@@ -3,7 +3,7 @@ Contributors: g2rd
 Requires at least: 6.4
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.1.0
+Stable tag: 1.1.1
 License: GPLv2 or later
 
 Complète WP Job Manager : autocomplétion mondiale des villes, carte des offres, candidatures Go Fetch Jobs.
@@ -69,6 +69,13 @@ Le géocodage refuse un homonyme lointain plutôt que de mal placer l'offre ; «
 Le plugin est prévu pour un site seul : en multisite, la désinstallation ne nettoie que le site courant.
 
 == Changelog ==
+
+= 1.1.1 =
+* Sécurité : toute valeur de candidature d'une offre Go Fetch Jobs qui n'est pas une adresse email est désormais remplacée (ou vérifiée), y compris les formes « //site/… », « /site/… » ou le texte libre, que WP Job Manager affichait comme lien de candidature.
+* Sécurité : en-tête « Update URI » vers le dépôt GitHub. WordPress ne propose plus de mise à jour ni de paquet de langue venant de wordpress.org pour ce slug.
+* Sécurité : carte OpenStreetMap, crédits du style affichés en texte (liens http(s) seulement) au lieu du HTML fourni par l'hôte du style.
+* Sécurité : messages des réglages et titres de menu traduits échappés.
+* Qualité : code conforme aux normes WordPress, à PHPCS Security Audit et à PHPStan niveau 6 ; CI/CD GitHub Actions.
 
 = 1.1.0 =
 * Fournisseur cartographique libre : MapLibre + OpenFreeMap + Photon.

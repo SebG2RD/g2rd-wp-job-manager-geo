@@ -173,7 +173,7 @@ check( 'valeur vide => reste vide', '' === application( 110 ) );
 gofetch_import( 111, 'www.site.com/job/1' );
 check( 'URL sans schéma => remplacée', DEF === application( 111 ) );
 gofetch_import( 112, 'Envoyer CV par courrier' );
-check( 'texte libre (ni URL ni email) => conservé', 'Envoyer CV par courrier' === application( 112 ) );
+check( 'texte libre (ni URL ni email) => remplacé : WP Job Manager en fait un lien de candidature', DEF === application( 112 ) );
 check( 'classify() : javascript: est traité comme une URL', ApplicationNormalizer::TYPE_URL === $normalizer->classify( 'javascript:alert(1)' ) );
 do_action( 'goft_wpjm_after_insert_job', 'abc' );
 do_action( 'goft_wpjm_after_insert_job', array( 1 ) );
@@ -994,6 +994,49 @@ foreach ( $mixed as $row ) {
 }
 $first = ( new RegeocodeTool( $s, new PhotonGeocoder( $s ), '__return_false' ) )->handle( 'simulate', 0, $mixed );
 check( 'premier lot : offre publiée en tête, curseur de parcours', 401 === $first['rows'][0]['id'] && $first['cursor'] > RegeocodeTool::KEY_OFFSET && true === $first['done'] );
+
+echo PHP_EOL . '30. Correctifs de l’audit de sécurité' . PHP_EOL;
+list( , $normalizer ) = boot();
+// Formes conservées par le filtre de stockage de WP Job Manager (esc_url_raw) que WPJM affiche
+// pourtant comme lien de candidature (« http:// » + valeur) vers l'hôte choisi par le flux.
+$bypass = array(
+	300 => '//apply.attacker.example/job/1',
+	301 => '/apply.attacker.example/job/1',
+	302 => 'jobs@apply.attacker.example/?ref=a:b',
+	303 => 'apply_attacker.example/?ref=a:b',
+	304 => 'a.php_x.attacker.example/job/1',
+);
+foreach ( $bypass as $id => $value ) {
+	check( sprintf( 'classify() : « %s » est une URL', $value ), ApplicationNormalizer::TYPE_URL === $normalizer->classify( $value ) );
+	gofetch_import( $id, $value );
+	check( sprintf( 'import Go Fetch : « %s » remplacée', $value ), DEF === application( $id ) );
+}
+check( 'classify() : une adresse email reste un email', ApplicationNormalizer::TYPE_EMAIL === $normalizer->classify( 'rh@pompiersparis.fr' ) );
+check( 'classify() : une valeur vide reste vide', ApplicationNormalizer::TYPE_EMPTY === $normalizer->classify( '   ' ) );
+
+boot();
+G2RD_Test_State::$translations['L’URL du serveur Photon doit être une adresse https:// valide, sans identifiant : elle n’a pas été enregistrée.'] = '<img src=x onerror=alert(1)>Photon';
+( new Settings() )->sanitize( array( 'photon_url' => 'http://non-securise.test/' ) );
+$notice = isset( G2RD_Test_State::$errors[0]['message'] ) ? G2RD_Test_State::$errors[0]['message'] : '';
+check( 'message de réglage traduit : balisage échappé avant settings_errors()', '' !== $notice && false === strpos( $notice, '<img' ) && false !== strpos( $notice, '&lt;img' ) );
+
+boot();
+G2RD_Test_State::$translations['G2RD Geo']             = '<b>G2RD Geo</b>';
+G2RD_Test_State::$translations['Offres géolocalisées'] = '<b>Offres</b>';
+AdminMenu::reset();
+( new AdminMenu( '__return_false' ) )->maybe_add_standalone();
+check( 'menu autonome : titre traduit échappé', '&lt;b&gt;G2RD Geo&lt;/b&gt;' === G2RD_Test_State::$menus[0]['title'] );
+AdminMenu::reset();
+G2RD_Test_State::$menus = array();
+( new AdminMenu( '__return_false' ) )->attach_to_console( 'g2rd' );
+check( 'sous-menu de la console G2RD : titre traduit échappé', '&lt;b&gt;Offres&lt;/b&gt;' === G2RD_Test_State::$menus[0]['title'] );
+AdminMenu::reset();
+G2RD_Test_State::$translations = array();
+
+$header     = (string) file_get_contents( dirname( __DIR__ ) . '/g2rd-wpjm-geo.php', false, null, 0, 4096 );
+$update_uri = preg_match( '/^\s*\*\s*Update URI:\s*(\S+)/m', $header, $m ) ? $m[1] : '';
+$update_host = (string) parse_url( $update_uri, PHP_URL_HOST );
+check( 'en-tête Update URI vers le dépôt GitHub : ni mise à jour ni paquet de langue par slug wordpress.org', 'https://github.com/SebG2RD/g2rd-wp-job-manager-geo' === $update_uri && ! in_array( $update_host, array( 'wordpress.org', 'w.org' ), true ) );
 
 $results = $GLOBALS['g2rd_results'];
 echo PHP_EOL . sprintf( 'Résultat : %d réussis, %d échoués', $results['pass'], $results['fail'] ) . PHP_EOL;
