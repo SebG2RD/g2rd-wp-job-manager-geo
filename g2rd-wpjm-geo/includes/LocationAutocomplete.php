@@ -115,10 +115,18 @@ class LocationAutocomplete {
 				'results'   => __( 'Suggestions de villes', 'g2rd-wpjm-geo' ),
 			),
 		);
-		wp_add_inline_script(
-			GoogleAssets::HANDLE_AUTOCOMPLETE,
-			'window.g2rdWpjmGeoAutocomplete = ' . wp_json_encode( $config ) . ';',
-			'before'
+		$script = 'window.g2rdWpjmGeoAutocomplete = ' . wp_json_encode( $config ) . ';';
+		if ( wp_script_is( GoogleAssets::HANDLE_AUTOCOMPLETE, 'registered' ) ) {
+			wp_add_inline_script( GoogleAssets::HANDLE_AUTOCOMPLETE, $script, 'before' );
+			return;
+		}
+		// Thème bloc : le formulaire est rendu avant wp_head, donc avant l'enregistrement des scripts.
+		add_action(
+			'wp_enqueue_scripts',
+			function () use ( $script ) {
+				wp_add_inline_script( GoogleAssets::HANDLE_AUTOCOMPLETE, $script, 'before' );
+			},
+			20
 		);
 	}
 }

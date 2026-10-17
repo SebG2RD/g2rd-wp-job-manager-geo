@@ -357,6 +357,12 @@ namespace {
 	function wp_enqueue_script( $handle, $src = '', $deps = array(), $ver = false, $in_footer = false ) {
 		G2RD_Test_State::$enqueued[ 'script:' . $handle ] = $src;
 	}
+	function wp_script_is( $handle, $list = 'enqueued' ) {
+		if ( 'registered' === $list ) {
+			return isset( G2RD_Test_State::$enqueued[ 'register:' . $handle ] );
+		}
+		return isset( G2RD_Test_State::$enqueued[ 'script:' . $handle ] );
+	}
 	function wp_register_script( $handle, $src, $deps = array(), $ver = false, $in_footer = false ) {
 		G2RD_Test_State::$enqueued[ 'register:' . $handle ] = $deps;
 		return true;

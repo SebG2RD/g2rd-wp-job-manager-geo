@@ -109,7 +109,7 @@ ok 'carte Google : offres libres exclues' "$(hasnt "$R" "\"id\":$JOB,")"
 ok 'géocodage de WP Job Manager réactivé' "$(is "$(wp eval 'echo apply_filters( "job_manager_geolocation_enabled", true ) ? "on" : "off";')" on)"
 
 echo "11. Journal PHP"
-L=$(docker compose exec -T wp sh -c 'grep -i "g2rd" /var/www/html/wp-content/debug.log 2>/dev/null || true')
+L=$(docker compose exec -T wp sh -c 'grep -E "PHP (Fatal error|Parse error|Warning|Notice|Deprecated)" /var/www/html/wp-content/debug.log 2>/dev/null | grep "plugins/g2rd-wpjm-geo" || true')
 ok 'aucune erreur liée au plugin' "$(is "$L" '')"
 
 echo

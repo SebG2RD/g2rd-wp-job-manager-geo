@@ -965,6 +965,14 @@ list( $s ) = boot( array( 'provider' => Settings::PROVIDER_GOOGLE, 'browser_api_
 ( new LocationAutocomplete( $s ) )->enqueue();
 check( 'mode Google sans clé : rien en file', array() === G2RD_Test_State::$enqueued );
 
+echo PHP_EOL . '28. Autocomplétion avec un thème bloc' . PHP_EOL;
+list( $s ) = boot( array( 'provider' => Settings::PROVIDER_OSM ) );
+( new LocationAutocomplete( $s ) )->enqueue();
+check( 'script pas encore enregistré : configuration différée', ! isset( G2RD_Test_State::$enqueued['inline:g2rd-wpjm-geo-autocomplete'] ) );
+do_action( 'wp_enqueue_scripts' );
+list( $inline, $c ) = g2rd_ac_config();
+check( 'configuration ajoutée après l’enregistrement des scripts', is_array( $c ) && 'photon' === $c['source'] );
+
 $results = $GLOBALS['g2rd_results'];
 echo PHP_EOL . sprintf( 'Résultat : %d réussis, %d échoués', $results['pass'], $results['fail'] ) . PHP_EOL;
 exit( $results['fail'] ? 1 : 0 );
