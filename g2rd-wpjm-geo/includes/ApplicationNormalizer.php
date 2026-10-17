@@ -237,7 +237,7 @@ class ApplicationNormalizer {
 	 *
 	 * @param int  $job_id  ID de l'offre.
 	 * @param bool $dry_run Simulation : aucune écriture.
-	 * @return array Décision enrichie (`action` vaut ACTION_REPLACE ou ACTION_SKIP).
+	 * @return array{action:string,reason:string,type:string,old:string,new:string} Décision enrichie (`action` vaut ACTION_REPLACE ou ACTION_SKIP).
 	 */
 	public function handle_with_check( $job_id, $dry_run = false ) {
 		$decision = $this->evaluate( $job_id );
@@ -266,37 +266,37 @@ class ApplicationNormalizer {
 	/**
 	 * Écrit la nouvelle valeur et journalise.
 	 *
-	 * @param int    $job_id ID de l'offre.
-	 * @param string $old    Ancienne valeur.
-	 * @param string $new    Nouvelle valeur (adresse email valide).
-	 * @param string $reason Code de raison.
+	 * @param int    $job_id    ID de l'offre.
+	 * @param string $old_value Ancienne valeur.
+	 * @param string $new_value Nouvelle valeur (adresse email valide).
+	 * @param string $reason    Code de raison.
 	 * @return bool
 	 */
-	private function replace( $job_id, $old, $new, $reason ) {
+	private function replace( $job_id, $old_value, $new_value, $reason ) {
 		$job_id = absint( $job_id );
-		if ( ! $job_id || ! is_email( $new ) || $old === $new || ! empty( $this->processing[ $job_id ] ) ) {
+		if ( ! $job_id || ! is_email( $new_value ) || $old_value === $new_value || ! empty( $this->processing[ $job_id ] ) ) {
 			return false;
 		}
 
 		$this->processing[ $job_id ] = true;
-		$updated                     = update_post_meta( $job_id, $this->meta_key(), $new );
+		$updated                     = update_post_meta( $job_id, $this->meta_key(), $new_value );
 		unset( $this->processing[ $job_id ] );
 
 		if ( false === $updated ) {
 			return false;
 		}
 
-		$this->logger->log( $job_id, $old, $new, $reason, $this->detect_source( $job_id ) );
+		$this->logger->log( $job_id, $old_value, $new_value, $reason, $this->detect_source( $job_id ) );
 
 		/**
 		 * Après le remplacement d'une URL de candidature par l'adresse générique.
 		 *
-		 * @param int    $job_id ID de l'offre.
-		 * @param string $old    Ancienne valeur.
-		 * @param string $new    Nouvelle valeur.
-		 * @param string $reason Raison.
+		 * @param int    $job_id    ID de l'offre.
+		 * @param string $old_value Ancienne valeur.
+		 * @param string $new_value Nouvelle valeur.
+		 * @param string $reason    Raison.
 		 */
-		do_action( 'g2rd_wpjm_geo_application_replaced', $job_id, $old, $new, $reason );
+		do_action( 'g2rd_wpjm_geo_application_replaced', $job_id, $old_value, $new_value, $reason );
 		return true;
 	}
 

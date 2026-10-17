@@ -202,7 +202,7 @@ class Logger {
 	 * Dernières entrées.
 	 *
 	 * @param int $limit Nombre maximum.
-	 * @return array
+	 * @return array<int,array<string,string>> Lignes id, job_id, created_at, old_value, new_value, reason, source.
 	 */
 	public function latest( $limit = 50 ) {
 		global $wpdb;

@@ -58,8 +58,8 @@ class LocationAutocomplete {
 	/**
 	 * Note la présence du champ et désactive l'autocomplétion du navigateur.
 	 *
-	 * @param array $fields Champs du formulaire.
-	 * @return array
+	 * @param array<string,array<string,array<string,mixed>>> $fields Champs du formulaire, par groupe (job, company).
+	 * @return array<string,array<string,array<string,mixed>>>
 	 */
 	public function prepare_field( $fields ) {
 		$this->has_location_field = isset( $fields['job']['job_location'] );

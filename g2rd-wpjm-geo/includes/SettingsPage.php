@@ -103,17 +103,23 @@ class SettingsPage {
 	/**
 	 * Puces d'état du bandeau.
 	 *
-	 * @param bool  $is_osm Mode libre.
-	 * @param array $stats  Résumé de RegeocodeTool.
-	 * @return array
+	 * @param bool                $is_osm Mode libre.
+	 * @param array<string,mixed> $stats  Résumé de RegeocodeTool.
+	 * @return array<int,array<string,string>>
 	 */
 	private function chips( $is_osm, array $stats ) {
 		$chips = array();
 		if ( Dependencies::has_gofetch() ) {
-			$chips[] = array( 'label' => __( 'Go Fetch Jobs actif', 'g2rd-wpjm-geo' ), 'tone' => 'ok' );
+			$chips[] = array(
+				'label' => __( 'Go Fetch Jobs actif', 'g2rd-wpjm-geo' ),
+				'tone' => 'ok',
+			);
 		}
 		if ( ! $is_osm && ! GoogleAssets::has_key( $this->settings ) ) {
-			$chips[] = array( 'label' => __( 'Clé navigateur manquante', 'g2rd-wpjm-geo' ), 'tone' => 'warn' );
+			$chips[] = array(
+				'label' => __( 'Clé navigateur manquante', 'g2rd-wpjm-geo' ),
+				'tone' => 'warn',
+			);
 		}
 		if ( $stats['todo'] > 0 ) {
 			$chips[] = array(
@@ -149,8 +155,8 @@ class SettingsPage {
 	/**
 	 * Carte « Cartographie ».
 	 *
-	 * @param bool  $is_osm Mode libre.
-	 * @param array $stats  Résumé de RegeocodeTool.
+	 * @param bool                $is_osm Mode libre.
+	 * @param array<string,mixed> $stats  Résumé de RegeocodeTool.
 	 * @return void
 	 */
 	private function section_cartography( $is_osm, array $stats ) {
@@ -437,9 +443,9 @@ class SettingsPage {
 	/**
 	 * Groupe de boutons radio.
 	 *
-	 * @param string $key     Clé.
-	 * @param array  $choices Valeur => libellé.
-	 * @param string $current Valeur courante.
+	 * @param string               $key     Clé.
+	 * @param array<string,string> $choices Valeur => libellé.
+	 * @param string               $current Valeur courante.
 	 * @return string
 	 */
 	private function radios( $key, array $choices, $current ) {

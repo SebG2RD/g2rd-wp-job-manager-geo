@@ -82,7 +82,7 @@ class JobsMap {
 	/**
 	 * Rendu du bloc.
 	 *
-	 * @param array $attributes Attributs du bloc.
+	 * @param array<string,mixed> $attributes Attributs du bloc.
 	 * @return string
 	 */
 	public function render_block( $attributes ) {
@@ -97,7 +97,7 @@ class JobsMap {
 	/**
 	 * Rendu du shortcode.
 	 *
-	 * @param array|string $atts Attributs.
+	 * @param array<int|string,string>|string $atts Attributs.
 	 * @return string
 	 */
 	public function render_shortcode( $atts ) {
@@ -160,7 +160,7 @@ class JobsMap {
 			'data-i18n'       => wp_json_encode( $i18n ),
 		);
 
-		$html = '<div class="g2rd-wpjm-geo-map" style="--g2rd-wpjm-geo-map-height:' . esc_attr( $height ) . 'px"';
+		$html = '<div class="g2rd-wpjm-geo-map" style="--g2rd-wpjm-geo-map-height:' . esc_attr( (string) $height ) . 'px"';
 		foreach ( $attributes as $name => $value ) {
 			$html .= ' ' . $name . '="' . esc_attr( $value ) . '"';
 		}

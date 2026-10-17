@@ -28,7 +28,7 @@ class UrlChecker {
 	/**
 	 * Vérifie une URL.
 	 *
-	 * @param string $url URL à vérifier.
+	 * @param mixed $url URL à vérifier (toute autre valeur qu'une chaîne est traitée comme vide).
 	 * @return array{problem:bool,reason:string}
 	 */
 	public function check( $url ) {
@@ -104,11 +104,11 @@ class UrlChecker {
 	/**
 	 * Interprète une réponse HTTP.
 	 *
-	 * @param array|\WP_Error $response Réponse.
-	 * @param bool            $final    Vrai pour la requête GET de confirmation.
-	 * @return array|string Résultat, ou 'retry_get'.
+	 * @param array<string,mixed>|\WP_Error $response Réponse.
+	 * @param bool                          $is_final Vrai pour la requête GET de confirmation.
+	 * @return array{problem:bool,reason:string}|string Résultat, ou 'retry_get'.
 	 */
-	private function interpret( $response, $final = false ) {
+	private function interpret( $response, $is_final = false ) {
 		if ( is_wp_error( $response ) ) {
 			$message = strtolower( $response->get_error_message() );
 			if ( false !== strpos( $message, 'resolve host' ) || false !== strpos( $message, 'could not resolve' ) || false !== strpos( $message, 'name or service not known' ) ) {
@@ -131,7 +131,7 @@ class UrlChecker {
 
 		$code = (int) wp_remote_retrieve_response_code( $response );
 
-		if ( ! $final && ( in_array( $code, array( 400, 404, 405, 410, 501 ), true ) || ( $code >= 300 && $code < 400 ) ) ) {
+		if ( ! $is_final && ( in_array( $code, array( 400, 404, 405, 410, 501 ), true ) || ( $code >= 300 && $code < 400 ) ) ) {
 			return 'retry_get';
 		}
 		if ( 404 === $code || 410 === $code ) {

@@ -78,17 +78,17 @@ class AdminMenu {
 	/**
 	 * Sous-menu du menu « G2RD » (action du thème, priorité 9 de admin_menu).
 	 *
-	 * @param string $parent Slug du menu parent.
+	 * @param string $parent_slug Slug du menu parent.
 	 * @return void
 	 */
-	public function attach_to_console( $parent ) {
+	public function attach_to_console( $parent_slug ) {
 		if ( self::$attached || ! self::console_available() ) {
 			return;
 		}
 		// La console est là : jamais de menu autonome, même sans la capacité (WordPress renvoie alors false).
 		self::$attached = true;
 		$hook           = add_submenu_page(
-			'' !== (string) $parent ? (string) $parent : \G2RD\AdminConsole::MENU_SLUG,
+			'' !== (string) $parent_slug ? (string) $parent_slug : \G2RD\AdminConsole::MENU_SLUG,
 			__( 'Console G2RD — Offres géolocalisées', 'g2rd-wpjm-geo' ),
 			__( 'Offres géolocalisées', 'g2rd-wpjm-geo' ),
 			Settings::CAPABILITY,
@@ -159,8 +159,8 @@ class AdminMenu {
 	/**
 	 * Lien « Réglages » dans la liste des extensions.
 	 *
-	 * @param array $links Liens existants.
-	 * @return array
+	 * @param array<int|string,string> $links Liens existants.
+	 * @return array<int|string,string>
 	 */
 	public function action_links( $links ) {
 		array_unshift( $links, sprintf( '<a href="%s">%s</a>', esc_url( Settings::page_url() ), esc_html__( 'Réglages', 'g2rd-wpjm-geo' ) ) );

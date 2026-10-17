@@ -68,7 +68,7 @@ class AdminScreen {
 	/**
 	 * Ouvre la page : bandeau, barre, titre, tuiles, puis la zone de contenu.
 	 *
-	 * @param array $args {
+	 * @param array<string,mixed> $args {
 	 *     @type string $eyebrow     Sur-titre.
 	 *     @type string $title       Titre.
 	 *     @type string $description Description.

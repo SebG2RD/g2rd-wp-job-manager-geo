@@ -121,7 +121,7 @@ class PhotonGeocoder {
 		// Les accents combinants (texte décomposé, sans l'extension intl) sont retirés à part.
 		$text = (string) preg_replace( '/\p{Mn}+/u', '', remove_accents( (string) $text ) );
 		$text = trim( (string) preg_replace( '/[^a-z0-9]+/', ' ', strtolower( $text ) ) );
-		return (string) preg_replace( array( '/\bst\b/', '/\bste\b/' ), array( 'saint', 'sainte' ), $text );
+		return (string) preg_replace( array( '/\bst\b/', '/\bste\b/' ), array( 'saint', 'sainte' ), $text ); // phpcs:ignore PHPCS_SecurityAudit.BadFunctions.PregReplace.PregReplaceDyn -- motifs littéraux, sans modificateur /e.
 	}
 
 	/**
@@ -174,7 +174,7 @@ class PhotonGeocoder {
 	 * Géocode une localisation.
 	 *
 	 * @param string $text Localisation saisie.
-	 * @return array|null|\WP_Error Adresse au format WPJM, null si introuvable, WP_Error si le service est indisponible.
+	 * @return array<string,string>|null|\WP_Error Adresse au format WPJM, null si introuvable, WP_Error si le service est indisponible.
 	 */
 	public function geocode( $text ) {
 		$this->last_was_cached = true;
@@ -217,10 +217,10 @@ class PhotonGeocoder {
 	 * (+2), ville ou commune du pays du site (+1). À rang égal, l'ordre de
 	 * Photon (pertinence) est conservé.
 	 *
-	 * @param array  $features Entités GeoJSON renvoyées par Photon.
-	 * @param string $cleaned  Texte nettoyé.
-	 * @param string $hint     Préfixe de code postal (voir hint()).
-	 * @return array|null
+	 * @param array<int,mixed> $features Entités GeoJSON renvoyées par Photon.
+	 * @param string           $cleaned  Texte nettoyé.
+	 * @param string           $hint     Préfixe de code postal (voir hint()).
+	 * @return array<string,mixed>|null
 	 */
 	public static function pick( array $features, $cleaned, $hint = '' ) {
 		$segments = array_map( array( __CLASS__, 'normalize' ), explode( ',', (string) $cleaned ) );
@@ -267,8 +267,8 @@ class PhotonGeocoder {
 	/**
 	 * Convertit une entité Photon au format de WP Job Manager.
 	 *
-	 * @param array $feature Entité GeoJSON.
-	 * @return array|null null si les coordonnées sont absentes ou hors bornes.
+	 * @param array<string,mixed> $feature Entité GeoJSON.
+	 * @return array<string,string>|null null si les coordonnées sont absentes ou hors bornes.
 	 */
 	public static function to_address( array $feature ) {
 		$coords = isset( $feature['geometry']['coordinates'] ) ? $feature['geometry']['coordinates'] : null;
@@ -369,7 +369,7 @@ class PhotonGeocoder {
 	 * @param string $query    Texte nettoyé.
 	 * @param string $lang     Langue Photon.
 	 * @param bool   $filtered Restreindre aux lieux et limites administratives.
-	 * @return array|\WP_Error Entités, ou erreur (code g2rd_photon_bad_request pour un HTTP 400 avec filtre).
+	 * @return array<int,mixed>|\WP_Error Entités, ou erreur (code g2rd_photon_bad_request pour un HTTP 400 avec filtre).
 	 */
 	private function request( $base, $query, $lang, $filtered ) {
 		$url = $base . ( false === strpos( $base, '?' ) ? '?' : '&' ) . http_build_query(
