@@ -1,0 +1,51 @@
+{
+  "name": "g2rd/g2rd-wpjm-geo",
+  "description": "Outillage de développement (qualité, analyse statique, tests) du plugin G2RD WP Job Manager Geo. Le plugin n'a aucune dépendance Composer à l'exécution.",
+  "type": "project",
+  "license": "GPL-2.0-or-later",
+  "authors": [
+    {
+      "name": "Sebastien Gerard",
+      "email": "contact@g2rd.fr",
+      "homepage": "https://g2rd.fr"
+    }
+  ],
+  "require": {
+    "php": ">=7.4"
+  },
+  "require-dev": {
+    "dealerdirect/phpcodesniffer-composer-installer": "^1.0",
+    "pheromone/phpcs-security-audit": "^2.0",
+    "phpcompatibility/phpcompatibility-wp": "^2.1",
+    "phpstan/phpstan": "^1.12",
+    "squizlabs/php_codesniffer": "^3.10",
+    "szepeviktor/phpstan-wordpress": "^1.3",
+    "wp-coding-standards/wpcs": "^3.1"
+  },
+  "config": {
+    "sort-packages": true,
+    "platform": {
+      "php": "7.4.33"
+    },
+    "allow-plugins": {
+      "dealerdirect/phpcodesniffer-composer-installer": true
+    }
+  },
+  "scripts": {
+    "test": "php g2rd-wpjm-geo/tests/run.php",
+    "test:js": [
+      "@putenv NODE_PATH=tools/jsdom/node_modules",
+      "node g2rd-wpjm-geo/tests/js/run.js"
+    ],
+    "lint": "phpcs --standard=phpcs.xml.dist",
+    "lint:fix": "phpcbf --standard=phpcs.xml.dist",
+    "lint:security": "phpcs --standard=phpcs-security.xml --runtime-set ParanoiaMode 0",
+    "analyse": "phpstan analyse --memory-limit=1G",
+    "ci": [
+      "@test",
+      "@lint",
+      "@lint:security",
+      "@analyse"
+    ]
+  }
+}

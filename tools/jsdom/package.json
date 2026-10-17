@@ -1,0 +1,8 @@
+{
+  "name": "g2rd-wpjm-geo-js-tests",
+  "private": true,
+  "description": "jsdom pour le harnais de tests JS (g2rd-wpjm-geo/tests/js/run.js) ; jamais livré avec le plugin.",
+  "dependencies": {
+    "jsdom": "24.1.3"
+  }
+}

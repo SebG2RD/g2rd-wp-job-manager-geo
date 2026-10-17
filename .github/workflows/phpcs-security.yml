@@ -1,0 +1,104 @@
+name: PHPCS Security Audit
+
+# SAST OWASP (phpcs-security-audit) + PHPCompatibility, rapports annotés dans
+# la PR via cs2pr. Adapté du workflow homonyme de g2rd-facturation /
+# g2rd-connector, avec une différence : l'outillage vient du composer.lock du
+# dépôt (versions figées) plutôt que d'un `composer global require` non épinglé.
+# Les deux contrôles sont BLOQUANTS : le plugin expose une route REST publique,
+# appelle des services tiers côté serveur et modifie des offres importées.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  phpcs:
+    name: Security Audit + PHPCompatibility
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
+        with:
+          php-version: '8.2'
+          ini-values: memory_limit=1G
+          coverage: none
+          tools: cs2pr, composer:v2
+
+      - name: Install dependencies (composer.lock)
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Vérifier les standards installés
+        run: vendor/bin/phpcs -i
+
+      # Security Audit OWASP (SAST) — bloquant. Règles et exclusions justifiées
+      # dans phpcs-security.xml.
+      - name: PHPCS Security Audit
+        id: phpcs-sec
+        run: |
+          vendor/bin/phpcs \
+            --standard=phpcs-security.xml \
+            --extensions=php \
+            --report-full \
+            --report-checkstyle=./phpcs-security-report.xml \
+            --runtime-set ParanoiaMode 0 \
+            --colors -p \
+            g2rd-wpjm-geo/g2rd-wpjm-geo.php g2rd-wpjm-geo/uninstall.php g2rd-wpjm-geo/includes
+
+      - name: Annotations Security
+        if: ${{ always() && steps.phpcs-sec.outcome == 'failure' }}
+        continue-on-error: true
+        run: cs2pr ./phpcs-security-report.xml
+
+      # PHPCompatibility (PHP 7.4+ — cf. Requires PHP du plugin) — bloquant.
+      - name: PHPCompatibility
+        id: phpcompat
+        if: ${{ always() }}
+        run: |
+          vendor/bin/phpcs \
+            --standard=PHPCompatibilityWP \
+            --extensions=php \
+            --runtime-set testVersion 7.4- \
+            --report-full \
+            --report-checkstyle=./phpcompat-report.xml \
+            --colors -p \
+            g2rd-wpjm-geo/g2rd-wpjm-geo.php g2rd-wpjm-geo/uninstall.php g2rd-wpjm-geo/includes g2rd-wpjm-geo/tests
+
+      - name: Annotations PHPCompatibility
+        if: ${{ always() && steps.phpcompat.outcome == 'failure' }}
+        continue-on-error: true
+        run: cs2pr ./phpcompat-report.xml
+
+      - name: Résumé des résultats
+        if: always()
+        env:
+          SEC: ${{ steps.phpcs-sec.outcome }}
+          COMPAT: ${{ steps.phpcompat.outcome }}
+        run: |
+          {
+            echo "## Résultats PHPCS"
+            echo "- Security Audit (bloquant) : $SEC"
+            echo "- PHPCompatibility 7.4+ (bloquant) : $COMPAT"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: phpcs-reports
+          path: |
+            phpcs-security-report.xml
+            phpcompat-report.xml
+          retention-days: 30

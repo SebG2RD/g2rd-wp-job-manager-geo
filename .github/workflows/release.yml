@@ -1,0 +1,252 @@
+name: Release
+
+# Déclenché par un tag vX.Y.Z (créé par auto-tag.yml) ou manuellement.
+#
+# Deux jobs, au moindre privilège :
+# - build (lecture seule) : rejoue les contrôles qualité, construit le ZIP par
+#   tools/build-zip.php, le valide (contenu = fichiers suivis par git hors
+#   tests/), teste l'activation réelle dans WordPress à côté de WP Job Manager,
+#   puis transmet le ZIP et son SHA-256 en artefact. C'est le seul job qui
+#   exécute du code du dépôt ou des dépendances (Composer, npm, WP-CLI).
+# - publish (contents: write) : ne récupère pas le dépôt et n'exécute aucun code
+#   du dépôt ; il revérifie l'empreinte de l'artefact puis publie la release.
+#
+# Différences avec g2rd-facturation : pas de signature Ed25519 ni de webhook
+# g2rd.fr — ce plugin n'a pas de mise à jour automatique intégrée, il s'installe
+# à la main depuis la release.
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version à publier (ex. 1.1.0, doit correspondre aux fichiers du plugin)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build & verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: wp_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Déterminer la version
+        id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            VERSION="$INPUT_VERSION"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Version invalide : '$VERSION' (attendu x.y.z)"
+            exit 1
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Vérifier l'alignement des versions (en-tête, constante, readme.txt)
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: bash tools/verify-release-version.sh "$VERSION"
+
+      - name: Vérifier cohérence tag Git ↔ version (push tag uniquement)
+        if: github.event_name == 'push'
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          if [ "${GITHUB_REF_NAME}" != "$TAG" ]; then
+            echo "::error::Tag poussé (${GITHUB_REF_NAME}) ≠ version dérivée ($TAG)"
+            exit 1
+          fi
+
+      - name: Setup PHP 8.2 + WP-CLI
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, mysqli, zip
+          ini-values: memory_limit=1G
+          tools: composer:v2, wp-cli
+          coverage: none
+
+      - name: Contrôles qualité (tests, PHPCS, sécurité, PHPStan)
+        run: |
+          composer validate --strict --no-check-publish
+          composer install --no-interaction --no-progress --prefer-dist
+          composer run ci
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+
+      - name: Tests JS (harnais jsdom)
+        env:
+          NODE_PATH: tools/jsdom/node_modules
+        run: |
+          npm ci --prefix tools/jsdom --ignore-scripts --no-audit --no-fund
+          node g2rd-wpjm-geo/tests/js/run.js
+
+      - name: Créer le ZIP (dossier racine unique g2rd-wpjm-geo/, sans tests/)
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          php tools/build-zip.php
+          mkdir -p dist
+          mv g2rd-wpjm-geo.zip "dist/g2rd-wpjm-geo-${VERSION}.zip"
+          cd dist
+          sha256sum "g2rd-wpjm-geo-${VERSION}.zip" > "g2rd-wpjm-geo-${VERSION}.zip.sha256"
+          cat "g2rd-wpjm-geo-${VERSION}.zip.sha256"
+
+      - name: Valider le ZIP (intégrité + fichiers requis + contenu = git ls-files)
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: bash tools/verify-plugin-zip.sh "dist/g2rd-wpjm-geo-${VERSION}.zip"
+
+      - name: Test installation WordPress (activation depuis le ZIP, avec WP Job Manager)
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          ROOT="$(pwd)"
+          mkdir -p "$ROOT/_wp-e2e"
+          cd "$ROOT/_wp-e2e"
+
+          for i in $(seq 1 60); do
+            if mysql -h 127.0.0.1 -uroot -proot -e "SELECT 1" >/dev/null 2>&1; then
+              echo "MySQL prêt."; break
+            fi
+            [ "$i" -eq 60 ] && { echo "::error::MySQL indisponible"; exit 1; }
+            sleep 2
+          done
+
+          wp core download --force
+          wp config create --dbname=wp_test --dbuser=root --dbpass=root --dbhost=127.0.0.1 --skip-check
+          wp config set WP_DEBUG true --raw
+          wp config set WP_DEBUG_LOG true --raw
+          wp config set WP_DEBUG_DISPLAY false --raw
+          wp core install \
+            --url=http://example.test --title="G2RD WPJM Geo release test" \
+            --admin_user=admin --admin_password='AdminPass!2026' \
+            --admin_email=admin@example.test --skip-email
+          wp plugin install wp-job-manager --activate
+
+          unzip -q "$ROOT/dist/g2rd-wpjm-geo-${VERSION}.zip" -d wp-content/plugins/
+          wp plugin activate g2rd-wpjm-geo
+          ACTIVE="$(wp plugin list --status=active --field=name)"
+          echo "Plugins actifs: $ACTIVE"
+          echo "$ACTIVE" | grep -qx g2rd-wpjm-geo
+
+          # La table du journal des remplacements doit exister après activation.
+          TABLES="$(wp db query "SHOW TABLES LIKE 'wp_g2rd_wpjm_geo_log'" --skip-column-names)"
+          echo "$TABLES"
+          echo "$TABLES" | grep -qx wp_g2rd_wpjm_geo_log
+
+          # Le chargement de WordPress avec le plugin ne doit produire aucune
+          # erreur PHP venant du plugin.
+          wp eval 'echo rest_url( "g2rd-wpjm-geo/v1/jobs" ), "\n";'
+          if [ -f wp-content/debug.log ] && grep -E 'PHP (Fatal|Warning|Notice|Deprecated|Parse)' wp-content/debug.log | grep -q 'plugins/g2rd-wpjm-geo'; then
+            grep -E 'plugins/g2rd-wpjm-geo' wp-content/debug.log
+            echo "::error::Erreurs PHP du plugin dans debug.log"
+            exit 1
+          fi
+          echo "OK : plugin g2rd-wpjm-geo activé à côté de WP Job Manager, table créée, aucune erreur PHP"
+
+      - name: Transmettre le ZIP et son empreinte au job de publication
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-zip
+          path: |
+            dist/g2rd-wpjm-geo-${{ steps.version.outputs.version }}.zip
+            dist/g2rd-wpjm-geo-${{ steps.version.outputs.version }}.zip.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Récupérer l'artefact (sans checkout du dépôt)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-zip
+          path: dist
+
+      - name: Revérifier l'empreinte SHA-256
+        working-directory: dist
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          set -euo pipefail
+          ls -la
+          sha256sum -c "g2rd-wpjm-geo-${VERSION}.zip.sha256"
+
+      - name: Créer la release GitHub
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          tag_name: ${{ needs.build.outputs.tag }}
+          name: 'G2RD WP Job Manager Geo v${{ needs.build.outputs.version }}'
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+          body: |
+            ## G2RD WP Job Manager Geo v${{ needs.build.outputs.version }}
+
+            Complète WP Job Manager : autocomplétion des villes (Google Places ou OpenStreetMap),
+            carte des offres, normalisation des candidatures des offres importées par Go Fetch Jobs.
+
+            ### Installation
+            1. Télécharger `g2rd-wpjm-geo-${{ needs.build.outputs.version }}.zip` ci-dessous
+            2. Extensions → Ajouter → Téléverser une extension → activer (WP Job Manager requis)
+            3. Réglages : menu G2RD → Offres géolocalisées (ou menu « G2RD Geo » sans le thème G2RD)
+
+            ### Intégrité
+            Empreinte SHA-256 dans `g2rd-wpjm-geo-${{ needs.build.outputs.version }}.zip.sha256` :
+            `sha256sum -c g2rd-wpjm-geo-${{ needs.build.outputs.version }}.zip.sha256`.
+
+            ### Changelog
+            Voir la section Changelog de [`readme.txt`](https://github.com/${{ github.repository }}/blob/main/g2rd-wpjm-geo/readme.txt).
+          files: |
+            dist/g2rd-wpjm-geo-${{ needs.build.outputs.version }}.zip
+            dist/g2rd-wpjm-geo-${{ needs.build.outputs.version }}.zip.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
