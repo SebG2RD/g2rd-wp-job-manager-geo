@@ -6954,7 +6954,7 @@ ok 'carte Google : offres libres exclues' "$(hasnt "$R" "\"id\":$JOB,")"
 ok 'géocodage de WP Job Manager réactivé' "$(is "$(wp eval 'echo apply_filters( "job_manager_geolocation_enabled", true ) ? "on" : "off";')" on)"
 
 echo "11. Journal PHP"
-L=$(docker compose exec -T wp sh -c 'grep -i "g2rd" /var/www/html/wp-content/debug.log 2>/dev/null || true')
+L=$(docker compose exec -T wp sh -c 'grep -E "PHP (Fatal error|Parse error|Warning|Notice|Deprecated)" /var/www/html/wp-content/debug.log 2>/dev/null | grep "plugins/g2rd-wpjm-geo" || true')
 ok 'aucune erreur liée au plugin' "$(is "$L" '')"
 
 echo
@@ -7021,6 +7021,70 @@ Expected: `g2rd-wpjm-geo.zip : N fichiers, … octets`, puis `0`.
 git add tools/docker/docker-compose.yml tools/docker/fetch-plugins.sh tools/docker/verify.sh tools/build-zip.php
 git commit -m "test: vérification de bout en bout Docker et construction de l'archive"
 ```
+
+- [ ] **Step 7: Correctif issu de la vérification — configuration de l'autocomplétion avec un thème bloc**
+
+Constat Docker : avec un thème bloc (Twenty Twenty-Five, thème G2RD), le formulaire `[submit_job_form]` est rendu avant `wp_head`, donc avant `GoogleAssets::register_assets()` (`wp_enqueue_scripts`) ; `wp_add_inline_script()` sur un script non encore enregistré renvoie false et la configuration de l'autocomplétion est perdue (défaut présent depuis 1.0.0 ; sans effet avec un thème classique comme Astra).
+
+Dans `LocationAutocomplete::enqueue_autocomplete()`, remplacer l'appel final
+
+```php
+		wp_add_inline_script(
+			GoogleAssets::HANDLE_AUTOCOMPLETE,
+			'window.g2rdWpjmGeoAutocomplete = ' . wp_json_encode( $config ) . ';',
+			'before'
+		);
+```
+
+par :
+
+```php
+		$script = 'window.g2rdWpjmGeoAutocomplete = ' . wp_json_encode( $config ) . ';';
+		if ( wp_script_is( GoogleAssets::HANDLE_AUTOCOMPLETE, 'registered' ) ) {
+			wp_add_inline_script( GoogleAssets::HANDLE_AUTOCOMPLETE, $script, 'before' );
+			return;
+		}
+		// Thème bloc : le formulaire est rendu avant wp_head, donc avant l'enregistrement des scripts.
+		add_action(
+			'wp_enqueue_scripts',
+			function () use ( $script ) {
+				wp_add_inline_script( GoogleAssets::HANDLE_AUTOCOMPLETE, $script, 'before' );
+			},
+			20
+		);
+```
+
+Dans `tests/bootstrap.php`, ajouter (s'il n'existe pas) :
+
+```php
+	function wp_script_is( $handle, $list = 'enqueued' ) {
+		if ( 'registered' === $list ) {
+			return isset( G2RD_Test_State::$enqueued[ 'register:' . $handle ] );
+		}
+		return isset( G2RD_Test_State::$enqueued[ 'script:' . $handle ] );
+	}
+```
+
+Dans `tests/run.php`, juste avant `$results = $GLOBALS['g2rd_results'];` :
+
+```php
+echo PHP_EOL . '28. Autocomplétion avec un thème bloc' . PHP_EOL;
+list( $s ) = boot( array( 'provider' => Settings::PROVIDER_OSM ) );
+( new LocationAutocomplete( $s ) )->enqueue();
+check( 'script pas encore enregistré : configuration différée', ! isset( G2RD_Test_State::$enqueued['inline:g2rd-wpjm-geo-autocomplete'] ) );
+do_action( 'wp_enqueue_scripts' );
+list( $inline, $c ) = g2rd_ac_config();
+check( 'configuration ajoutée après l’enregistrement des scripts', is_array( $c ) && 'photon' === $c['source'] );
+```
+
+Dans `tools/docker/verify.sh`, le contrôle du journal ne retient que les erreurs PHP du plugin (le thème G2RD écrit ses propres messages dans `debug.log`) : la ligne `L=$(…)` est celle de l'étape 3 ci-dessus.
+
+```bash
+git add g2rd-wpjm-geo/includes/LocationAutocomplete.php g2rd-wpjm-geo/tests/bootstrap.php g2rd-wpjm-geo/tests/run.php tools/docker/verify.sh
+git commit -m "fix: configuration de l'autocomplétion conservée avec un thème bloc ; contrôle du journal limité aux erreurs du plugin"
+```
+
+Puis relancer `tools/docker/verify.sh` : `0 échoués` attendu.
 
 ---
 
