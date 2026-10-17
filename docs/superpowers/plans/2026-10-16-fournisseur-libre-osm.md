@@ -21,6 +21,7 @@
 | — | Photon : un HTTP 400 persistant (même sans filtre) vaut « introuvable », sauf s'il porte sur la langue ou les paramètres (erreur de configuration) | une offre au texte refusé bloquerait la file à chaque passage |
 | Clé de cache md5( langue + texte nettoyé ) | md5( URL Photon + langue du site + segments normalisés + indice de département ) ; langue du site (`get_locale()`), pas celle de l'utilisateur, y compris pour l'autocomplétion | deux textes de même clé donnaient des résultats différents ; le nom renvoyé par Photon, que le garde-fou compare, dépend de la langue (correctifs de revue, tâche 4) |
 | — | `GeocodingIntegration` retire la source dès que `geolocation_lat` est écrite hors de `write()` (WP Job Manager en mode Google, Go Fetch Jobs, WP All Import) ; drapeau « Photon en panne » de 5 min qui fait passer les saisies par la file ; `WP_IMPORTING` et le filtre `g2rd_wpjm_geo_defer_geocoding` diffèrent aussi le géocodage (correctifs de revue, tâche 5) | des coordonnées Google étiquetées `osm` s'afficheraient sur la carte libre ; chaque enregistrement attendrait 5 à 10 s pendant une panne |
+| MapLibre « exige WebGL 2 » | WebGL 2 ou, à défaut, WebGL 1 (repli de MapLibre 5) ; interface MapLibre traduite, boutons zoom et plein écran, sans rotation ; liste repliable des offres sous la carte libre (clavier, lecteurs d'écran) ; cache de pages WP Rocket vidé au changement de fournisseur (correctifs de revue, tâche 12) | les points du canevas MapLibre ne prennent pas le focus ; des pages en cache garderaient l'ancien moteur |
 | Garde-fou : nom = premier segment | idem, puis à nom égal : département ou code postal saisi (lieux français), autres segments (article ignoré), ville ou commune du pays du site (filtre `g2rd_wpjm_geo_photon_preferred_country`, inclus dans la clé de cache ; un village homonyme ne gagne pas : « Montréal » seul reste au Québec, mais « Laval » seul est en France) ; « Paris 15e », « St Etienne » reconnus ; « Remote », « Télétravail » jamais envoyés | « Laval (53) » ou « Valence (26) » seraient placées sur un homonyme étranger plus peuplé |
 
 Les autres ajustements (MapLibre 5.24.0, copie intégrale de la feuille, chemin Google du re-géocodage) sont déjà reportés dans la spécification.
@@ -5146,13 +5147,35 @@ Dans `assets/js/map-common.js`, juste avant `window.g2rdWpjmGeoMapCommon = {`, a
 		};
 	}
 
+	/**
+	 * Liste repliable des offres de la carte, juste après elle : accès au clavier et aux
+	 * lecteurs d'écran quand les points sont dessinés dans un canevas (MapLibre).
+	 */
+	function placesList( container, groups, i18n ) {
+		var previous = container.nextElementSibling;
+		if ( previous && previous.classList.contains( 'g2rd-wpjm-geo-map__places' ) ) {
+			previous.parentNode.removeChild( previous );
+		}
+		var details = document.createElement( 'details' );
+		details.className = 'g2rd-wpjm-geo-map__places';
+		var summary = document.createElement( 'summary' );
+		summary.textContent = i18n.places || '';
+		details.appendChild( summary );
+		groups.forEach( function ( group ) {
+			details.appendChild( buildInfoContent( group.jobs, i18n ) );
+		} );
+		container.parentNode.insertBefore( details, container.nextSibling );
+		return details;
+	}
+
 ```
 
 et, dans l'objet exporté, remplacer `observe: observe` par :
 
 ```js
 		observe: observe,
-		status: statusController
+		status: statusController,
+		places: placesList
 ```
 
 Dans `assets/js/jobs-map.js` (moteur Google), même état partagé : remplacer
@@ -5214,7 +5237,7 @@ Dans `tests/js/run.js`, juste avant la ligne `console.log('\nResultat JS : ' …
     cw.fetch = () => Promise.reject(new Error('unused'));
     cw.eval(src('js/map-common.js'));
     const C = cw.g2rdWpjmGeoMapCommon;
-    check('API exposee : un seul objet global, 9 fonctions', 'parseJson,sprintf,safeUrl,placeLabel,buildInfoContent,groupByCoordinates,createFetcher,observe,status' === Object.keys(C).join(','));
+    check('API exposee : un seul objet global, 10 fonctions', 'parseJson,sprintf,safeUrl,placeLabel,buildInfoContent,groupByCoordinates,createFetcher,observe,status,places' === Object.keys(C).join(','));
     check('safeUrl : http(s) absolu seulement (relatif, //hote, javascript:, espace initial, non-chaine refuses)',
       C.safeUrl('HTTPS://a.test/x') === 'HTTPS://a.test/x' && ['/job/1', '//evil.test', 'javascript:alert(1)', ' javascript:alert(1)', 'https:evil', 'data:text/html,x', null, 42].every(u => C.safeUrl(u) === ''));
     const g = C.groupByCoordinates([{ latitude: '48.856614', longitude: '2.352222' }, { latitude: 48.8566141, longitude: 2.3522224 }, { latitude: 48.85662, longitude: 2.352222 }, { latitude: 90, longitude: 180 }, { latitude: 90.0001, longitude: 0 }, { latitude: '', longitude: '' }]);
@@ -5255,13 +5278,19 @@ Dans `tests/js/run.js`, juste avant `(async () => {`, ajouter :
 
 ```js
 async function osmMap({ data, clustering = true, noWebgl = false, styleFail = false, restFail = false, preload = true, admin = '' }) {
-  const i18n = JSON.stringify({ loading: 'Chargement', error: 'ERREUR', empty: 'VIDE', view: 'Voir offre', manyJobs: '%d offres ici', regeocode: 'Re-geocoder' }).replace(/"/g, '&quot;');
+  const i18n = JSON.stringify({ loading: 'Chargement', error: 'ERREUR', empty: 'VIDE', view: 'Voir offre', manyJobs: '%d offres ici', regeocode: 'Re-geocoder', places: 'Liste' }).replace(/"/g, '&quot;');
   const html = '<div class="g2rd-wpjm-geo-map" data-rest-url="https://x.test/wp-json/g2rd-wpjm-geo/v1/jobs" data-per-page="4" data-clustering="' + (clustering ? 1 : 0) + '" data-admin-url="' + admin + '" data-nonce="" data-i18n="' + i18n + '"><div class="g2rd-wpjm-geo-map__canvas"></div><p class="g2rd-wpjm-geo-map__status">Chargement</p></div>';
   const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://x.test/' });
   const w = dom.window;
-  const st = { map: null, mapOpts: null, sources: {}, layers: [], layout: [], popups: [], fit: null, jump: null, ease: null };
+  const st = { map: null, mapOpts: null, sources: {}, layers: [], layout: [], popups: [], fit: null, jump: null, ease: null, controls: [], noRotate: false };
   class FakeMap {
-    constructor(o) { st.mapOpts = o; st.map = this; this.events = {}; }
+    constructor(o) {
+      st.mapOpts = o; st.map = this; this.events = {};
+      this.dragRotate = { disable: () => { st.noRotate = true; } };
+      this.touchZoomRotate = { disableRotation: () => {} };
+      this.touchPitch = { disable: () => {} };
+    }
+    addControl(c) { st.controls.push(c.kind); return this; }
     on(ev, a, b) { const k = b ? ev + ':' + a : ev; (this.events[k] = this.events[k] || []).push(b || a); }
     fire(k, arg) { (this.events[k] || []).forEach(f => f(arg)); }
     getStyle() { return { layers: [
@@ -5280,11 +5309,13 @@ async function osmMap({ data, clustering = true, noWebgl = false, styleFail = fa
   }
   class Popup { constructor(o) { this.o = o; st.popups.push(this); } setLngLat(c) { this.c = c; return this; } setDOMContent(n) { this.node = n; return this; } addTo() { return this; } }
   class LngLatBounds { constructor() { this.pts = []; } extend(p) { this.pts.push(p); return this; } }
-  const fake = { Map: FakeMap, Popup, LngLatBounds };
+  class NavigationControl { constructor(o) { this.kind = 'nav'; this.o = o; } }
+  class FullscreenControl { constructor() { this.kind = 'full'; } }
+  const fake = { Map: FakeMap, Popup, LngLatBounds, NavigationControl, FullscreenControl };
   if (preload) w.maplibregl = fake;
   w.WebGL2RenderingContext = noWebgl ? undefined : function () {};
   w.HTMLCanvasElement.prototype.getContext = function () { return noWebgl ? null : {}; };
-  w.g2rdWpjmGeoOsm = { styleUrl: 'https://tiles.openfreemap.org/styles/liberty', maplibreJs: 'https://x.test/vendor/maplibre-gl.js', maplibreCss: 'https://x.test/vendor/maplibre-gl.css', language: 'fr' };
+  w.g2rdWpjmGeoOsm = { styleUrl: 'https://tiles.openfreemap.org/styles/liberty', maplibreJs: 'https://x.test/vendor/maplibre-gl.js', maplibreCss: 'https://x.test/vendor/maplibre-gl.css', language: 'fr', locale: { 'Popup.Close': 'Fermer', 'Map.Title': '' } };
   w.IntersectionObserver = undefined;
   w.fetch = (url) => {
     if (restFail) return Promise.resolve({ ok: false, status: 500, headers: { get: () => null } });
@@ -5342,6 +5373,18 @@ Puis, avant la ligne du résultat final, ajouter :
   check('endpoint en erreur : message d erreur', o.status.textContent === 'ERREUR');
   o = await osmMap({ data: jobs, preload: false });
   check('MapLibre charge a la demande depuis le plugin (script et feuille)', o.st.injected.script && o.st.injected.css && !!o.st.map);
+  o = await osmMap({ data: jobs });
+  check('interface MapLibre traduite, valeurs vides retirees', 'Fermer' === o.st.mapOpts.locale['Popup.Close'] && !('Map.Title' in o.st.mapOpts.locale));
+  check('attribution conservee (obligation OpenStreetMap)', false !== o.st.mapOpts.attributionControl);
+  check('boutons de zoom et plein ecran, sans rotation', 'nav,full' === o.st.controls.join() && true === o.st.noRotate);
+  const places = o.w.document.querySelector('.g2rd-wpjm-geo-map + .g2rd-wpjm-geo-map__places');
+  check('liste des offres sous la carte, pour le clavier', !!places && 'Liste' === places.querySelector('summary').textContent && places.children.length > 1);
+  o = await osmMap({ data: jobs, styleFail: true });
+  o.st.map.fire('load', {});
+  await wait(10);
+  check('erreur passagere avant le chargement : etat d erreur retire', !o.el.classList.contains('has-error') && o.el.classList.contains('is-ready'));
+  o = await osmMap({ data: [] });
+  check('aucune offre : pas de liste vide', !o.w.document.querySelector('.g2rd-wpjm-geo-map__places'));
 ```
 
 - [ ] **Step 3: Vérifier l'échec**
@@ -5406,12 +5449,31 @@ Expected: `ENOENT` sur `jobs-map-osm.js`.
 		return maplibrePromise;
 	}
 
-	function supportsWebGL2() {
+	// MapLibre 5 utilise WebGL 2 et se replie sur WebGL 1. Le contexte de test est libéré aussitôt.
+	function supportsWebGL() {
 		try {
-			return !! ( window.WebGL2RenderingContext && document.createElement( 'canvas' ).getContext( 'webgl2' ) );
+			var canvas = document.createElement( 'canvas' );
+			var gl = canvas.getContext( 'webgl2' ) || canvas.getContext( 'webgl' );
+			var lose = ( gl && 'function' === typeof gl.getExtension ) ? gl.getExtension( 'WEBGL_lose_context' ) : null;
+			if ( lose ) {
+				lose.loseContext();
+			}
+			return !! gl;
 		} catch ( e ) {
 			return false;
 		}
+	}
+
+	// Textes de l'interface MapLibre (gestes, boutons) : une valeur absente ou vide ferait lever « Missing UI string ».
+	function uiLocale() {
+		var given = cfg.locale || {};
+		var locale = {};
+		Object.keys( given ).forEach( function ( key ) {
+			if ( 'string' === typeof given[ key ] && given[ key ] ) {
+				locale[ key ] = given[ key ];
+			}
+		} );
+		return locale;
 	}
 
 	function symbolLayers( map ) {
@@ -5457,7 +5519,7 @@ Expected: `ENOENT` sur `jobs-map-osm.js`.
 		var ui = C.status( container, i18n );
 		var fail = ui.fail;
 
-		if ( ! canvas || ! cfg.styleUrl || ! cfg.maplibreJs || ! container.getAttribute( 'data-rest-url' ) || ! supportsWebGL2() ) {
+		if ( ! canvas || ! cfg.styleUrl || ! cfg.maplibreJs || ! container.getAttribute( 'data-rest-url' ) || ! supportsWebGL() ) {
 			fail();
 			return;
 		}
@@ -5482,8 +5544,15 @@ Expected: `ENOENT` sur `jobs-map-osm.js`.
 				center: [ 0, 20 ],
 				zoom: 1,
 				cooperativeGestures: true,
-				attributionControl: { compact: window.innerWidth < 782 }
+				attributionControl: { compact: window.innerWidth < 782 },
+				locale: uiLocale()
 			} );
+			// Boutons de zoom et plein écran (comme la carte Google) ; ni rotation ni inclinaison pour une carte d'offres.
+			map.addControl( new ml.NavigationControl( { showCompass: false } ), 'top-right' );
+			map.addControl( new ml.FullscreenControl(), 'top-right' );
+			map.dragRotate.disable();
+			map.touchZoomRotate.disableRotation();
+			map.touchPitch.disable();
 
 			map.on( 'error', function () {
 				// Avant le premier rendu (style ou tuiles injoignables) : message d'erreur. Après, une tuile manquante n'est pas bloquante.
@@ -5494,6 +5563,7 @@ Expected: `ENOENT` sur `jobs-map-osm.js`.
 
 			map.on( 'load', function () {
 				loaded = true;
+				container.classList.remove( 'has-error' ); // Une erreur passagère avant le chargement ne doit pas rester affichée.
 				localizeLabels( map, cfg.language );
 				var font = textFont( map );
 
@@ -5581,6 +5651,8 @@ Expected: `ENOENT` sur `jobs-map-osm.js`.
 					ui.empty();
 				} else {
 					ui.set( '' );
+					// Les points du canevas ne prennent pas le focus : liste des offres sous la carte pour le clavier et les lecteurs d'écran.
+					C.places( container, groups, i18n );
 					if ( 1 === features.length ) {
 						map.jumpTo( { center: features[ 0 ].geometry.coordinates, zoom: 10 } );
 					} else {
@@ -5681,6 +5753,19 @@ class OsmAssets {
 			'maplibreJs'  => esc_url_raw( $vendor . 'maplibre-gl.js?ver=' . self::MAPLIBRE_VERSION ),
 			'maplibreCss' => esc_url_raw( $vendor . 'maplibre-gl.css?ver=' . self::MAPLIBRE_VERSION ),
 			'language'    => strtolower( substr( (string) preg_replace( '/[^A-Za-z]/', '', (string) $locale ), 0, 2 ) ),
+			// Textes de l'interface MapLibre (en anglais par défaut).
+			'locale'      => array(
+				'Map.Title'                                  => __( 'Carte des offres d’emploi', 'g2rd-wpjm-geo' ),
+				'Popup.Close'                                => __( 'Fermer', 'g2rd-wpjm-geo' ),
+				'AttributionControl.ToggleAttribution'       => __( 'Afficher ou masquer les crédits', 'g2rd-wpjm-geo' ),
+				'NavigationControl.ZoomIn'                   => __( 'Zoom avant', 'g2rd-wpjm-geo' ),
+				'NavigationControl.ZoomOut'                  => __( 'Zoom arrière', 'g2rd-wpjm-geo' ),
+				'FullscreenControl.Enter'                    => __( 'Plein écran', 'g2rd-wpjm-geo' ),
+				'FullscreenControl.Exit'                     => __( 'Quitter le plein écran', 'g2rd-wpjm-geo' ),
+				'CooperativeGesturesHandler.WindowsHelpText' => __( 'Utilisez Ctrl + molette pour zoomer sur la carte', 'g2rd-wpjm-geo' ),
+				'CooperativeGesturesHandler.MacHelpText'     => __( 'Utilisez ⌘ + molette pour zoomer sur la carte', 'g2rd-wpjm-geo' ),
+				'CooperativeGesturesHandler.MobileHelpText'  => __( 'Utilisez deux doigts pour déplacer la carte', 'g2rd-wpjm-geo' ),
+			),
 		);
 	}
 }
@@ -5721,6 +5806,7 @@ Dans le tableau `$i18n`, après `'mapLabel'  => …,`, ajouter :
 
 ```php
 			'regeocode' => __( 'Re-géocoder les offres', 'g2rd-wpjm-geo' ),
+			'places'    => __( 'Liste des offres de la carte', 'g2rd-wpjm-geo' ),
 ```
 
 Dans le tableau `$attributes`, après la ligne `'data-map-id' …`, ajouter :
@@ -5747,7 +5833,18 @@ Dans le tableau `$attributes`, après la ligne `'data-map-id' …`, ajouter :
 	border-radius: 6px;
 	box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
 }
+
+/* ---------- Liste des offres sous la carte (accès au clavier) ---------- */
+.g2rd-wpjm-geo-map__places {
+	margin-top: 12px;
+}
+.g2rd-wpjm-geo-map__places > summary {
+	cursor: pointer;
+	font-weight: 600;
+}
 ```
+
+Toujours dans `frontend.css`, remplacer le sélecteur `.g2rd-wpjm-geo-map__canvas {` par `.g2rd-wpjm-geo-map > .g2rd-wpjm-geo-map__canvas {` : la feuille de MapLibre (`.maplibregl-map { position: relative }`), chargée après, l'emporterait à spécificité égale.
 
 - [ ] **Step 9: Brancher dans le plugin**
 
@@ -5757,6 +5854,49 @@ Dans `Plugin.php`, juste après `$google->register();`, ajouter :
 		( new OsmAssets( $this->settings ) )->register();
 ```
 
+Changement de fournisseur : les pages en cache (WP Rocket sur le site cible) garderaient l'ancien moteur, alors que l'endpoint ne renvoie déjà plus que la nouvelle source. Dans `Settings.php`, dans `register()`, après la ligne `add_action( 'add_option_' . self::OPTION, array( $this, 'flush_cache' ) );`, ajouter :
+
+```php
+		add_action( 'update_option_' . self::OPTION, array( __CLASS__, 'purge_page_cache_on_provider_change' ), 10, 2 );
+```
+
+et, après la méthode `flush_cache()` :
+
+```php
+
+	/**
+	 * Vide le cache de pages de WP Rocket quand le fournisseur change (appel de sa
+	 * fonction publique, sans rien modifier de l'extension).
+	 *
+	 * @param mixed $old Anciens réglages.
+	 * @param mixed $new Nouveaux réglages.
+	 * @return void
+	 */
+	public static function purge_page_cache_on_provider_change( $old, $new ) {
+		$before = ( is_array( $old ) && isset( $old['provider'] ) ) ? $old['provider'] : self::PROVIDER_GOOGLE;
+		$after  = ( is_array( $new ) && isset( $new['provider'] ) ) ? $new['provider'] : self::PROVIDER_GOOGLE;
+		if ( $before !== $after && function_exists( 'rocket_clean_domain' ) ) {
+			rocket_clean_domain();
+		}
+	}
+```
+
+Dans `tests/run.php`, juste avant `$results = $GLOBALS['g2rd_results'];` :
+
+```php
+echo PHP_EOL . '24. Changement de fournisseur : cache de pages' . PHP_EOL;
+if ( ! function_exists( 'rocket_clean_domain' ) ) {
+	function rocket_clean_domain() {
+		$GLOBALS['g2rd_rocket_purges']++;
+	}
+}
+$GLOBALS['g2rd_rocket_purges'] = 0;
+Settings::purge_page_cache_on_provider_change( array( 'provider' => 'google' ), array( 'provider' => 'google', 'map_height' => 500 ) );
+check( 'fournisseur inchangé : pas de purge', 0 === $GLOBALS['g2rd_rocket_purges'] );
+Settings::purge_page_cache_on_provider_change( array( 'provider' => 'google' ), array( 'provider' => 'osm' ) );
+check( 'fournisseur changé : cache de pages purgé', 1 === $GLOBALS['g2rd_rocket_purges'] );
+```
+
 - [ ] **Step 10: Lint, tests, commit**
 
 ```bash
@@ -5764,7 +5904,7 @@ for f in g2rd-wpjm-geo/includes/*.php; do php -l "$f" | grep -v "^No syntax"; do
 node --check g2rd-wpjm-geo/assets/js/jobs-map-osm.js
 php g2rd-wpjm-geo/tests/run.php | tail -1
 NODE_PATH=tools/jsdom/node_modules node g2rd-wpjm-geo/tests/js/run.js | tail -1
-git add g2rd-wpjm-geo/assets/vendor/maplibre-gl g2rd-wpjm-geo/assets/js/jobs-map-osm.js g2rd-wpjm-geo/assets/js/map-common.js g2rd-wpjm-geo/assets/js/jobs-map.js g2rd-wpjm-geo/includes/OsmAssets.php g2rd-wpjm-geo/includes/JobsMap.php g2rd-wpjm-geo/includes/Plugin.php g2rd-wpjm-geo/assets/css/frontend.css g2rd-wpjm-geo/tests/js/run.js
+git add g2rd-wpjm-geo/assets/vendor/maplibre-gl g2rd-wpjm-geo/assets/js/jobs-map-osm.js g2rd-wpjm-geo/assets/js/map-common.js g2rd-wpjm-geo/assets/js/jobs-map.js g2rd-wpjm-geo/includes/OsmAssets.php g2rd-wpjm-geo/includes/JobsMap.php g2rd-wpjm-geo/includes/Plugin.php g2rd-wpjm-geo/includes/Settings.php g2rd-wpjm-geo/assets/css/frontend.css g2rd-wpjm-geo/tests/js/run.js g2rd-wpjm-geo/tests/run.php
 git commit -m "feat: carte libre MapLibre + OpenFreeMap, clustering natif"
 ```
 
