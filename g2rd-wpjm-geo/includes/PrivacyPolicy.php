@@ -59,13 +59,16 @@ class PrivacyPolicy {
 	 */
 	public function text() {
 		if ( Settings::PROVIDER_OSM === $this->settings->get_provider() ) {
+			$unknown = __( 'un service tiers', 'g2rd-wpjm-geo' );
+			$tiles   = (string) wp_parse_url( (string) $this->settings->get( 'osm_style_url' ), PHP_URL_HOST );
+			$photon  = (string) wp_parse_url( (string) $this->settings->get( 'photon_url' ), PHP_URL_HOST );
 			return sprintf(
 				/* translators: 1: map tiles host, 2: Photon host. */
-				__( "La carte des offres d'emploi affiche un fond de carte fourni par %1\$s : pour l'afficher, votre navigateur transmet votre adresse IP à ce service.\n\nLorsque vous saisissez une ville dans le formulaire de dépôt d'une offre, les lettres tapées et votre adresse IP sont transmises au service de recherche %2\$s.\n\nLa localisation des offres est convertie en coordonnées par notre serveur auprès de %2\$s ; aucune donnée personnelle des visiteurs n'est transmise à cette occasion. Données cartographiques © les contributeurs d'OpenStreetMap.", 'g2rd-wpjm-geo' ),
-				(string) wp_parse_url( (string) $this->settings->get( 'osm_style_url' ), PHP_URL_HOST ),
-				(string) wp_parse_url( (string) $this->settings->get( 'photon_url' ), PHP_URL_HOST )
+				__( "La carte des offres d'emploi affiche un fond de carte fourni par %1\$s (et les ressources associées à ce style) : pour l'afficher, votre navigateur transmet votre adresse IP à ce service.\n\nLorsque vous saisissez une ville dans le formulaire de dépôt d'une offre, les lettres tapées et votre adresse IP sont transmises au service de recherche %2\$s.\n\nLa localisation des offres est convertie en coordonnées par notre serveur auprès de %2\$s : seuls le texte de la localisation et l'adresse IP de notre serveur lui sont transmis. Données cartographiques © les contributeurs d'OpenStreetMap.", 'g2rd-wpjm-geo' ),
+				'' !== $tiles ? $tiles : $unknown,
+				'' !== $photon ? $photon : $unknown
 			);
 		}
-		return __( "La carte des offres d'emploi et l'autocomplétion des villes utilisent Google Maps Platform (Google Ireland Limited) : votre navigateur charge des scripts de Google et lui transmet votre adresse IP ainsi que les lettres saisies dans le champ de localisation.\n\nLa localisation des offres est convertie en coordonnées par notre serveur auprès de Google ; aucune donnée personnelle des visiteurs n'est transmise à cette occasion.", 'g2rd-wpjm-geo' );
+		return __( "La carte des offres d'emploi et l'autocomplétion des villes utilisent Google Maps Platform (Google Ireland Limited) : votre navigateur charge des scripts de Google et lui transmet votre adresse IP ainsi que les lettres saisies dans le champ de localisation ; Google peut déposer des cookies.\n\nLa localisation des offres est convertie en coordonnées par notre serveur auprès de Google : seuls le texte de la localisation et l'adresse IP de notre serveur lui sont transmis.", 'g2rd-wpjm-geo' );
 	}
 }
