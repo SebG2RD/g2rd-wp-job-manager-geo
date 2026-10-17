@@ -20,6 +20,23 @@ delete_transient( 'g2rd_wpjm_geo_url_queue_lock' );
 
 wp_clear_scheduled_hook( 'g2rd_wpjm_geo_purge_log' );
 wp_clear_scheduled_hook( 'g2rd_wpjm_geo_check_urls' );
+delete_option( 'g2rd_wpjm_geo_geocode_queue' );
+delete_transient( 'g2rd_wpjm_geo_geocode_lock' );
+delete_transient( 'g2rd_wpjm_geo_photon_down' );
+wp_clear_scheduled_hook( 'g2rd_wpjm_geo_geocode' );
+delete_post_meta_by_key( '_g2rd_wpjm_geo_source' );
+
+// Caches des réponses Photon et des vérifications d'URL.
+// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+$wpdb->query(
+	$wpdb->prepare(
+		"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s",
+		$wpdb->esc_like( '_transient_g2rd_geo_ph_' ) . '%',
+		$wpdb->esc_like( '_transient_timeout_g2rd_geo_ph_' ) . '%',
+		$wpdb->esc_like( '_transient_g2rd_geo_url_' ) . '%',
+		$wpdb->esc_like( '_transient_timeout_g2rd_geo_url_' ) . '%'
+	)
+);
 
 // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- nom de table interne, non influençable.
 $wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}g2rd_wpjm_geo_log" );

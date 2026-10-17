@@ -107,6 +107,7 @@ final class Plugin {
 			$page = new SettingsPage( $this->settings );
 			( new AdminMenu( array( $page, 'render' ) ) )->register();
 			( new AdminScreen() )->register();
+			( new PrivacyPolicy( $this->settings ) )->register();
 			( new RegeocodeTool( $this->settings, $geocoder ) )->register();
 			( new MigrationTool( $this->settings, $normalizer, $logger ) )->register();
 		}

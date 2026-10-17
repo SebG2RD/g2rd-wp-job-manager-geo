@@ -28,6 +28,7 @@ use G2RD\WPJMGeo\LocationAutocomplete;
 use G2RD\WPJMGeo\Logger;
 use G2RD\WPJMGeo\MigrationTool;
 use G2RD\WPJMGeo\PhotonGeocoder;
+use G2RD\WPJMGeo\PrivacyPolicy;
 use G2RD\WPJMGeo\RegeocodeTool;
 use G2RD\WPJMGeo\RestController;
 use G2RD\WPJMGeo\Settings;
@@ -925,6 +926,13 @@ Settings::purge_page_cache_on_provider_change( array( 'provider' => 'google' ), 
 check( 'fournisseur inchangé : pas de purge', 0 === $GLOBALS['g2rd_rocket_purges'] );
 Settings::purge_page_cache_on_provider_change( array( 'provider' => 'google' ), array( 'provider' => 'osm' ) );
 check( 'fournisseur changé : cache de pages purgé', 1 === $GLOBALS['g2rd_rocket_purges'] );
+
+echo PHP_EOL . '25. Texte de confidentialité' . PHP_EOL;
+list( $s ) = boot( array( 'provider' => 'osm', 'photon_url' => 'https://photon.mon-serveur.fr/api/' ) );
+$text = ( new PrivacyPolicy( $s ) )->text();
+check( 'mode libre : hôtes réellement configurés cités', false !== strpos( $text, 'tiles.openfreemap.org' ) && false !== strpos( $text, 'photon.mon-serveur.fr' ) && false === strpos( $text, 'Google' ) );
+list( $s ) = boot();
+check( 'mode Google : Google cité', false !== strpos( ( new PrivacyPolicy( $s ) )->text(), 'Google' ) );
 
 echo PHP_EOL . '26. Homonymes d’une même région' . PHP_EOL;
 $features = array(
