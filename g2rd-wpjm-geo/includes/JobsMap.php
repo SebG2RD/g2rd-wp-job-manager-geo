@@ -143,6 +143,7 @@ class JobsMap {
 			'cluster'   => __( 'Groupe de %d offres : cliquer pour zoomer', 'g2rd-wpjm-geo' ),
 			'mapLabel'  => __( 'Carte des offres d’emploi', 'g2rd-wpjm-geo' ),
 			'regeocode' => __( 'Re-géocoder les offres', 'g2rd-wpjm-geo' ),
+			'places'    => __( 'Liste des offres de la carte', 'g2rd-wpjm-geo' ),
 		);
 
 		$attributes = array(

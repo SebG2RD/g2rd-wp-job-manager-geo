@@ -18,7 +18,7 @@
 	box-sizing: border-box;
 }
 
-.g2rd-wpjm-geo-map__canvas {
+.g2rd-wpjm-geo-map > .g2rd-wpjm-geo-map__canvas {
 	position: absolute;
 	inset: 0;
 	width: 100%;
@@ -225,4 +225,13 @@ a.g2rd-wpjm-geo-iw__title:focus {
 	padding: 12px 14px;
 	border-radius: 6px;
 	box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
+
+/* ---------- Liste des offres sous la carte (accès au clavier) ---------- */
+.g2rd-wpjm-geo-map__places {
+	margin-top: 12px;
+}
+.g2rd-wpjm-geo-map__places > summary {
+	cursor: pointer;
+	font-weight: 600;
 }

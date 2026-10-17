@@ -87,6 +87,7 @@ class Settings {
 		// Le cache mémoire ne doit jamais survivre à une modification des réglages dans la même requête.
 		add_action( 'update_option_' . self::OPTION, array( $this, 'flush_cache' ) );
 		add_action( 'add_option_' . self::OPTION, array( $this, 'flush_cache' ) );
+		add_action( 'update_option_' . self::OPTION, array( __CLASS__, 'purge_page_cache_on_provider_change' ), 10, 2 );
 	}
 
 	/**
@@ -96,6 +97,22 @@ class Settings {
 	 */
 	public function flush_cache() {
 		$this->cache = null;
+	}
+
+	/**
+	 * Vide le cache de pages de WP Rocket quand le fournisseur change (appel de sa
+	 * fonction publique, sans rien modifier de l'extension).
+	 *
+	 * @param mixed $old Anciens réglages.
+	 * @param mixed $new Nouveaux réglages.
+	 * @return void
+	 */
+	public static function purge_page_cache_on_provider_change( $old, $new ) {
+		$before = ( is_array( $old ) && isset( $old['provider'] ) ) ? $old['provider'] : self::PROVIDER_GOOGLE;
+		$after  = ( is_array( $new ) && isset( $new['provider'] ) ) ? $new['provider'] : self::PROVIDER_GOOGLE;
+		if ( $before !== $after && function_exists( 'rocket_clean_domain' ) ) {
+			rocket_clean_domain();
+		}
 	}
 
 	/**

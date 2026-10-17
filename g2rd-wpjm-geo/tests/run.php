@@ -912,6 +912,18 @@ check( 'journal : valeurs importées échappées', false === strpos( $html, '<sv
 check( 'outil : points d’accroche du script présents', 1 === preg_match( '/class="g2rd-wpjm-geo-tools"[^>]*data-ajax-url="[^"]+"[^>]*data-nonce="[^"]+"[^>]*data-i18n="/s', $html ) && false !== strpos( $html, 'g2rd-wpjm-geo-tools__rows' ) && false !== strpos( $html, 'data-g2rd-run="fix"' ) && false !== strpos( $html, 'data-g2rd-dry-run' ) );
 check( 'sections équilibrées', 2 === substr_count( $html, '<section' ) && 2 === substr_count( $html, '</section>' ) );
 
+echo PHP_EOL . '24. Changement de fournisseur : cache de pages' . PHP_EOL;
+if ( ! function_exists( 'rocket_clean_domain' ) ) {
+	function rocket_clean_domain() {
+		$GLOBALS['g2rd_rocket_purges']++;
+	}
+}
+$GLOBALS['g2rd_rocket_purges'] = 0;
+Settings::purge_page_cache_on_provider_change( array( 'provider' => 'google' ), array( 'provider' => 'google', 'map_height' => 500 ) );
+check( 'fournisseur inchangé : pas de purge', 0 === $GLOBALS['g2rd_rocket_purges'] );
+Settings::purge_page_cache_on_provider_change( array( 'provider' => 'google' ), array( 'provider' => 'osm' ) );
+check( 'fournisseur changé : cache de pages purgé', 1 === $GLOBALS['g2rd_rocket_purges'] );
+
 $results = $GLOBALS['g2rd_results'];
 echo PHP_EOL . sprintf( 'Résultat : %d réussis, %d échoués', $results['pass'], $results['fail'] ) . PHP_EOL;
 exit( $results['fail'] ? 1 : 0 );

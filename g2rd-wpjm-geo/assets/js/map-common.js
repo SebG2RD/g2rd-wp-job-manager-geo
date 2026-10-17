@@ -232,6 +232,27 @@
 		};
 	}
 
+	/**
+	 * Liste repliable des offres de la carte, juste après elle : accès au clavier et aux
+	 * lecteurs d'écran quand les points sont dessinés dans un canevas (MapLibre).
+	 */
+	function placesList( container, groups, i18n ) {
+		var previous = container.nextElementSibling;
+		if ( previous && previous.classList.contains( 'g2rd-wpjm-geo-map__places' ) ) {
+			previous.parentNode.removeChild( previous );
+		}
+		var details = document.createElement( 'details' );
+		details.className = 'g2rd-wpjm-geo-map__places';
+		var summary = document.createElement( 'summary' );
+		summary.textContent = i18n.places || '';
+		details.appendChild( summary );
+		groups.forEach( function ( group ) {
+			details.appendChild( buildInfoContent( group.jobs, i18n ) );
+		} );
+		container.parentNode.insertBefore( details, container.nextSibling );
+		return details;
+	}
+
 	window.g2rdWpjmGeoMapCommon = {
 		parseJson: parseJson,
 		sprintf: sprintf,
@@ -241,6 +262,7 @@
 		groupByCoordinates: groupByCoordinates,
 		createFetcher: createFetcher,
 		observe: observe,
-		status: statusController
+		status: statusController,
+		places: placesList
 	};
 }( window, document ) );

@@ -52,12 +52,31 @@
 		return maplibrePromise;
 	}
 
-	function supportsWebGL2() {
+	// MapLibre 5 utilise WebGL 2 et se replie sur WebGL 1. Le contexte de test est libéré aussitôt.
+	function supportsWebGL() {
 		try {
-			return !! ( window.WebGL2RenderingContext && document.createElement( 'canvas' ).getContext( 'webgl2' ) );
+			var canvas = document.createElement( 'canvas' );
+			var gl = canvas.getContext( 'webgl2' ) || canvas.getContext( 'webgl' );
+			var lose = ( gl && 'function' === typeof gl.getExtension ) ? gl.getExtension( 'WEBGL_lose_context' ) : null;
+			if ( lose ) {
+				lose.loseContext();
+			}
+			return !! gl;
 		} catch ( e ) {
 			return false;
 		}
+	}
+
+	// Textes de l'interface MapLibre (gestes, boutons) : une valeur absente ou vide ferait lever « Missing UI string ».
+	function uiLocale() {
+		var given = cfg.locale || {};
+		var locale = {};
+		Object.keys( given ).forEach( function ( key ) {
+			if ( 'string' === typeof given[ key ] && given[ key ] ) {
+				locale[ key ] = given[ key ];
+			}
+		} );
+		return locale;
 	}
 
 	function symbolLayers( map ) {
@@ -103,7 +122,7 @@
 		var ui = C.status( container, i18n );
 		var fail = ui.fail;
 
-		if ( ! canvas || ! cfg.styleUrl || ! cfg.maplibreJs || ! container.getAttribute( 'data-rest-url' ) || ! supportsWebGL2() ) {
+		if ( ! canvas || ! cfg.styleUrl || ! cfg.maplibreJs || ! container.getAttribute( 'data-rest-url' ) || ! supportsWebGL() ) {
 			fail();
 			return;
 		}
@@ -128,8 +147,15 @@
 				center: [ 0, 20 ],
 				zoom: 1,
 				cooperativeGestures: true,
-				attributionControl: { compact: window.innerWidth < 782 }
+				attributionControl: { compact: window.innerWidth < 782 },
+				locale: uiLocale()
 			} );
+			// Boutons de zoom et plein écran (comme la carte Google) ; ni rotation ni inclinaison pour une carte d'offres.
+			map.addControl( new ml.NavigationControl( { showCompass: false } ), 'top-right' );
+			map.addControl( new ml.FullscreenControl(), 'top-right' );
+			map.dragRotate.disable();
+			map.touchZoomRotate.disableRotation();
+			map.touchPitch.disable();
 
 			map.on( 'error', function () {
 				// Avant le premier rendu (style ou tuiles injoignables) : message d'erreur. Après, une tuile manquante n'est pas bloquante.
@@ -140,6 +166,7 @@
 
 			map.on( 'load', function () {
 				loaded = true;
+				container.classList.remove( 'has-error' ); // Une erreur passagère avant le chargement ne doit pas rester affichée.
 				localizeLabels( map, cfg.language );
 				var font = textFont( map );
 
@@ -227,6 +254,8 @@
 					ui.empty();
 				} else {
 					ui.set( '' );
+					// Les points du canevas ne prennent pas le focus : liste des offres sous la carte pour le clavier et les lecteurs d'écran.
+					C.places( container, groups, i18n );
 					if ( 1 === features.length ) {
 						map.jumpTo( { center: features[ 0 ].geometry.coordinates, zoom: 10 } );
 					} else {

@@ -69,6 +69,19 @@ class OsmAssets {
 			'maplibreJs'  => esc_url_raw( $vendor . 'maplibre-gl.js?ver=' . self::MAPLIBRE_VERSION ),
 			'maplibreCss' => esc_url_raw( $vendor . 'maplibre-gl.css?ver=' . self::MAPLIBRE_VERSION ),
 			'language'    => strtolower( substr( (string) preg_replace( '/[^A-Za-z]/', '', (string) $locale ), 0, 2 ) ),
+			// Textes de l'interface MapLibre (en anglais par défaut).
+			'locale'      => array(
+				'Map.Title'                                  => __( 'Carte des offres d’emploi', 'g2rd-wpjm-geo' ),
+				'Popup.Close'                                => __( 'Fermer', 'g2rd-wpjm-geo' ),
+				'AttributionControl.ToggleAttribution'       => __( 'Afficher ou masquer les crédits', 'g2rd-wpjm-geo' ),
+				'NavigationControl.ZoomIn'                   => __( 'Zoom avant', 'g2rd-wpjm-geo' ),
+				'NavigationControl.ZoomOut'                  => __( 'Zoom arrière', 'g2rd-wpjm-geo' ),
+				'FullscreenControl.Enter'                    => __( 'Plein écran', 'g2rd-wpjm-geo' ),
+				'FullscreenControl.Exit'                     => __( 'Quitter le plein écran', 'g2rd-wpjm-geo' ),
+				'CooperativeGesturesHandler.WindowsHelpText' => __( 'Utilisez Ctrl + molette pour zoomer sur la carte', 'g2rd-wpjm-geo' ),
+				'CooperativeGesturesHandler.MacHelpText'     => __( 'Utilisez ⌘ + molette pour zoomer sur la carte', 'g2rd-wpjm-geo' ),
+				'CooperativeGesturesHandler.MobileHelpText'  => __( 'Utilisez deux doigts pour déplacer la carte', 'g2rd-wpjm-geo' ),
+			),
 		);
 	}
 }

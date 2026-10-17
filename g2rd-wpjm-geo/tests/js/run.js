@@ -73,13 +73,19 @@ async function map({ mapId, clustering, data, restFail, nonce }) {
 }
 
 async function osmMap({ data, clustering = true, noWebgl = false, styleFail = false, restFail = false, preload = true, admin = '' }) {
-  const i18n = JSON.stringify({ loading: 'Chargement', error: 'ERREUR', empty: 'VIDE', view: 'Voir offre', manyJobs: '%d offres ici', regeocode: 'Re-geocoder' }).replace(/"/g, '&quot;');
+  const i18n = JSON.stringify({ loading: 'Chargement', error: 'ERREUR', empty: 'VIDE', view: 'Voir offre', manyJobs: '%d offres ici', regeocode: 'Re-geocoder', places: 'Liste' }).replace(/"/g, '&quot;');
   const html = '<div class="g2rd-wpjm-geo-map" data-rest-url="https://x.test/wp-json/g2rd-wpjm-geo/v1/jobs" data-per-page="4" data-clustering="' + (clustering ? 1 : 0) + '" data-admin-url="' + admin + '" data-nonce="" data-i18n="' + i18n + '"><div class="g2rd-wpjm-geo-map__canvas"></div><p class="g2rd-wpjm-geo-map__status">Chargement</p></div>';
   const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://x.test/' });
   const w = dom.window;
-  const st = { map: null, mapOpts: null, sources: {}, layers: [], layout: [], popups: [], fit: null, jump: null, ease: null };
+  const st = { map: null, mapOpts: null, sources: {}, layers: [], layout: [], popups: [], fit: null, jump: null, ease: null, controls: [], noRotate: false };
   class FakeMap {
-    constructor(o) { st.mapOpts = o; st.map = this; this.events = {}; }
+    constructor(o) {
+      st.mapOpts = o; st.map = this; this.events = {};
+      this.dragRotate = { disable: () => { st.noRotate = true; } };
+      this.touchZoomRotate = { disableRotation: () => {} };
+      this.touchPitch = { disable: () => {} };
+    }
+    addControl(c) { st.controls.push(c.kind); return this; }
     on(ev, a, b) { const k = b ? ev + ':' + a : ev; (this.events[k] = this.events[k] || []).push(b || a); }
     fire(k, arg) { (this.events[k] || []).forEach(f => f(arg)); }
     getStyle() { return { layers: [
@@ -98,11 +104,13 @@ async function osmMap({ data, clustering = true, noWebgl = false, styleFail = fa
   }
   class Popup { constructor(o) { this.o = o; st.popups.push(this); } setLngLat(c) { this.c = c; return this; } setDOMContent(n) { this.node = n; return this; } addTo() { return this; } }
   class LngLatBounds { constructor() { this.pts = []; } extend(p) { this.pts.push(p); return this; } }
-  const fake = { Map: FakeMap, Popup, LngLatBounds };
+  class NavigationControl { constructor(o) { this.kind = 'nav'; this.o = o; } }
+  class FullscreenControl { constructor() { this.kind = 'full'; } }
+  const fake = { Map: FakeMap, Popup, LngLatBounds, NavigationControl, FullscreenControl };
   if (preload) w.maplibregl = fake;
   w.WebGL2RenderingContext = noWebgl ? undefined : function () {};
   w.HTMLCanvasElement.prototype.getContext = function () { return noWebgl ? null : {}; };
-  w.g2rdWpjmGeoOsm = { styleUrl: 'https://tiles.openfreemap.org/styles/liberty', maplibreJs: 'https://x.test/vendor/maplibre-gl.js', maplibreCss: 'https://x.test/vendor/maplibre-gl.css', language: 'fr' };
+  w.g2rdWpjmGeoOsm = { styleUrl: 'https://tiles.openfreemap.org/styles/liberty', maplibreJs: 'https://x.test/vendor/maplibre-gl.js', maplibreCss: 'https://x.test/vendor/maplibre-gl.css', language: 'fr', locale: { 'Popup.Close': 'Fermer', 'Map.Title': '' } };
   w.IntersectionObserver = undefined;
   w.fetch = (url) => {
     if (restFail) return Promise.resolve({ ok: false, status: 500, headers: { get: () => null } });
@@ -263,7 +271,7 @@ async function osmMap({ data, clustering = true, noWebgl = false, styleFail = fa
     cw.fetch = () => Promise.reject(new Error('unused'));
     cw.eval(src('js/map-common.js'));
     const C = cw.g2rdWpjmGeoMapCommon;
-    check('API exposee : un seul objet global, 9 fonctions', 'parseJson,sprintf,safeUrl,placeLabel,buildInfoContent,groupByCoordinates,createFetcher,observe,status' === Object.keys(C).join(','));
+    check('API exposee : un seul objet global, 10 fonctions', 'parseJson,sprintf,safeUrl,placeLabel,buildInfoContent,groupByCoordinates,createFetcher,observe,status,places' === Object.keys(C).join(','));
     check('safeUrl : http(s) absolu seulement (relatif, //hote, javascript:, espace initial, non-chaine refuses)',
       C.safeUrl('HTTPS://a.test/x') === 'HTTPS://a.test/x' && ['/job/1', '//evil.test', 'javascript:alert(1)', ' javascript:alert(1)', 'https:evil', 'data:text/html,x', null, 42].every(u => C.safeUrl(u) === ''));
     const g = C.groupByCoordinates([{ latitude: '48.856614', longitude: '2.352222' }, { latitude: 48.8566141, longitude: 2.3522224 }, { latitude: 48.85662, longitude: 2.352222 }, { latitude: 90, longitude: 180 }, { latitude: 90.0001, longitude: 0 }, { latitude: '', longitude: '' }]);
@@ -329,6 +337,18 @@ async function osmMap({ data, clustering = true, noWebgl = false, styleFail = fa
   check('endpoint en erreur : message d erreur', o.status.textContent === 'ERREUR');
   o = await osmMap({ data: jobs, preload: false });
   check('MapLibre charge a la demande depuis le plugin (script et feuille)', o.st.injected.script && o.st.injected.css && !!o.st.map);
+  o = await osmMap({ data: jobs });
+  check('interface MapLibre traduite, valeurs vides retirees', 'Fermer' === o.st.mapOpts.locale['Popup.Close'] && !('Map.Title' in o.st.mapOpts.locale));
+  check('attribution conservee (obligation OpenStreetMap)', false !== o.st.mapOpts.attributionControl);
+  check('boutons de zoom et plein ecran, sans rotation', 'nav,full' === o.st.controls.join() && true === o.st.noRotate);
+  const places = o.w.document.querySelector('.g2rd-wpjm-geo-map + .g2rd-wpjm-geo-map__places');
+  check('liste des offres sous la carte, pour le clavier', !!places && 'Liste' === places.querySelector('summary').textContent && places.children.length > 1);
+  o = await osmMap({ data: jobs, styleFail: true });
+  o.st.map.fire('load', {});
+  await wait(10);
+  check('erreur passagere avant le chargement : etat d erreur retire', !o.el.classList.contains('has-error') && o.el.classList.contains('is-ready'));
+  o = await osmMap({ data: [] });
+  check('aucune offre : pas de liste vide', !o.w.document.querySelector('.g2rd-wpjm-geo-map__places'));
 
   console.log('\nResultat JS : ' + pass + ' reussis, ' + fail + ' echoues');
   process.exit(fail ? 1 : 0);
