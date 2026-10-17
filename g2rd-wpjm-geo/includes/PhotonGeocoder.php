@@ -248,6 +248,9 @@ class PhotonGeocoder {
 					break;
 				}
 			}
+			if ( isset( $props['county'] ) && is_string( $props['county'] ) && in_array( self::without_article( self::normalize( $props['county'] ) ), $context, true ) ) {
+				++$rank; // Département cité : départage les homonymes d'une même région.
+			}
 			if ( '' !== $preferred && $code === $preferred && in_array( $value, self::PREFERRED_VALUES, true ) ) {
 				++$rank;
 			}

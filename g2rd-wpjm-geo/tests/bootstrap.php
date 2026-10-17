@@ -357,6 +357,17 @@ namespace {
 	function wp_enqueue_script( $handle, $src = '', $deps = array(), $ver = false, $in_footer = false ) {
 		G2RD_Test_State::$enqueued[ 'script:' . $handle ] = $src;
 	}
+	function wp_register_script( $handle, $src, $deps = array(), $ver = false, $in_footer = false ) {
+		G2RD_Test_State::$enqueued[ 'register:' . $handle ] = $deps;
+		return true;
+	}
+	function wp_register_style( $handle, $src, $deps = array(), $ver = false, $media = 'all' ) {
+		return true;
+	}
+	function wp_add_inline_script( $handle, $data, $position = 'after' ) {
+		G2RD_Test_State::$enqueued[ 'inline:' . $handle ] = $data;
+		return true;
+	}
 	function wp_add_inline_style( $handle, $data ) {
 		G2RD_Test_State::$enqueued[ 'inline:' . $handle ] = $data;
 		return true;
@@ -497,7 +508,7 @@ namespace G2RD\WPJMGeo {
 }
 
 namespace {
-	foreach ( array( 'Settings', 'Logger', 'UrlChecker', 'ApplicationNormalizer', 'JobQueue', 'UrlCheckQueue', 'GoFetchIntegration', 'PhotonGeocoder', 'GeocodingIntegration', 'GeocodeQueue', 'RestController', 'AdminMenu', 'RegeocodeTool', 'AdminScreen', 'Dependencies', 'GoogleAssets', 'SettingsPage', 'MigrationTool' ) as $class ) {
+	foreach ( array( 'Settings', 'Logger', 'UrlChecker', 'ApplicationNormalizer', 'JobQueue', 'UrlCheckQueue', 'GoFetchIntegration', 'PhotonGeocoder', 'GeocodingIntegration', 'GeocodeQueue', 'RestController', 'AdminMenu', 'RegeocodeTool', 'AdminScreen', 'Dependencies', 'GoogleAssets', 'SettingsPage', 'MigrationTool', 'LocationAutocomplete', 'AdminLocation' ) as $class ) {
 		require_once dirname( __DIR__ ) . '/includes/' . $class . '.php';
 	}
 }

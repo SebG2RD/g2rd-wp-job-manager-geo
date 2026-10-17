@@ -63,8 +63,8 @@
 	}
 
 	function fromPhoton( features, placesOnly ) {
-		var out = [];
-		var seen = {};
+		var places = [];
+		var count = {};
 		( features || [] ).forEach( function ( feature ) {
 			var props = feature && feature.properties;
 			if ( ! props || 'string' !== typeof props.name || ! props.name ) {
@@ -73,8 +73,18 @@
 			if ( placesOnly && 'place' !== props.osm_key ) {
 				return;
 			}
+			var key = [ props.name, props.state, props.country ].join( '|' );
+			count[ key ] = ( count[ key ] || 0 ) + 1;
+			places.push( { props: props, key: key } );
+		} );
+		var out = [];
+		var seen = {};
+		places.forEach( function ( place ) {
+			var props = place.props;
 			var parts = [ props.name ];
-			[ props.state, props.country ].forEach( function ( part ) {
+			// Homonymes dans une même région : le département les distingue, à l'écran comme pour le géocodage serveur.
+			var extra = count[ place.key ] > 1 ? [ props.county ] : [];
+			extra.concat( [ props.state, props.country ] ).forEach( function ( part ) {
 				if ( 'string' === typeof part && part && parts.indexOf( part ) === -1 ) {
 					parts.push( part );
 				}
@@ -181,6 +191,9 @@
 		function render( suggestions ) {
 			list.textContent = '';
 			items = [];
+			// Nouvelle liste : aucune option active (sinon le lecteur d'écran annoncerait une option qu'Entrée ne choisit pas).
+			active = -1;
+			input.removeAttribute( 'aria-activedescendant' );
 			suggestions.forEach( function ( suggestion ) {
 				var index = items.length;
 				var option = document.createElement( 'li' );
@@ -281,7 +294,7 @@
 					return '&osm_tag=' + encodeURIComponent( tag );
 				} ).join( '' );
 			}
-			var base = settings.photonUrl || '';
+			var base = ( settings.photonUrl || '' ).split( '#' )[ 0 ]; // Fragment retiré, comme côté serveur.
 			var options = { credentials: 'omit' };
 			if ( controller ) {
 				options.signal = controller.signal;

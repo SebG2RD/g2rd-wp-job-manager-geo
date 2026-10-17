@@ -23,6 +23,8 @@ use G2RD\WPJMGeo\ApplicationNormalizer;
 use G2RD\WPJMGeo\GeocodeQueue;
 use G2RD\WPJMGeo\GeocodingIntegration;
 use G2RD\WPJMGeo\GoFetchIntegration;
+use G2RD\WPJMGeo\GoogleAssets;
+use G2RD\WPJMGeo\LocationAutocomplete;
 use G2RD\WPJMGeo\Logger;
 use G2RD\WPJMGeo\MigrationTool;
 use G2RD\WPJMGeo\PhotonGeocoder;
@@ -923,6 +925,37 @@ Settings::purge_page_cache_on_provider_change( array( 'provider' => 'google' ), 
 check( 'fournisseur inchangé : pas de purge', 0 === $GLOBALS['g2rd_rocket_purges'] );
 Settings::purge_page_cache_on_provider_change( array( 'provider' => 'google' ), array( 'provider' => 'osm' ) );
 check( 'fournisseur changé : cache de pages purgé', 1 === $GLOBALS['g2rd_rocket_purges'] );
+
+echo PHP_EOL . '26. Homonymes d’une même région' . PHP_EOL;
+$features = array(
+	photon_feature( 'Saint-Martin', 'place', 'village', 0.1, 43.1, array( 'county' => 'Hautes-Pyrénées', 'state' => 'Occitanie', 'country' => 'France', 'countrycode' => 'FR' ) ),
+	photon_feature( 'Saint-Martin', 'place', 'village', 0.5, 43.6, array( 'county' => 'Gers', 'state' => 'Occitanie', 'country' => 'France', 'countrycode' => 'FR' ) ),
+);
+$best = PhotonGeocoder::pick( $features, 'Saint-Martin, Gers, Occitanie, France' );
+check( 'département cité : il départage deux homonymes de la même région', is_array( $best ) && 'Gers' === $best['properties']['county'] );
+
+echo PHP_EOL . '27. Configuration de l’autocomplétion' . PHP_EOL;
+function g2rd_ac_config() {
+	$inline = isset( G2RD_Test_State::$enqueued['inline:g2rd-wpjm-geo-autocomplete'] ) ? G2RD_Test_State::$enqueued['inline:g2rd-wpjm-geo-autocomplete'] : '';
+	return array( $inline, json_decode( (string) preg_replace( '/^window\.g2rdWpjmGeoAutocomplete = |;$/', '', $inline ), true ) );
+}
+list( $s ) = boot( array( 'provider' => Settings::PROVIDER_OSM, 'browser_api_key' => 'SECRET-KEY' ) );
+( new GoogleAssets( $s ) )->register_assets();
+check( 'mode libre : autocomplétion sans dépendance au chargeur Google', array() === G2RD_Test_State::$enqueued['register:g2rd-wpjm-geo-autocomplete'] );
+( new LocationAutocomplete( $s ) )->enqueue();
+list( $inline, $c ) = g2rd_ac_config();
+check( 'mode libre : Photon en https, langue du site, attribution OpenStreetMap, aucune clé', 'photon' === $c['source'] && 'https://photon.komoot.io/api/' === $c['photonUrl'] && 'fr' === $c['lang'] && false !== strpos( $c['i18n']['poweredBy'], 'OpenStreetMap' ) && false === strpos( $inline, 'SECRET' ) );
+check( 'mode libre : chargeur Google absent', ! isset( G2RD_Test_State::$enqueued['script:g2rd-wpjm-geo-google-loader'] ) );
+list( $s ) = boot( array( 'provider' => Settings::PROVIDER_GOOGLE, 'browser_api_key' => 'BROWSER' ) );
+G2RD_Test_State::$locale = 'es_ES';
+( new GoogleAssets( $s ) )->register_assets();
+check( 'mode Google : dépendance au chargeur', array( GoogleAssets::HANDLE_LOADER ) === G2RD_Test_State::$enqueued['register:g2rd-wpjm-geo-autocomplete'] );
+( new LocationAutocomplete( $s ) )->enqueue();
+list( $inline, $c ) = g2rd_ac_config();
+check( 'mode Google : pas d’URL Photon, langue non prise en charge par Photon = default', 'google' === $c['source'] && '' === $c['photonUrl'] && 'default' === $c['lang'] );
+list( $s ) = boot( array( 'provider' => Settings::PROVIDER_GOOGLE, 'browser_api_key' => '' ) );
+( new LocationAutocomplete( $s ) )->enqueue();
+check( 'mode Google sans clé : rien en file', array() === G2RD_Test_State::$enqueued );
 
 $results = $GLOBALS['g2rd_results'];
 echo PHP_EOL . sprintf( 'Résultat : %d réussis, %d échoués', $results['pass'], $results['fail'] ) . PHP_EOL;

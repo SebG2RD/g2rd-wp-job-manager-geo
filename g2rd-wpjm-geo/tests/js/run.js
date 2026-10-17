@@ -130,21 +130,23 @@ async function osmMap({ data, clustering = true, noWebgl = false, styleFail = fa
   return { w, st, el: w.document.querySelector('.g2rd-wpjm-geo-map'), status: w.document.querySelector('.g2rd-wpjm-geo-map__status') };
 }
 
-async function photonAc({ status400 = false, fail = false, slowFirst = false } = {}) {
+async function photonAc({ status400 = false, fail = false, slowFirst = false, realAbort = false, features: custom = null } = {}) {
   const dom = new JSDOM('<form><input type="text" id="job_location" name="job_location"><input id="other"></form>', { runScripts: 'outside-only', pretendToBeVisual: true });
   const w = dom.window, calls = [];
   w.g2rdWpjmGeoAutocomplete = { source: 'photon', photonUrl: 'https://photon.test/api/', lang: 'fr', selectors: ['#job_location'], minLength: 2, i18n: { poweredBy: 'Recherche (c) OpenStreetMap contributors', results: 'Suggestions' } };
-  w.AbortController = class { constructor() { this.signal = { aborted: false }; } abort() { this.signal.aborted = true; } };
+  if (!realAbort) w.AbortController = class { constructor() { this.signal = { aborted: false }; } abort() { this.signal.aborted = true; } };
   const feature = (name, state, country, key) => ({ properties: { name, state, country, osm_key: key || 'place' } });
   w.fetch = (url, opt) => {
     calls.push({ url, opt });
     if (fail) return Promise.reject(new Error('reseau'));
+    if (realAbort && calls.length === 1) return new Promise((res, rej) => opt.signal.addEventListener('abort', () => rej(new w.DOMException('aborted', 'AbortError'))));
     const filtered = url.indexOf('osm_tag=') !== -1;
     if (status400 && filtered) return Promise.resolve({ ok: false, status: 400, json: () => Promise.resolve({}) });
-    const features = [feature('Londres', 'Angleterre', 'Royaume-Uni'), feature('London', 'Ontario', 'Canada'), feature('<img src=x onerror=alert(1)>', 'X', 'Y')];
-    if (!filtered) features.splice(1, 0, feature('London Pub', 'Angleterre', 'Royaume-Uni', 'amenity'));
+    const features = custom ? custom.slice() : [feature('Londres', 'Angleterre', 'Royaume-Uni'), feature('London', 'Ontario', 'Canada'), feature('<img src=x onerror=alert(1)>', 'X', 'Y')];
+    if (!filtered && !custom) features.splice(1, 0, feature('London Pub', 'Angleterre', 'Royaume-Uni', 'amenity'));
     const reply = { ok: true, status: 200, json: () => Promise.resolve({ features }) };
-    return slowFirst && calls.length === 1 ? new Promise(r => setTimeout(() => r(reply), 600)) : Promise.resolve(reply);
+    const stale = { ok: true, status: 200, json: () => Promise.resolve({ features: [feature('Lonely', 'X', 'Y')] }) };
+    return slowFirst && calls.length === 1 ? new Promise(r => setTimeout(() => r(stale), 600)) : Promise.resolve(reply);
   };
   w.eval(src('js/location-autocomplete.js'));
   const d = w.document, input = d.getElementById('job_location');
@@ -397,7 +399,21 @@ async function photonAc({ status400 = false, fail = false, slowFirst = false } =
   p.input.value = 'Lond'; p.input.dispatchEvent(new p.w.Event('input', { bubbles: true })); await wait(350);
   check('frappe suivante : requete precedente annulee', p.calls.length === 2 && p.calls[0].opt.signal.aborted === true);
   await wait(400);
-  check('reponse obsolete ignoree, liste de la derniere saisie', p.panel.querySelectorAll('[role=option]').length === 3);
+  check('reponse obsolete ignoree, liste de la derniere saisie', p.panel.querySelectorAll('[role=option]').length === 3 && !/Lonely/.test(p.panel.textContent));
+  p = await photonAc({ realAbort: true });
+  p.input.value = 'Lon'; p.input.dispatchEvent(new p.w.Event('input', { bubbles: true })); await wait(350);
+  await type(p, 'Lond'); await type(p, 'Londr');
+  check('requete annulee (AbortError) : autocompletion toujours active', p.calls.length === 3 && p.calls[0].opt.signal.aborted && p.panel.querySelectorAll('[role=option]').length === 3);
+  p = await photonAc();
+  await type(p, 'Lond'); key(p.w, p.input, 'ArrowDown');
+  await type(p, 'Londr');
+  check('nouvelle liste : aucune option active annoncee', !p.input.hasAttribute('aria-activedescendant'));
+  const saintMartin = county => ({ properties: { name: 'Saint-Martin', county, state: 'Occitanie', country: 'France', osm_key: 'place' } });
+  p = await photonAc({ features: [saintMartin('Gers'), saintMartin('Hautes-Pyrénées'), saintMartin('Gers')] });
+  await type(p, 'Saint-Martin');
+  check('homonymes d une meme region : departement ajoute, doublon retire', 2 === p.panel.querySelectorAll('[role=option]').length && /Hautes-Pyr/.test(p.panel.textContent));
+  key(p.w, p.input, 'ArrowDown'); key(p.w, p.input, 'Enter'); await wait(10);
+  check('libelle ecrit avec le departement', 'Saint-Martin, Gers, Occitanie, France' === p.input.value);
   p = await photonAc({ fail: true });
   await type(p, 'Lond');
   check('Photon injoignable : pas de liste, champ utilisable', p.panel.hidden && p.input.value === 'Lond');
