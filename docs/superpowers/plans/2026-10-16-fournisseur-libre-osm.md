@@ -5917,7 +5917,7 @@ Expected: lint muet, `0 échoués`, `0 echoues`.
 **Files:**
 - Modify: `g2rd-wpjm-geo/assets/js/location-autocomplete.js` (réécrit), `g2rd-wpjm-geo/includes/LocationAutocomplete.php`, `g2rd-wpjm-geo/includes/GoogleAssets.php`, `g2rd-wpjm-geo/tests/js/run.js`
 
-- [ ] **Step 1: Écrire les tests (section G)**
+- [ ] **Step 1: Écrire les tests (section J)**
 
 Dans `tests/js/run.js`, juste avant `(async () => {`, ajouter :
 
@@ -5948,7 +5948,7 @@ async function photonAc({ status400 = false, fail = false, slowFirst = false } =
 Puis, avant la ligne du résultat final, ajouter :
 
 ```js
-  console.log('\nG. Autocompletion en mode libre (Photon)');
+  console.log('\nJ. Autocompletion en mode libre (Photon)');
   let p = await photonAc();
   p.input.value = 'Lond'; p.input.dispatchEvent(new p.w.Event('input', { bubbles: true }));
   await wait(200);
@@ -5984,7 +5984,7 @@ Puis, avant la ligne du résultat final, ajouter :
 - [ ] **Step 2: Vérifier l'échec**
 
 Run: `NODE_PATH=tools/jsdom/node_modules node g2rd-wpjm-geo/tests/js/run.js | sed -n '/^G\./,$p'`
-Expected: `[FAIL]` sur les lignes de la section G (le script actuel ignore `source: 'photon'`).
+Expected: `[FAIL]` sur les lignes de la section J (le script actuel ignore `source: 'photon'`).
 
 - [ ] **Step 3: Réécrire `location-autocomplete.js`**
 
@@ -6423,7 +6423,7 @@ Remplacer tout le contenu par :
 }( window, document ) );
 ```
 
-- [ ] **Step 4: Vérifier le succès (sections A à G)**
+- [ ] **Step 4: Vérifier le succès (sections A à J)**
 
 Run: `NODE_PATH=tools/jsdom/node_modules node g2rd-wpjm-geo/tests/js/run.js | grep -E "FAIL|Resultat"`
 Expected: une seule ligne `Resultat JS : … 0 echoues`.
@@ -6507,12 +6507,12 @@ git commit -m "feat: autocomplétion des villes avec Photon en mode libre"
 - Create: `g2rd-wpjm-geo/includes/PrivacyPolicy.php`
 - Modify: `g2rd-wpjm-geo/includes/Plugin.php`, `g2rd-wpjm-geo/uninstall.php`, `g2rd-wpjm-geo/g2rd-wpjm-geo.php`, `g2rd-wpjm-geo/readme.txt`, `g2rd-wpjm-geo/tests/bootstrap.php`, `g2rd-wpjm-geo/tests/run.php`
 
-- [ ] **Step 1: Écrire le test (section 22)**
+- [ ] **Step 1: Écrire le test (section 25)**
 
 Ajouter aux `use` : `use G2RD\WPJMGeo\PrivacyPolicy;`. Puis :
 
 ```php
-echo PHP_EOL . '22. Texte de confidentialité' . PHP_EOL;
+echo PHP_EOL . '25. Texte de confidentialité' . PHP_EOL;
 list( $s ) = boot( array( 'provider' => 'osm', 'photon_url' => 'https://photon.mon-serveur.fr/api/' ) );
 $text = ( new PrivacyPolicy( $s ) )->text();
 check( 'mode libre : hôtes réellement configurés cités', false !== strpos( $text, 'tiles.openfreemap.org' ) && false !== strpos( $text, 'photon.mon-serveur.fr' ) && false === strpos( $text, 'Google' ) );
@@ -6605,8 +6605,8 @@ class PrivacyPolicy {
 
 - [ ] **Step 4: Vérifier le succès**
 
-Run: `php g2rd-wpjm-geo/tests/run.php | sed -n '/^22\./,$p'`
-Expected: section 22 en `[OK]`, `0 échoués`.
+Run: `php g2rd-wpjm-geo/tests/run.php | sed -n '/^25\./,$p'`
+Expected: section 25 en `[OK]`, `0 échoués`.
 
 - [ ] **Step 5: Brancher, nettoyer, versionner**
 
