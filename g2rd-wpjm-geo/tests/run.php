@@ -915,17 +915,23 @@ check( 'journal : valeurs importées échappées', false === strpos( $html, '<sv
 check( 'outil : points d’accroche du script présents', 1 === preg_match( '/class="g2rd-wpjm-geo-tools"[^>]*data-ajax-url="[^"]+"[^>]*data-nonce="[^"]+"[^>]*data-i18n="/s', $html ) && false !== strpos( $html, 'g2rd-wpjm-geo-tools__rows' ) && false !== strpos( $html, 'data-g2rd-run="fix"' ) && false !== strpos( $html, 'data-g2rd-dry-run' ) );
 check( 'sections équilibrées', 2 === substr_count( $html, '<section' ) && 2 === substr_count( $html, '</section>' ) );
 
-echo PHP_EOL . '24. Changement de fournisseur : cache de pages' . PHP_EOL;
+echo PHP_EOL . '24. Réglages visibles côté public : cache de pages' . PHP_EOL;
 if ( ! function_exists( 'rocket_clean_domain' ) ) {
 	function rocket_clean_domain() {
 		$GLOBALS['g2rd_rocket_purges']++;
 	}
 }
 $GLOBALS['g2rd_rocket_purges'] = 0;
-Settings::purge_page_cache_on_provider_change( array( 'provider' => 'google' ), array( 'provider' => 'google', 'map_height' => 500 ) );
-check( 'fournisseur inchangé : pas de purge', 0 === $GLOBALS['g2rd_rocket_purges'] );
-Settings::purge_page_cache_on_provider_change( array( 'provider' => 'google' ), array( 'provider' => 'osm' ) );
+Settings::maybe_purge_page_cache( array( 'provider' => 'google', 'log_retention_days' => 90 ), array( 'provider' => 'google', 'log_retention_days' => 30 ) );
+check( 'réglage d’administration seul : pas de purge', 0 === $GLOBALS['g2rd_rocket_purges'] );
+Settings::maybe_purge_page_cache( array( 'provider' => 'google' ), array( 'provider' => 'osm' ) );
 check( 'fournisseur changé : cache de pages purgé', 1 === $GLOBALS['g2rd_rocket_purges'] );
+Settings::maybe_purge_page_cache( array( 'map_height' => 480 ), array( 'map_height' => 600 ) );
+check( 'hauteur de la carte changée : cache de pages purgé', 2 === $GLOBALS['g2rd_rocket_purges'] );
+Settings::maybe_purge_page_cache_on_add( Settings::OPTION, array( 'provider' => 'osm' ) );
+check( 'premier enregistrement (add_option) : cache de pages purgé', 3 === $GLOBALS['g2rd_rocket_purges'] );
+Settings::maybe_purge_page_cache_on_add( Settings::OPTION, Settings::defaults() );
+check( 'premier enregistrement aux valeurs par défaut : pas de purge', 3 === $GLOBALS['g2rd_rocket_purges'] );
 
 echo PHP_EOL . '25. Texte de confidentialité' . PHP_EOL;
 list( $s ) = boot( array( 'provider' => 'osm', 'photon_url' => 'https://photon.mon-serveur.fr/api/' ) );
@@ -972,6 +978,22 @@ check( 'script pas encore enregistré : configuration différée', ! isset( G2RD
 do_action( 'wp_enqueue_scripts' );
 list( $inline, $c ) = g2rd_ac_config();
 check( 'configuration ajoutée après l’enregistrement des scripts', is_array( $c ) && 'photon' === $c['source'] );
+
+echo PHP_EOL . '29. Re-géocodage : offres publiées d’abord' . PHP_EOL;
+$mixed = array(
+	array( 'id' => '400', 'status' => 'expired', 'location' => 'Rouen', 'source' => null, 'geolocated' => null ),
+	array( 'id' => '401', 'status' => 'publish', 'location' => 'Rouen', 'source' => null, 'geolocated' => null ),
+	array( 'id' => '402', 'status' => 'draft', 'location' => 'Rouen', 'source' => null, 'geolocated' => null ),
+);
+$sum = RegeocodeTool::summarize( $mixed, 'osm' );
+check( 'offres publiées traitées avant les autres', array( 401, 400, 402 ) === $sum['todo_ids'] );
+list( $s ) = geo_boot();
+foreach ( $mixed as $row ) {
+	G2RD_Test_State::$post_types[ (int) $row['id'] ]            = 'job_listing';
+	G2RD_Test_State::$meta[ (int) $row['id'] ]['_job_location'] = 'Rouen';
+}
+$first = ( new RegeocodeTool( $s, new PhotonGeocoder( $s ), '__return_false' ) )->handle( 'simulate', 0, $mixed );
+check( 'premier lot : offre publiée en tête, curseur de parcours', 401 === $first['rows'][0]['id'] && $first['cursor'] > RegeocodeTool::KEY_OFFSET && true === $first['done'] );
 
 $results = $GLOBALS['g2rd_results'];
 echo PHP_EOL . sprintf( 'Résultat : %d réussis, %d échoués', $results['pass'], $results['fail'] ) . PHP_EOL;

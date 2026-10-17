@@ -23,6 +23,7 @@ class RegeocodeTool {
 	const NONCE_ACTION = 'g2rd_wpjm_geo_regeocode';
 	const BATCH        = 5;
 	const TIME_BUDGET  = 20; // Secondes par requête AJAX.
+	const KEY_OFFSET   = 1000000000; // Clé de curseur : offres publiées (rang 0) avant les autres (rang 1).
 
 	/**
 	 * Réglages.
@@ -72,14 +73,14 @@ class RegeocodeTool {
 	/**
 	 * Offres à localisation renseignée (hors corbeille et brouillons automatiques).
 	 *
-	 * @return array[] Lignes id, location, source, geolocated.
+	 * @return array[] Lignes id, status, location, source, geolocated.
 	 */
 	public static function rows() {
 		global $wpdb;
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery -- agrégat en lecture seule sur trois métadonnées, sans équivalent WP_Query.
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT p.ID AS id, loc.meta_value AS location, src.meta_value AS source, geo.meta_value AS geolocated
+				"SELECT p.ID AS id, p.post_status AS status, loc.meta_value AS location, src.meta_value AS source, geo.meta_value AS geolocated
 				FROM {$wpdb->posts} p
 				INNER JOIN {$wpdb->postmeta} loc ON loc.post_id = p.ID AND loc.meta_key = %s
 				LEFT JOIN {$wpdb->postmeta} src ON src.post_id = p.ID AND src.meta_key = %s
@@ -101,19 +102,21 @@ class RegeocodeTool {
 	 *
 	 * @param array  $rows     Lignes de rows().
 	 * @param string $provider Fournisseur actif.
-	 * @return array total, google, osm, none, shown, todo, todo_ids.
+	 * @return array total, google, osm, none, shown, todo, todo_ids, todo_keys.
 	 */
 	public static function summarize( array $rows, $provider ) {
 		$summary = array(
-			'total'    => 0,
-			'google'   => 0,
-			'osm'      => 0,
-			'none'     => 0,
-			'shown'    => 0,
-			'todo'     => 0,
-			'todo_ids' => array(),
+			'total'     => 0,
+			'google'    => 0,
+			'osm'       => 0,
+			'none'      => 0,
+			'shown'     => 0,
+			'todo'      => 0,
+			'todo_ids'  => array(),
+			'todo_keys' => array(),
 		);
 		$seen    = array();
+		$todo    = array();
 		foreach ( $rows as $row ) {
 			$id = isset( $row['id'] ) ? absint( $row['id'] ) : 0;
 			if ( ! $id || isset( $seen[ $id ] ) ) {
@@ -133,9 +136,25 @@ class RegeocodeTool {
 				}
 			}
 			++$summary['todo'];
-			$summary['todo_ids'][] = $id;
+			$todo[ self::order_key( $id, isset( $row['status'] ) ? $row['status'] : null ) ] = $id;
 		}
+		// Offres publiées d'abord : ce sont celles que la carte affiche.
+		ksort( $todo );
+		$summary['todo_ids']  = array_values( $todo );
+		$summary['todo_keys'] = array_keys( $todo );
 		return $summary;
+	}
+
+	/**
+	 * Clé de parcours : rang (0 publiée, 1 autre statut) × KEY_OFFSET + ID.
+	 *
+	 * @param int         $id     ID de l'offre.
+	 * @param string|null $status Statut WordPress (absent : publiée).
+	 * @return int
+	 */
+	public static function order_key( $id, $status ) {
+		$rank = ( null === $status || '' === (string) $status || 'publish' === $status ) ? 0 : 1;
+		return $rank * self::KEY_OFFSET + absint( $id );
 	}
 
 	/**
@@ -167,7 +186,7 @@ class RegeocodeTool {
 		$result = $this->handle( $task, $cursor, self::rows() );
 		if ( 'run' === $task && $result['rows'] ) {
 			// Compteurs relus après les écritures du lot : sinon le dernier lot affiche un reste périmé.
-			$result['summary'] = array_diff_key( self::summarize( self::rows(), $this->settings->get_provider() ), array( 'todo_ids' => true ) );
+			$result['summary'] = array_diff_key( self::summarize( self::rows(), $this->settings->get_provider() ), array( 'todo_ids' => true, 'todo_keys' => true ) );
 		}
 		wp_send_json_success( $result );
 	}
@@ -183,30 +202,31 @@ class RegeocodeTool {
 	public function handle( $task, $cursor, array $rows ) {
 		$provider = $this->settings->get_provider();
 		$summary  = self::summarize( $rows, $provider );
-		$public   = array_diff_key( $summary, array( 'todo_ids' => true ) );
+		$public   = array_diff_key( $summary, array( 'todo_ids' => true, 'todo_keys' => true ) );
 
 		if ( 'analyze' === $task ) {
 			return array( 'summary' => $public, 'rows' => array(), 'cursor' => 0, 'done' => true, 'stopped' => false );
 		}
 
 		$cursor  = absint( $cursor );
-		$ids     = array_values(
+		$keys    = array_values(
 			array_filter(
-				$summary['todo_ids'],
-				function ( $id ) use ( $cursor ) {
-					return $id > $cursor;
+				$summary['todo_keys'],
+				function ( $key ) use ( $cursor ) {
+					return $key > $cursor;
 				}
 			)
 		);
 		$results = array();
 		$stopped = false;
 		$start   = microtime( true );
-		foreach ( array_slice( $ids, 0, self::BATCH ) as $id ) {
+		foreach ( array_slice( $keys, 0, self::BATCH ) as $key ) {
 			if ( $results && microtime( true ) - $start > self::TIME_BUDGET ) {
 				// Requête AJAX courte : la suite au lot suivant.
 				break;
 			}
-			$cursor    = $id;
+			$cursor    = $key;
+			$id        = $key % self::KEY_OFFSET;
 			$row       = $this->process( $id, 'run' === $task, $provider );
 			$results[] = $row;
 			if ( 'error' === $row['status'] ) {
@@ -220,7 +240,7 @@ class RegeocodeTool {
 			'summary' => $public,
 			'rows'    => $results,
 			'cursor'  => $cursor,
-			'done'    => $stopped || count( $results ) >= count( $ids ),
+			'done'    => $stopped || count( $results ) >= count( $keys ),
 			'stopped' => $stopped,
 		);
 	}

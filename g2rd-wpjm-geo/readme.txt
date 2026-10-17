@@ -13,7 +13,7 @@ Complète WP Job Manager : autocomplétion mondiale des villes, carte des offres
 * Fournisseur au choix : Google Maps, ou OpenStreetMap libre et gratuit (MapLibre GL JS 5.24.0, fonds OpenFreeMap, recherche et géocodage Photon), sans clé ni compte.
 * Administration à la charte de la console G2RD : sous-menu du menu « G2RD » si le thème G2RD (console v2) est actif, menu « G2RD Geo » sinon.
 * Autocomplétion des villes du monde entier (Google Places, ou Photon en mode libre) sur le champ de localisation NATIF de WP Job Manager : formulaire public (`job_location`) et wp-admin (`_job_location`). Aucun second champ.
-* Carte interactive des offres publiées et géocodées par WP Job Manager (`geolocation_lat` / `geolocation_long`), avec clustering et liste des offres partageant les mêmes coordonnées. Shortcode `[wpjm_jobs_map]` (attribut facultatif `height`) et bloc « Carte des offres d’emploi ».
+* Carte interactive des offres publiées et géocodées par le fournisseur actif (`geolocation_lat` / `geolocation_long` de WP Job Manager), avec clustering et liste des offres partageant les mêmes coordonnées. Shortcode `[wpjm_jobs_map]` (attribut facultatif `height`) et bloc « Carte des offres d’emploi ».
 * Go Fetch Jobs (facultatif) : remplacement des URL de candidature des offres importées par une adresse email générique, outil d'analyse / simulation / correction par lots, journal avec rétention.
 
 Le plugin ne modifie ni WP Job Manager, ni Go Fetch Jobs, ni le thème. En mode Google, le géocodage reste celui de WP Job Manager ; en mode libre, le plugin géocode les offres avec Photon et écrit les coordonnées par les méthodes publiques de WP Job Manager.
@@ -24,7 +24,7 @@ Le plugin ne modifie ni WP Job Manager, ni Go Fetch Jobs, ni le thème. En mode 
 2. Mode Google : page « G2RD Geo » (ou G2RD → Offres géolocalisées si le thème G2RD est actif) → Cartographie : renseignez la « Google Maps Browser API Key ».
 3. Mode Google : Google Cloud : activez « Maps JavaScript API » et « Places API (New) » ; restreignez la clé par référent HTTP (votre domaine) et à ces deux API.
 4. Mode Google, facultatif : créez un Map ID pour utiliser les marqueurs avancés.
-5. Mode libre : sur la même page, Cartographie → OpenStreetMap, puis Outils → Re-géocoder les offres.
+5. Mode libre : sur la même page, Cartographie → OpenStreetMap, puis Outils → Re-géocoder les offres (« Simuler » d'abord : les résultats sont mis en cache). Les offres publiées sont traitées en premier ; tant que l'outil n'a pas terminé, la carte libre n'affiche que les offres déjà géocodées par Photon.
 
 == Options WordPress ==
 
@@ -57,7 +57,7 @@ Le plugin ne modifie ni WP Job Manager, ni Go Fetch Jobs, ni le thème. En mode 
 MapLibre a besoin de WebGL (WebGL 2, ou WebGL 1 à défaut) et crée un worker à partir d'une URL blob: : si le site envoie une politique de sécurité du contenu (CSP), elle doit autoriser `worker-src blob:` et, dans `connect-src` et `img-src`, les hôtes du style (tiles.openfreemap.org par défaut) et de Photon (photon.komoot.io par défaut).
 
 = Réglages conseillés pour WP Rocket =
-Le cache de pages est vidé automatiquement quand le fournisseur change. Avec « Retarder l'exécution du JavaScript », la carte ne démarre qu'à la première interaction : exclure `g2rd-wpjm-geo` si la carte est en haut de page. Avec « Supprimer le CSS inutilisé », ajouter `g2rd-wpjm-geo-` et `maplibregl-` à la liste des sélecteurs à conserver.
+Le cache de pages est vidé automatiquement quand un réglage visible côté public change (fournisseur, style, serveur Photon, carte, autocomplétion). Avec « Retarder l'exécution du JavaScript », la carte ne démarre qu'à la première interaction : exclure `g2rd-wpjm-geo` si la carte est en haut de page. Avec « Supprimer le CSS inutilisé », ajouter `g2rd-wpjm-geo-` et `maplibregl-` à la liste des sélecteurs à conserver.
 
 = Photon auto-hébergé =
 Photon écoute par défaut en HTTP sur le port 2322 ; le plugin n'accepte qu'une URL https, sur le port 443 (proxy inverse). Pour une adresse privée (même serveur, réseau local), activer le filtre `g2rd_wpjm_geo_photon_allow_private_host`.

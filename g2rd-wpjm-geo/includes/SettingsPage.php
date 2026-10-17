@@ -198,7 +198,7 @@ class SettingsPage {
 		$this->row(
 			'g2rd-wpjm-geo-photon_url',
 			__( 'Serveur Photon', 'g2rd-wpjm-geo' ),
-			__( 'URL https de l’API de recherche Photon, utilisée pour l’autocomplétion et le géocodage des offres. Remplaçable par un serveur auto-hébergé ; videz le champ pour revenir à l’instance publique.', 'g2rd-wpjm-geo' ),
+			__( 'URL https de l’API de recherche Photon, utilisée pour l’autocomplétion et le géocodage des offres. Remplaçable par un serveur auto-hébergé ; videz le champ pour revenir à l’instance publique. URL publique, transmise aux navigateurs : n’y mettez aucune clé privée.', 'g2rd-wpjm-geo' ),
 			$this->input( 'photon_url', 'text', ' inputmode="url" spellcheck="false"' ),
 			Settings::PROVIDER_OSM
 		);

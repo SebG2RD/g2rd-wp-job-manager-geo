@@ -87,7 +87,9 @@ class Settings {
 		// Le cache mémoire ne doit jamais survivre à une modification des réglages dans la même requête.
 		add_action( 'update_option_' . self::OPTION, array( $this, 'flush_cache' ) );
 		add_action( 'add_option_' . self::OPTION, array( $this, 'flush_cache' ) );
-		add_action( 'update_option_' . self::OPTION, array( __CLASS__, 'purge_page_cache_on_provider_change' ), 10, 2 );
+		add_action( 'update_option_' . self::OPTION, array( __CLASS__, 'maybe_purge_page_cache' ), 10, 2 );
+		// Premier enregistrement : update_option() passe par add_option(), qui ne déclenche pas update_option_*.
+		add_action( 'add_option_' . self::OPTION, array( __CLASS__, 'maybe_purge_page_cache_on_add' ), 10, 2 );
 	}
 
 	/**
@@ -100,19 +102,40 @@ class Settings {
 	}
 
 	/**
-	 * Vide le cache de pages de WP Rocket quand le fournisseur change (appel de sa
-	 * fonction publique, sans rien modifier de l'extension).
+	 * Réglages qui changent les pages publiques (moteur de carte, autocomplétion).
+	 */
+	const FRONT_KEYS = array( 'provider', 'osm_style_url', 'photon_url', 'map_enabled', 'map_height', 'clustering_enabled', 'browser_api_key', 'map_id', 'autocomplete_enabled', 'autocomplete_frontend' );
+
+	/**
+	 * Vide le cache de pages de WP Rocket quand un réglage visible côté public change
+	 * (appel de sa fonction publique, sans rien modifier de l'extension).
 	 *
 	 * @param mixed $old Anciens réglages.
 	 * @param mixed $new Nouveaux réglages.
 	 * @return void
 	 */
-	public static function purge_page_cache_on_provider_change( $old, $new ) {
-		$before = ( is_array( $old ) && isset( $old['provider'] ) ) ? $old['provider'] : self::PROVIDER_GOOGLE;
-		$after  = ( is_array( $new ) && isset( $new['provider'] ) ) ? $new['provider'] : self::PROVIDER_GOOGLE;
-		if ( $before !== $after && function_exists( 'rocket_clean_domain' ) ) {
-			rocket_clean_domain();
+	public static function maybe_purge_page_cache( $old, $new ) {
+		$old = wp_parse_args( is_array( $old ) ? $old : array(), self::defaults() );
+		$new = wp_parse_args( is_array( $new ) ? $new : array(), self::defaults() );
+		foreach ( self::FRONT_KEYS as $key ) {
+			if ( (string) $old[ $key ] !== (string) $new[ $key ] ) {
+				if ( function_exists( 'rocket_clean_domain' ) ) {
+					rocket_clean_domain();
+				}
+				return;
+			}
 		}
+	}
+
+	/**
+	 * Premier enregistrement des réglages : comparés aux valeurs par défaut.
+	 *
+	 * @param string $option Nom de l'option.
+	 * @param mixed  $value  Réglages enregistrés.
+	 * @return void
+	 */
+	public static function maybe_purge_page_cache_on_add( $option, $value ) {
+		self::maybe_purge_page_cache( array(), $value );
 	}
 
 	/**

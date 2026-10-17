@@ -97,7 +97,7 @@ final class Plugin {
 		$queue->register();
 		( new GoFetchIntegration( $this->settings, $normalizer, $queue ) )->register();
 
-		// Géocodage libre : actif seulement si le fournisseur OpenStreetMap est choisi.
+		// Géocodage libre (mode OpenStreetMap) ; les hooks de source et la file restent branchés dans les deux modes.
 		$geocoder  = new PhotonGeocoder( $this->settings );
 		$geo_queue = new GeocodeQueue( $this->settings, $geocoder );
 		$geo_queue->register();
