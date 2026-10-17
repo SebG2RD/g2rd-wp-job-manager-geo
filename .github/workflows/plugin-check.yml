@@ -12,6 +12,10 @@ name: Plugin Check
 #   dernière version est déjà vérifiée ici et dans release.yml).
 # - readme_description_non_official_language : le readme est volontairement en
 #   français (site francophone, distribution hors annuaire).
+# - plugin_updater_detected : déclenché par l'en-tête « Update URI », interdit aux
+#   seuls plugins hébergés sur l'annuaire. Ici il est voulu : il empêche WordPress
+#   de demander mises à jour et paquets de langue à wordpress.org pour ce slug
+#   (même choix que g2rd-facturation / g2rd-connector).
 #
 # Le contrôle est lancé depuis le dossier WordPress : à la racine du dépôt,
 # « g2rd-wpjm-geo » désigne aussi le dossier source (tests/ compris), que
@@ -107,7 +111,7 @@ jobs:
           echo "wp plugin check exit code : ${CHECK_RC}"
 
           RESULT=$(php -r '
-            $ignored = ["outdated_tested_upto_header", "readme_description_non_official_language"];
+            $ignored = ["outdated_tested_upto_header", "readme_description_non_official_language", "plugin_updater_detected"];
             $errors = 0; $ign = 0;
             foreach ((@file("pc.json", FILE_IGNORE_NEW_LINES) ?: []) as $l) {
               $l = trim($l);
