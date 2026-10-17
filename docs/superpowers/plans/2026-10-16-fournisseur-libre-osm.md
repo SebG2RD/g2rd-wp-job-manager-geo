@@ -7088,6 +7088,228 @@ Puis relancer `tools/docker/verify.sh` : `0 échoués` attendu.
 
 ---
 
+### Task 16: Correctifs de la revue finale
+
+**Files:**
+- Modify: `g2rd-wpjm-geo/includes/RegeocodeTool.php`, `g2rd-wpjm-geo/includes/Settings.php`, `g2rd-wpjm-geo/includes/PhotonGeocoder.php`, `g2rd-wpjm-geo/includes/SettingsPage.php`, `g2rd-wpjm-geo/includes/Plugin.php`, `g2rd-wpjm-geo/readme.txt`, `g2rd-wpjm-geo/tests/run.php`
+
+Non retenu : relancer les files à la réactivation (cela modifierait des offres dès l'activation, contraire à la règle « l'administrateur déclenche les opérations ») ; les offres en attente reprennent au prochain import ou via l'outil.
+
+- [ ] **Step 1: Re-géocodage — offres publiées d'abord (`RegeocodeTool.php`)**
+
+Après `const TIME_BUDGET  = 20; // Secondes par requête AJAX.`, ajouter :
+
+```php
+	const KEY_OFFSET   = 1000000000; // Clé de curseur : offres publiées (rang 0) avant les autres (rang 1).
+```
+
+Dans `rows()` : remplacer `"SELECT p.ID AS id, loc.meta_value AS location,` par `"SELECT p.ID AS id, p.post_status AS status, loc.meta_value AS location,`, et dans son docblock `Lignes id, location, source, geolocated.` par `Lignes id, status, location, source, geolocated.`
+
+Dans `summarize()` : dans le tableau `$summary`, après `'todo_ids' => array(),` ajouter `'todo_keys' => array(),` (aligner les flèches) ; après `$seen    = array();` ajouter `$todo    = array();` ; dans le docblock, `todo, todo_ids.` devient `todo, todo_ids, todo_keys.` ; remplacer
+
+```php
+			++$summary['todo'];
+			$summary['todo_ids'][] = $id;
+		}
+		return $summary;
+	}
+```
+
+par :
+
+```php
+			++$summary['todo'];
+			$todo[ self::order_key( $id, isset( $row['status'] ) ? $row['status'] : null ) ] = $id;
+		}
+		// Offres publiées d'abord : ce sont celles que la carte affiche.
+		ksort( $todo );
+		$summary['todo_ids']  = array_values( $todo );
+		$summary['todo_keys'] = array_keys( $todo );
+		return $summary;
+	}
+
+	/**
+	 * Clé de parcours : rang (0 publiée, 1 autre statut) × KEY_OFFSET + ID.
+	 *
+	 * @param int         $id     ID de l'offre.
+	 * @param string|null $status Statut WordPress (absent : publiée).
+	 * @return int
+	 */
+	public static function order_key( $id, $status ) {
+		$rank = ( null === $status || '' === (string) $status || 'publish' === $status ) ? 0 : 1;
+		return $rank * self::KEY_OFFSET + absint( $id );
+	}
+```
+
+Dans `ajax()` et dans `handle()`, les deux `array_diff_key( …, array( 'todo_ids' => true ) )` deviennent `array_diff_key( …, array( 'todo_ids' => true, 'todo_keys' => true ) )`.
+
+Dans `handle()` : remplacer
+
+```php
+		$ids     = array_values(
+			array_filter(
+				$summary['todo_ids'],
+				function ( $id ) use ( $cursor ) {
+					return $id > $cursor;
+				}
+			)
+		);
+```
+
+par :
+
+```php
+		$keys    = array_values(
+			array_filter(
+				$summary['todo_keys'],
+				function ( $key ) use ( $cursor ) {
+					return $key > $cursor;
+				}
+			)
+		);
+```
+
+puis `foreach ( array_slice( $ids, 0, self::BATCH ) as $id ) {` par `foreach ( array_slice( $keys, 0, self::BATCH ) as $key ) {`, la ligne `$cursor    = $id;` par les deux lignes
+
+```php
+			$cursor    = $key;
+			$id        = $key % self::KEY_OFFSET;
+```
+
+et `'done'    => $stopped || count( $results ) >= count( $ids ),` par `'done'    => $stopped || count( $results ) >= count( $keys ),`.
+
+- [ ] **Step 2: Cache de pages — premier enregistrement et réglages visibles (`Settings.php`)**
+
+Dans `register()`, remplacer la ligne `add_action( 'update_option_' . self::OPTION, array( __CLASS__, 'purge_page_cache_on_provider_change' ), 10, 2 );` par :
+
+```php
+		add_action( 'update_option_' . self::OPTION, array( __CLASS__, 'maybe_purge_page_cache' ), 10, 2 );
+		// Premier enregistrement : update_option() passe par add_option(), qui ne déclenche pas update_option_*.
+		add_action( 'add_option_' . self::OPTION, array( __CLASS__, 'maybe_purge_page_cache_on_add' ), 10, 2 );
+```
+
+Remplacer toute la méthode `purge_page_cache_on_provider_change()` (docblock compris) par :
+
+```php
+	/**
+	 * Réglages qui changent les pages publiques (moteur de carte, autocomplétion).
+	 */
+	const FRONT_KEYS = array( 'provider', 'osm_style_url', 'photon_url', 'map_enabled', 'map_height', 'clustering_enabled', 'browser_api_key', 'map_id', 'autocomplete_enabled', 'autocomplete_frontend' );
+
+	/**
+	 * Vide le cache de pages de WP Rocket quand un réglage visible côté public change
+	 * (appel de sa fonction publique, sans rien modifier de l'extension).
+	 *
+	 * @param mixed $old Anciens réglages.
+	 * @param mixed $new Nouveaux réglages.
+	 * @return void
+	 */
+	public static function maybe_purge_page_cache( $old, $new ) {
+		$old = wp_parse_args( is_array( $old ) ? $old : array(), self::defaults() );
+		$new = wp_parse_args( is_array( $new ) ? $new : array(), self::defaults() );
+		foreach ( self::FRONT_KEYS as $key ) {
+			if ( (string) $old[ $key ] !== (string) $new[ $key ] ) {
+				if ( function_exists( 'rocket_clean_domain' ) ) {
+					rocket_clean_domain();
+				}
+				return;
+			}
+		}
+	}
+
+	/**
+	 * Premier enregistrement des réglages : comparés aux valeurs par défaut.
+	 *
+	 * @param string $option Nom de l'option.
+	 * @param mixed  $value  Réglages enregistrés.
+	 * @return void
+	 */
+	public static function maybe_purge_page_cache_on_add( $option, $value ) {
+		self::maybe_purge_page_cache( array(), $value );
+	}
+```
+
+- [ ] **Step 3: Version du cache Photon (`PhotonGeocoder.php`)**
+
+Après la ligne `const MAX_RESPONSE = 262144;  // 256 Kio.`, ajouter une ligne vide puis :
+
+```php
+	const CACHE_VERSION = '2'; // À incrémenter quand le choix du lieu change (résultats gardés 30 jours).
+```
+
+Dans `geocode()`, remplacer `md5( $base . '|' . $lang . '|' . self::preferred_country()` par `md5( self::CACHE_VERSION . '|' . $base . '|' . $lang . '|' . self::preferred_country()`.
+
+- [ ] **Step 4: Textes**
+
+`SettingsPage.php` : dans la description du champ Photon, remplacer `videz le champ pour revenir à l’instance publique.` par `videz le champ pour revenir à l’instance publique. URL publique, transmise aux navigateurs : n’y mettez aucune clé privée.`
+
+`Plugin.php` : remplacer le commentaire `// Géocodage libre : actif seulement si le fournisseur OpenStreetMap est choisi.` par `// Géocodage libre (mode OpenStreetMap) ; les hooks de source et la file restent branchés dans les deux modes.`
+
+`readme.txt` :
+- `* Carte interactive des offres publiées et géocodées par WP Job Manager (\`geolocation_lat\` / \`geolocation_long\`),` devient `* Carte interactive des offres publiées et géocodées par le fournisseur actif (\`geolocation_lat\` / \`geolocation_long\` de WP Job Manager),` (suite de la phrase inchangée) ;
+- l'étape 5 de l'installation devient : `5. Mode libre : sur la même page, Cartographie → OpenStreetMap, puis Outils → Re-géocoder les offres (« Simuler » d'abord : les résultats sont mis en cache). Les offres publiées sont traitées en premier ; tant que l'outil n'a pas terminé, la carte libre n'affiche que les offres déjà géocodées par Photon.` ;
+- dans la FAQ WP Rocket, `Le cache de pages est vidé automatiquement quand le fournisseur change.` devient `Le cache de pages est vidé automatiquement quand un réglage visible côté public change (fournisseur, style, serveur Photon, carte, autocomplétion).`
+
+- [ ] **Step 5: Tests**
+
+Dans `tests/run.php`, remplacer tout le contenu de la section 24 (de `echo PHP_EOL . '24.` jusqu'à la ligne avant `echo PHP_EOL . '25.`) par :
+
+```php
+echo PHP_EOL . '24. Réglages visibles côté public : cache de pages' . PHP_EOL;
+if ( ! function_exists( 'rocket_clean_domain' ) ) {
+	function rocket_clean_domain() {
+		$GLOBALS['g2rd_rocket_purges']++;
+	}
+}
+$GLOBALS['g2rd_rocket_purges'] = 0;
+Settings::maybe_purge_page_cache( array( 'provider' => 'google', 'log_retention_days' => 90 ), array( 'provider' => 'google', 'log_retention_days' => 30 ) );
+check( 'réglage d’administration seul : pas de purge', 0 === $GLOBALS['g2rd_rocket_purges'] );
+Settings::maybe_purge_page_cache( array( 'provider' => 'google' ), array( 'provider' => 'osm' ) );
+check( 'fournisseur changé : cache de pages purgé', 1 === $GLOBALS['g2rd_rocket_purges'] );
+Settings::maybe_purge_page_cache( array( 'map_height' => 480 ), array( 'map_height' => 600 ) );
+check( 'hauteur de la carte changée : cache de pages purgé', 2 === $GLOBALS['g2rd_rocket_purges'] );
+Settings::maybe_purge_page_cache_on_add( Settings::OPTION, array( 'provider' => 'osm' ) );
+check( 'premier enregistrement (add_option) : cache de pages purgé', 3 === $GLOBALS['g2rd_rocket_purges'] );
+Settings::maybe_purge_page_cache_on_add( Settings::OPTION, Settings::defaults() );
+check( 'premier enregistrement aux valeurs par défaut : pas de purge', 3 === $GLOBALS['g2rd_rocket_purges'] );
+
+```
+
+et, juste avant `$results = $GLOBALS['g2rd_results'];` :
+
+```php
+echo PHP_EOL . '29. Re-géocodage : offres publiées d’abord' . PHP_EOL;
+$mixed = array(
+	array( 'id' => '400', 'status' => 'expired', 'location' => 'Rouen', 'source' => null, 'geolocated' => null ),
+	array( 'id' => '401', 'status' => 'publish', 'location' => 'Rouen', 'source' => null, 'geolocated' => null ),
+	array( 'id' => '402', 'status' => 'draft', 'location' => 'Rouen', 'source' => null, 'geolocated' => null ),
+);
+$sum = RegeocodeTool::summarize( $mixed, 'osm' );
+check( 'offres publiées traitées avant les autres', array( 401, 400, 402 ) === $sum['todo_ids'] );
+list( $s ) = geo_boot();
+foreach ( $mixed as $row ) {
+	G2RD_Test_State::$post_types[ (int) $row['id'] ]            = 'job_listing';
+	G2RD_Test_State::$meta[ (int) $row['id'] ]['_job_location'] = 'Rouen';
+}
+$first = ( new RegeocodeTool( $s, new PhotonGeocoder( $s ), '__return_false' ) )->handle( 'simulate', 0, $mixed );
+check( 'premier lot : offre publiée en tête, curseur de parcours', 401 === $first['rows'][0]['id'] && $first['cursor'] > RegeocodeTool::KEY_OFFSET && true === $first['done'] );
+```
+
+- [ ] **Step 6: Lint, tests, Docker, commit**
+
+```bash
+for f in g2rd-wpjm-geo/includes/*.php; do php -l "$f" | grep -v "^No syntax"; done
+php g2rd-wpjm-geo/tests/run.php | tail -1
+NODE_PATH=tools/jsdom/node_modules node g2rd-wpjm-geo/tests/js/run.js | tail -1
+tools/docker/verify.sh
+git add g2rd-wpjm-geo/includes/RegeocodeTool.php g2rd-wpjm-geo/includes/Settings.php g2rd-wpjm-geo/includes/PhotonGeocoder.php g2rd-wpjm-geo/includes/SettingsPage.php g2rd-wpjm-geo/includes/Plugin.php g2rd-wpjm-geo/readme.txt g2rd-wpjm-geo/tests/run.php
+git commit -m "fix: revue finale — offres publiées re-géocodées d'abord, cache de pages vidé dès le premier enregistrement, version du cache Photon"
+```
+
+Expected: lint muet, `228 réussis, 0 échoués`, `93 reussis, 0 echoues`, `Résultat Docker : 32 réussis, 0 échoués`.
+
+---
+
 ## Couverture de la spécification
 
 | Section de la spécification | Tâches |
