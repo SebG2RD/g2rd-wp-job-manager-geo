@@ -63,7 +63,7 @@ class LocationAutocomplete {
 	 */
 	public function prepare_field( $fields ) {
 		$this->has_location_field = isset( $fields['job']['job_location'] );
-		if ( $this->has_location_field && GoogleAssets::has_key( $this->settings ) ) {
+		if ( $this->has_location_field && ( Settings::PROVIDER_OSM === $this->settings->get_provider() || GoogleAssets::has_key( $this->settings ) ) ) {
 			$fields['job']['job_location']['autocomplete'] = false;
 		}
 		return $fields;
@@ -94,18 +94,24 @@ class LocationAutocomplete {
 	 * @return void
 	 */
 	protected function enqueue_autocomplete( $selectors ) {
-		if ( ! GoogleAssets::has_key( $this->settings ) ) {
+		$is_osm = Settings::PROVIDER_OSM === $this->settings->get_provider();
+		if ( ! $is_osm && ! GoogleAssets::has_key( $this->settings ) ) {
 			return;
 		}
 
 		wp_enqueue_style( GoogleAssets::HANDLE_STYLE );
 		wp_enqueue_script( GoogleAssets::HANDLE_AUTOCOMPLETE );
 
+		// Langue du site, comme le géocodage serveur : un libellé choisi ici doit être retrouvé par PhotonGeocoder.
+		$locale = get_locale();
 		$config = array(
+			'source'    => $is_osm ? 'photon' : 'google',
+			'photonUrl' => $is_osm ? esc_url_raw( (string) $this->settings->get( 'photon_url' ), array( 'https' ) ) : '',
+			'lang'      => PhotonGeocoder::language( $locale ),
 			'selectors' => array_values( array_filter( array_map( 'strval', (array) $selectors ) ) ),
 			'minLength' => 2,
 			'i18n'      => array(
-				'poweredBy' => __( 'Propulsé par Google', 'g2rd-wpjm-geo' ),
+				'poweredBy' => $is_osm ? __( 'Recherche © OpenStreetMap contributors', 'g2rd-wpjm-geo' ) : __( 'Propulsé par Google', 'g2rd-wpjm-geo' ),
 				'results'   => __( 'Suggestions de villes', 'g2rd-wpjm-geo' ),
 			),
 		);

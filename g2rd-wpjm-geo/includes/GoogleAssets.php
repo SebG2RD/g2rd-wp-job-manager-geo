@@ -70,7 +70,9 @@ class GoogleAssets {
 			'before'
 		);
 
-		wp_register_script( self::HANDLE_AUTOCOMPLETE, $base . 'js/location-autocomplete.js', array( self::HANDLE_LOADER ), $version, true );
+		// En mode libre, le chargeur Google (et la clé navigateur) n'est jamais imprimé dans la page.
+		$autocomplete_deps = Settings::PROVIDER_OSM === $this->settings->get_provider() ? array() : array( self::HANDLE_LOADER );
+		wp_register_script( self::HANDLE_AUTOCOMPLETE, $base . 'js/location-autocomplete.js', $autocomplete_deps, $version, true );
 		wp_register_script( self::HANDLE_CLUSTERER, $base . 'vendor/markerclusterer.min.js', array(), '2.5.3', true );
 
 		wp_register_script( self::HANDLE_COMMON, $base . 'js/map-common.js', array(), $version, true );

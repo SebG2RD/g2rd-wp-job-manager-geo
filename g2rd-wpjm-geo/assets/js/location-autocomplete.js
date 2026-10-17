@@ -1,23 +1,28 @@
 /**
  * Autocomplétion mondiale des villes sur le champ de localisation natif de WP Job Manager.
  *
- * Utilise l'API « Place Autocomplete Data » (Places API New) : le champ existant
- * est conservé tel quel, aucune saisie n'est dupliquée, et la saisie libre reste
- * possible si Google est indisponible.
+ * Deux sources, selon le réglage « Fournisseur cartographique » :
+ * - google : API « Place Autocomplete Data » (Places API New) ;
+ * - photon : service Photon (OpenStreetMap), sans clé.
+ * Le champ existant est conservé tel quel, aucune saisie n'est dupliquée, et la
+ * saisie libre reste possible si le service est indisponible.
  */
 ( function ( window, document ) {
 	'use strict';
 
 	var settings = window.g2rdWpjmGeoAutocomplete || {};
+	var source = 'photon' === settings.source ? 'photon' : 'google';
 	var loader = window.g2rdWpjmGeoLoader;
 	var i18n = settings.i18n || {};
 	var MIN_LENGTH = settings.minLength || 2;
-	var DEBOUNCE = 250;
+	var DEBOUNCE = 'photon' === source ? 300 : 250;
 	// « (cities) » est la collection prévue par Places API (New). Le second jeu sert de repli si elle est refusée.
 	var TYPE_SETS = [
 		[ '(cities)' ],
 		[ 'locality', 'postal_town', 'administrative_area_level_3' ]
 	];
+	// Photon : villes, bourgs, villages et communes du monde entier.
+	var PHOTON_TAGS = [ 'place:city', 'place:town', 'place:village', 'place:municipality' ];
 	var uid = 0;
 
 	function findInput() {
@@ -36,9 +41,57 @@
 		return null;
 	}
 
+	// Suggestions normalisées : { label, main, secondary }.
+	function fromGoogle( suggestions ) {
+		var out = [];
+		( suggestions || [] ).forEach( function ( suggestion ) {
+			var prediction = suggestion && suggestion.placePrediction;
+			if ( ! prediction || ! prediction.text ) {
+				return;
+			}
+			var label = String( prediction.text.text || prediction.text );
+			if ( ! label ) {
+				return;
+			}
+			out.push( {
+				label: label,
+				main: ( prediction.mainText && prediction.mainText.text ) || '',
+				secondary: ( prediction.secondaryText && prediction.secondaryText.text ) || ''
+			} );
+		} );
+		return out;
+	}
+
+	function fromPhoton( features, placesOnly ) {
+		var out = [];
+		var seen = {};
+		( features || [] ).forEach( function ( feature ) {
+			var props = feature && feature.properties;
+			if ( ! props || 'string' !== typeof props.name || ! props.name ) {
+				return;
+			}
+			if ( placesOnly && 'place' !== props.osm_key ) {
+				return;
+			}
+			var parts = [ props.name ];
+			[ props.state, props.country ].forEach( function ( part ) {
+				if ( 'string' === typeof part && part && parts.indexOf( part ) === -1 ) {
+					parts.push( part );
+				}
+			} );
+			var label = parts.join( ', ' );
+			if ( seen[ label ] ) {
+				return;
+			}
+			seen[ label ] = true;
+			out.push( { label: label, main: props.name, secondary: parts.slice( 1 ).join( ', ' ) } );
+		} );
+		return out;
+	}
+
 	function attach( input ) {
 		var listId = 'g2rd-wpjm-geo-ac-list-' + ( ++uid );
-		var places = null; // Bibliothèque Places, chargée au premier focus.
+		var places = null; // Bibliothèque Places, chargée au premier focus (Google).
 		var token = null;
 		var disabled = false;
 		var timer = null;
@@ -47,6 +100,9 @@
 		var active = -1;
 		var typeSet = 0;
 		var choosing = false;
+		var photonFiltered = true;
+		var controller = null;
+		var cache = {};
 
 		input.setAttribute( 'data-g2rd-wpjm-geo-ac', '1' );
 		input.setAttribute( 'autocomplete', 'off' );
@@ -69,7 +125,7 @@
 
 		var attribution = document.createElement( 'div' );
 		attribution.className = 'g2rd-wpjm-geo-ac__attribution';
-		attribution.textContent = i18n.poweredBy || 'Powered by Google';
+		attribution.textContent = i18n.poweredBy || '';
 
 		panel.appendChild( list );
 		panel.appendChild( attribution );
@@ -126,14 +182,6 @@
 			list.textContent = '';
 			items = [];
 			suggestions.forEach( function ( suggestion ) {
-				var prediction = suggestion && suggestion.placePrediction;
-				if ( ! prediction || ! prediction.text ) {
-					return;
-				}
-				var label = String( prediction.text.text || prediction.text );
-				if ( ! label ) {
-					return;
-				}
 				var index = items.length;
 				var option = document.createElement( 'li' );
 				option.id = listId + '-option-' + index;
@@ -141,21 +189,19 @@
 				option.setAttribute( 'role', 'option' );
 				option.setAttribute( 'aria-selected', 'false' );
 
-				var main = prediction.mainText && prediction.mainText.text;
-				var secondary = prediction.secondaryText && prediction.secondaryText.text;
-				if ( main ) {
+				if ( suggestion.main ) {
 					var strong = document.createElement( 'span' );
 					strong.className = 'g2rd-wpjm-geo-ac__main';
-					strong.textContent = main;
+					strong.textContent = suggestion.main;
 					option.appendChild( strong );
-					if ( secondary ) {
+					if ( suggestion.secondary ) {
 						var rest = document.createElement( 'span' );
 						rest.className = 'g2rd-wpjm-geo-ac__secondary';
-						rest.textContent = ' ' + secondary;
+						rest.textContent = ' ' + suggestion.secondary;
 						option.appendChild( rest );
 					}
 				} else {
-					option.textContent = label;
+					option.textContent = suggestion.label;
 				}
 
 				// mousedown (et non click) : agit avant la perte de focus du champ.
@@ -167,7 +213,7 @@
 					setActive( index );
 				} );
 
-				items.push( { label: label } );
+				items.push( { label: suggestion.label } );
 				list.appendChild( option );
 			} );
 
@@ -219,6 +265,46 @@
 			} );
 		}
 
+		function photonSearch( value ) {
+			var cacheKey = value.toLowerCase();
+			if ( cache[ cacheKey ] ) {
+				return Promise.resolve( cache[ cacheKey ] );
+			}
+			if ( controller ) {
+				controller.abort();
+			}
+			controller = 'function' === typeof window.AbortController ? new window.AbortController() : null;
+
+			var params = 'q=' + encodeURIComponent( value ) + '&limit=6&lang=' + encodeURIComponent( settings.lang || 'default' );
+			if ( photonFiltered ) {
+				params += PHOTON_TAGS.map( function ( tag ) {
+					return '&osm_tag=' + encodeURIComponent( tag );
+				} ).join( '' );
+			}
+			var base = settings.photonUrl || '';
+			var options = { credentials: 'omit' };
+			if ( controller ) {
+				options.signal = controller.signal;
+			}
+
+			return window.fetch( base + ( base.indexOf( '?' ) === -1 ? '?' : '&' ) + params, options ).then( function ( response ) {
+				if ( 400 === response.status && photonFiltered ) {
+					// Filtre refusé par le serveur : repli sans filtre, mémorisé pour la page.
+					photonFiltered = false;
+					controller = null;
+					return photonSearch( value );
+				}
+				if ( ! response.ok ) {
+					throw new Error( 'HTTP ' + response.status );
+				}
+				return response.json().then( function ( data ) {
+					var suggestions = fromPhoton( data && data.features, ! photonFiltered );
+					cache[ cacheKey ] = suggestions;
+					return suggestions;
+				} );
+			} );
+		}
+
 		function search() {
 			var value = input.value.trim();
 			if ( disabled || value.length < MIN_LENGTH ) {
@@ -226,23 +312,31 @@
 				return;
 			}
 			var current = ++requestId;
+			var pending = 'photon' === source
+				? photonSearch( value )
+				: ensurePlaces().then( function ( library ) {
+					return fetchSuggestions( library, value );
+				} ).then( function ( result ) {
+					return fromGoogle( result && result.suggestions );
+				} );
 
-			ensurePlaces().then( function ( library ) {
-				return fetchSuggestions( library, value );
-			} ).then( function ( result ) {
+			pending.then( function ( suggestions ) {
 				// Ignore les réponses obsolètes (l'utilisateur a continué à taper).
 				if ( current === requestId && document.activeElement === input ) {
-					render( ( result && result.suggestions ) || [] );
+					render( suggestions );
 				}
-			} ).catch( function () {
-				// Google indisponible ou clé refusée : le champ redevient un simple champ texte.
+			} ).catch( function ( error ) {
+				if ( error && 'AbortError' === error.name ) {
+					return; // Requête remplacée par une frappe plus récente.
+				}
+				// Service indisponible ou clé refusée : le champ redevient un simple champ texte.
 				disabled = true;
 				close();
 			} );
 		}
 
 		input.addEventListener( 'focus', function () {
-			if ( ! disabled ) {
+			if ( 'google' === source && ! disabled ) {
 				ensurePlaces().catch( function () {
 					disabled = true;
 				} );
@@ -305,13 +399,21 @@
 		}, true );
 
 		document.addEventListener( 'g2rdWpjmGeoAuthFailure', function () {
-			disabled = true;
-			close();
+			if ( 'google' === source ) {
+				disabled = true;
+				close();
+			}
 		} );
 	}
 
 	function init() {
-		if ( ! loader || ! window.Promise ) {
+		if ( ! window.Promise ) {
+			return;
+		}
+		if ( 'google' === source && ! loader ) {
+			return;
+		}
+		if ( 'photon' === source && ( ! window.fetch || ! settings.photonUrl ) ) {
 			return;
 		}
 		var input = findInput();
