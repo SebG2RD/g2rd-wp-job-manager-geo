@@ -5922,21 +5922,23 @@ Expected: lint muet, `0 échoués`, `0 echoues`.
 Dans `tests/js/run.js`, juste avant `(async () => {`, ajouter :
 
 ```js
-async function photonAc({ status400 = false, fail = false, slowFirst = false } = {}) {
+async function photonAc({ status400 = false, fail = false, slowFirst = false, realAbort = false, features: custom = null } = {}) {
   const dom = new JSDOM('<form><input type="text" id="job_location" name="job_location"><input id="other"></form>', { runScripts: 'outside-only', pretendToBeVisual: true });
   const w = dom.window, calls = [];
   w.g2rdWpjmGeoAutocomplete = { source: 'photon', photonUrl: 'https://photon.test/api/', lang: 'fr', selectors: ['#job_location'], minLength: 2, i18n: { poweredBy: 'Recherche (c) OpenStreetMap contributors', results: 'Suggestions' } };
-  w.AbortController = class { constructor() { this.signal = { aborted: false }; } abort() { this.signal.aborted = true; } };
+  if (!realAbort) w.AbortController = class { constructor() { this.signal = { aborted: false }; } abort() { this.signal.aborted = true; } };
   const feature = (name, state, country, key) => ({ properties: { name, state, country, osm_key: key || 'place' } });
   w.fetch = (url, opt) => {
     calls.push({ url, opt });
     if (fail) return Promise.reject(new Error('reseau'));
+    if (realAbort && calls.length === 1) return new Promise((res, rej) => opt.signal.addEventListener('abort', () => rej(new w.DOMException('aborted', 'AbortError'))));
     const filtered = url.indexOf('osm_tag=') !== -1;
     if (status400 && filtered) return Promise.resolve({ ok: false, status: 400, json: () => Promise.resolve({}) });
-    const features = [feature('Londres', 'Angleterre', 'Royaume-Uni'), feature('London', 'Ontario', 'Canada'), feature('<img src=x onerror=alert(1)>', 'X', 'Y')];
-    if (!filtered) features.splice(1, 0, feature('London Pub', 'Angleterre', 'Royaume-Uni', 'amenity'));
+    const features = custom ? custom.slice() : [feature('Londres', 'Angleterre', 'Royaume-Uni'), feature('London', 'Ontario', 'Canada'), feature('<img src=x onerror=alert(1)>', 'X', 'Y')];
+    if (!filtered && !custom) features.splice(1, 0, feature('London Pub', 'Angleterre', 'Royaume-Uni', 'amenity'));
     const reply = { ok: true, status: 200, json: () => Promise.resolve({ features }) };
-    return slowFirst && calls.length === 1 ? new Promise(r => setTimeout(() => r(reply), 600)) : Promise.resolve(reply);
+    const stale = { ok: true, status: 200, json: () => Promise.resolve({ features: [feature('Lonely', 'X', 'Y')] }) };
+    return slowFirst && calls.length === 1 ? new Promise(r => setTimeout(() => r(stale), 600)) : Promise.resolve(reply);
   };
   w.eval(src('js/location-autocomplete.js'));
   const d = w.document, input = d.getElementById('job_location');
@@ -5973,7 +5975,21 @@ Puis, avant la ligne du résultat final, ajouter :
   p.input.value = 'Lond'; p.input.dispatchEvent(new p.w.Event('input', { bubbles: true })); await wait(350);
   check('frappe suivante : requete precedente annulee', p.calls.length === 2 && p.calls[0].opt.signal.aborted === true);
   await wait(400);
-  check('reponse obsolete ignoree, liste de la derniere saisie', p.panel.querySelectorAll('[role=option]').length === 3);
+  check('reponse obsolete ignoree, liste de la derniere saisie', p.panel.querySelectorAll('[role=option]').length === 3 && !/Lonely/.test(p.panel.textContent));
+  p = await photonAc({ realAbort: true });
+  p.input.value = 'Lon'; p.input.dispatchEvent(new p.w.Event('input', { bubbles: true })); await wait(350);
+  await type(p, 'Lond'); await type(p, 'Londr');
+  check('requete annulee (AbortError) : autocompletion toujours active', p.calls.length === 3 && p.calls[0].opt.signal.aborted && p.panel.querySelectorAll('[role=option]').length === 3);
+  p = await photonAc();
+  await type(p, 'Lond'); key(p.w, p.input, 'ArrowDown');
+  await type(p, 'Londr');
+  check('nouvelle liste : aucune option active annoncee', !p.input.hasAttribute('aria-activedescendant'));
+  const saintMartin = county => ({ properties: { name: 'Saint-Martin', county, state: 'Occitanie', country: 'France', osm_key: 'place' } });
+  p = await photonAc({ features: [saintMartin('Gers'), saintMartin('Hautes-Pyrénées'), saintMartin('Gers')] });
+  await type(p, 'Saint-Martin');
+  check('homonymes d une meme region : departement ajoute, doublon retire', 2 === p.panel.querySelectorAll('[role=option]').length && /Hautes-Pyr/.test(p.panel.textContent));
+  key(p.w, p.input, 'ArrowDown'); key(p.w, p.input, 'Enter'); await wait(10);
+  check('libelle ecrit avec le departement', 'Saint-Martin, Gers, Occitanie, France' === p.input.value);
   p = await photonAc({ fail: true });
   await type(p, 'Lond');
   check('Photon injoignable : pas de liste, champ utilisable', p.panel.hidden && p.input.value === 'Lond');
@@ -6056,8 +6072,8 @@ Remplacer tout le contenu par :
 	}
 
 	function fromPhoton( features, placesOnly ) {
-		var out = [];
-		var seen = {};
+		var places = [];
+		var count = {};
 		( features || [] ).forEach( function ( feature ) {
 			var props = feature && feature.properties;
 			if ( ! props || 'string' !== typeof props.name || ! props.name ) {
@@ -6066,8 +6082,18 @@ Remplacer tout le contenu par :
 			if ( placesOnly && 'place' !== props.osm_key ) {
 				return;
 			}
+			var key = [ props.name, props.state, props.country ].join( '|' );
+			count[ key ] = ( count[ key ] || 0 ) + 1;
+			places.push( { props: props, key: key } );
+		} );
+		var out = [];
+		var seen = {};
+		places.forEach( function ( place ) {
+			var props = place.props;
 			var parts = [ props.name ];
-			[ props.state, props.country ].forEach( function ( part ) {
+			// Homonymes dans une même région : le département les distingue, à l'écran comme pour le géocodage serveur.
+			var extra = count[ place.key ] > 1 ? [ props.county ] : [];
+			extra.concat( [ props.state, props.country ] ).forEach( function ( part ) {
 				if ( 'string' === typeof part && part && parts.indexOf( part ) === -1 ) {
 					parts.push( part );
 				}
@@ -6174,6 +6200,9 @@ Remplacer tout le contenu par :
 		function render( suggestions ) {
 			list.textContent = '';
 			items = [];
+			// Nouvelle liste : aucune option active (sinon le lecteur d'écran annoncerait une option qu'Entrée ne choisit pas).
+			active = -1;
+			input.removeAttribute( 'aria-activedescendant' );
 			suggestions.forEach( function ( suggestion ) {
 				var index = items.length;
 				var option = document.createElement( 'li' );
@@ -6274,7 +6303,7 @@ Remplacer tout le contenu par :
 					return '&osm_tag=' + encodeURIComponent( tag );
 				} ).join( '' );
 			}
-			var base = settings.photonUrl || '';
+			var base = ( settings.photonUrl || '' ).split( '#' )[ 0 ]; // Fragment retiré, comme côté serveur.
 			var options = { credentials: 'omit' };
 			if ( controller ) {
 				options.signal = controller.signal;
@@ -6489,13 +6518,74 @@ par :
 		wp_register_script( self::HANDLE_AUTOCOMPLETE, $base . 'js/location-autocomplete.js', $autocomplete_deps, $version, true );
 ```
 
+- [ ] **Step 5 bis: Homonymes d'une même région côté serveur, test de la configuration**
+
+L'autocomplétion ajoute le département aux homonymes d'une même région (« Saint-Martin, Gers, Occitanie, France ») ; le serveur doit s'en servir. Dans `PhotonGeocoder::pick()`, juste avant la ligne `if ( '' !== $preferred && $code === $preferred && in_array( $value, self::PREFERRED_VALUES, true ) ) {`, ajouter :
+
+```php
+			if ( isset( $props['county'] ) && is_string( $props['county'] ) && in_array( self::without_article( self::normalize( $props['county'] ) ), $context, true ) ) {
+				++$rank; // Département cité : départage les homonymes d'une même région.
+			}
+```
+
+Dans `tests/bootstrap.php` : ajouter `'LocationAutocomplete', 'AdminLocation'` à la fin de la liste des classes et ces fonctions simulées (sans dupliquer une fonction déjà présente) :
+
+```php
+	function wp_register_script( $handle, $src, $deps = array(), $ver = false, $in_footer = false ) {
+		G2RD_Test_State::$enqueued[ 'register:' . $handle ] = $deps;
+		return true;
+	}
+	function wp_register_style( $handle, $src, $deps = array(), $ver = false, $media = 'all' ) {
+		return true;
+	}
+	function wp_add_inline_script( $handle, $data, $position = 'after' ) {
+		G2RD_Test_State::$enqueued[ 'inline:' . $handle ] = $data;
+		return true;
+	}
+```
+
+Dans `tests/run.php`, ajouter aux `use` (ordre alphabétique) `use G2RD\WPJMGeo\GoogleAssets;` et `use G2RD\WPJMGeo\LocationAutocomplete;`, puis, juste avant `$results = $GLOBALS['g2rd_results'];` :
+
+```php
+echo PHP_EOL . '26. Homonymes d’une même région' . PHP_EOL;
+$features = array(
+	photon_feature( 'Saint-Martin', 'place', 'village', 0.1, 43.1, array( 'county' => 'Hautes-Pyrénées', 'state' => 'Occitanie', 'country' => 'France', 'countrycode' => 'FR' ) ),
+	photon_feature( 'Saint-Martin', 'place', 'village', 0.5, 43.6, array( 'county' => 'Gers', 'state' => 'Occitanie', 'country' => 'France', 'countrycode' => 'FR' ) ),
+);
+$best = PhotonGeocoder::pick( $features, 'Saint-Martin, Gers, Occitanie, France' );
+check( 'département cité : il départage deux homonymes de la même région', is_array( $best ) && 'Gers' === $best['properties']['county'] );
+
+echo PHP_EOL . '27. Configuration de l’autocomplétion' . PHP_EOL;
+function g2rd_ac_config() {
+	$inline = isset( G2RD_Test_State::$enqueued['inline:g2rd-wpjm-geo-autocomplete'] ) ? G2RD_Test_State::$enqueued['inline:g2rd-wpjm-geo-autocomplete'] : '';
+	return array( $inline, json_decode( (string) preg_replace( '/^window\.g2rdWpjmGeoAutocomplete = |;$/', '', $inline ), true ) );
+}
+list( $s ) = boot( array( 'provider' => Settings::PROVIDER_OSM, 'browser_api_key' => 'SECRET-KEY' ) );
+( new GoogleAssets( $s ) )->register_assets();
+check( 'mode libre : autocomplétion sans dépendance au chargeur Google', array() === G2RD_Test_State::$enqueued['register:g2rd-wpjm-geo-autocomplete'] );
+( new LocationAutocomplete( $s ) )->enqueue();
+list( $inline, $c ) = g2rd_ac_config();
+check( 'mode libre : Photon en https, langue du site, attribution OpenStreetMap, aucune clé', 'photon' === $c['source'] && 'https://photon.komoot.io/api/' === $c['photonUrl'] && 'fr' === $c['lang'] && false !== strpos( $c['i18n']['poweredBy'], 'OpenStreetMap' ) && false === strpos( $inline, 'SECRET' ) );
+check( 'mode libre : chargeur Google absent', ! isset( G2RD_Test_State::$enqueued['script:g2rd-wpjm-geo-google-loader'] ) );
+list( $s ) = boot( array( 'provider' => Settings::PROVIDER_GOOGLE, 'browser_api_key' => 'BROWSER' ) );
+G2RD_Test_State::$locale = 'es_ES';
+( new GoogleAssets( $s ) )->register_assets();
+check( 'mode Google : dépendance au chargeur', array( GoogleAssets::HANDLE_LOADER ) === G2RD_Test_State::$enqueued['register:g2rd-wpjm-geo-autocomplete'] );
+( new LocationAutocomplete( $s ) )->enqueue();
+list( $inline, $c ) = g2rd_ac_config();
+check( 'mode Google : pas d’URL Photon, langue non prise en charge par Photon = default', 'google' === $c['source'] && '' === $c['photonUrl'] && 'default' === $c['lang'] );
+list( $s ) = boot( array( 'provider' => Settings::PROVIDER_GOOGLE, 'browser_api_key' => '' ) );
+( new LocationAutocomplete( $s ) )->enqueue();
+check( 'mode Google sans clé : rien en file', array() === G2RD_Test_State::$enqueued );
+```
+
 - [ ] **Step 6: Lint, tests, commit**
 
 ```bash
 for f in g2rd-wpjm-geo/includes/*.php; do php -l "$f" | grep -v "^No syntax"; done
 node --check g2rd-wpjm-geo/assets/js/location-autocomplete.js
 NODE_PATH=tools/jsdom/node_modules node g2rd-wpjm-geo/tests/js/run.js | tail -1
-git add g2rd-wpjm-geo/assets/js/location-autocomplete.js g2rd-wpjm-geo/includes/LocationAutocomplete.php g2rd-wpjm-geo/includes/GoogleAssets.php g2rd-wpjm-geo/tests/js/run.js
+git add g2rd-wpjm-geo/assets/js/location-autocomplete.js g2rd-wpjm-geo/includes/LocationAutocomplete.php g2rd-wpjm-geo/includes/GoogleAssets.php g2rd-wpjm-geo/includes/PhotonGeocoder.php g2rd-wpjm-geo/tests/js/run.js g2rd-wpjm-geo/tests/run.php g2rd-wpjm-geo/tests/bootstrap.php
 git commit -m "feat: autocomplétion des villes avec Photon en mode libre"
 ```
 
