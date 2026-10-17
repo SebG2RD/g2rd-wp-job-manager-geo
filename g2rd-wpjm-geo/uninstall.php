@@ -26,15 +26,17 @@ delete_transient( 'g2rd_wpjm_geo_photon_down' );
 wp_clear_scheduled_hook( 'g2rd_wpjm_geo_geocode' );
 delete_post_meta_by_key( '_g2rd_wpjm_geo_source' );
 
-// Caches des réponses Photon et des vérifications d'URL.
+// Caches des réponses Photon, des vérifications d'URL et de la réponse REST de la carte.
 // phpcs:ignore WordPress.DB.DirectDatabaseQuery
 $wpdb->query(
 	$wpdb->prepare(
-		"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s",
+		"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s",
 		$wpdb->esc_like( '_transient_g2rd_geo_ph_' ) . '%',
 		$wpdb->esc_like( '_transient_timeout_g2rd_geo_ph_' ) . '%',
 		$wpdb->esc_like( '_transient_g2rd_geo_url_' ) . '%',
-		$wpdb->esc_like( '_transient_timeout_g2rd_geo_url_' ) . '%'
+		$wpdb->esc_like( '_transient_timeout_g2rd_geo_url_' ) . '%',
+		$wpdb->esc_like( '_transient_jm_g2rdgeo_' ) . '%',
+		$wpdb->esc_like( '_transient_timeout_jm_g2rdgeo_' ) . '%'
 	)
 );
 
