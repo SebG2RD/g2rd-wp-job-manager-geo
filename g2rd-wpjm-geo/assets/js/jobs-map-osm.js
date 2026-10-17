@@ -115,6 +115,121 @@
 		} );
 	}
 
+	// Crédit d'une source du style (HTML fourni par l'hôte du style ou du TileJSON) recopié en DOM :
+	// seuls le texte et les liens http(s) sont repris. Le document de DOMParser est inerte
+	// (aucun script exécuté, aucune image chargée) ; rien de son balisage n'est inséré tel quel.
+	function appendCredit( html, target ) {
+		var doc = new window.DOMParser().parseFromString( '<body>' + String( html ) + '</body>', 'text/html' );
+		( function walk( parent ) {
+			Array.prototype.forEach.call( parent.childNodes, function ( node ) {
+				if ( 3 === node.nodeType ) {
+					target.appendChild( document.createTextNode( node.textContent ) );
+					return;
+				}
+				if ( 1 !== node.nodeType ) {
+					return;
+				}
+				var tag = node.tagName.toLowerCase();
+				if ( 'script' === tag || 'style' === tag || 'template' === tag ) {
+					return;
+				}
+				var url = 'a' === tag ? C.safeUrl( node.getAttribute( 'href' ) ) : '';
+				if ( url ) {
+					var link = document.createElement( 'a' );
+					link.href = url;
+					link.target = '_blank';
+					link.rel = 'noopener noreferrer';
+					link.textContent = node.textContent;
+					target.appendChild( link );
+					return;
+				}
+				walk( node );
+			} );
+		} )( doc.body );
+	}
+
+	// Remplace le contrôle d'attribution de MapLibre, qui insère ces crédits par innerHTML derrière
+	// un simple filtre en liste noire. Mêmes classes CSS et mêmes déclencheurs que l'original.
+	function AttributionControl( compact ) {
+		this.compact = compact;
+		this.key = null;
+	}
+	AttributionControl.prototype.onAdd = function ( map ) {
+		var self = this;
+		this.map = map;
+		this.container = document.createElement( 'div' );
+		this.container.className = 'maplibregl-ctrl maplibregl-ctrl-attrib' + ( this.compact ? ' maplibregl-compact' : '' );
+		if ( this.compact ) {
+			var button = document.createElement( 'button' );
+			button.type = 'button';
+			button.className = 'maplibregl-ctrl-attrib-button';
+			button.setAttribute( 'aria-label', ( cfg.locale && cfg.locale[ 'AttributionControl.ToggleAttribution' ] ) || 'Toggle attribution' );
+			button.addEventListener( 'click', function () {
+				self.container.classList.toggle( 'maplibregl-compact-show' );
+			} );
+			this.container.appendChild( button );
+		}
+		this.inner = document.createElement( 'div' );
+		this.inner.className = 'maplibregl-ctrl-attrib-inner';
+		this.container.appendChild( this.inner );
+		this.onData = function ( e ) {
+			if ( e && ( 'metadata' === e.sourceDataType || 'visibility' === e.sourceDataType || 'style' === e.dataType || 'terrain' === e.type ) ) {
+				self.render();
+			}
+		};
+		this.onLoad = function () {
+			self.render();
+		};
+		map.on( 'load', this.onLoad );
+		map.on( 'styledata', this.onData );
+		map.on( 'sourcedata', this.onData );
+		this.render();
+		return this.container;
+	};
+	AttributionControl.prototype.onRemove = function () {
+		if ( this.map && 'function' === typeof this.map.off ) {
+			this.map.off( 'load', this.onLoad );
+			this.map.off( 'styledata', this.onData );
+			this.map.off( 'sourcedata', this.onData );
+		}
+		if ( this.container && this.container.parentNode ) {
+			this.container.parentNode.removeChild( this.container );
+		}
+		this.map = null;
+	};
+	AttributionControl.prototype.render = function () {
+		var map = this.map;
+		var style = null;
+		try {
+			style = map.getStyle();
+		} catch ( e ) {
+			return; // Style pas encore chargé : un événement suivant relancera le rendu.
+		}
+		var specs = ( style && style.sources ) || {};
+		var credits = [];
+		Object.keys( specs ).forEach( function ( id ) {
+			var source = map.getSource( id );
+			var text = ( source && source.attribution ) || specs[ id ].attribution;
+			if ( 'string' === typeof text && text && credits.indexOf( text ) === -1 ) {
+				credits.push( text );
+			}
+		} );
+		var key = credits.join( '\n' );
+		if ( key === this.key ) {
+			return;
+		}
+		this.key = key;
+		while ( this.inner.firstChild ) {
+			this.inner.removeChild( this.inner.firstChild );
+		}
+		credits.forEach( function ( html, index ) {
+			if ( index ) {
+				this.inner.appendChild( document.createTextNode( ' | ' ) );
+			}
+			appendCredit( html, this.inner );
+		}, this );
+	};
+
 	function initMap( container ) {
 		var i18n = C.parseJson( container.getAttribute( 'data-i18n' ) );
 		var canvas = container.querySelector( '.g2rd-wpjm-geo-map__canvas' );
@@ -147,12 +262,14 @@
 				center: [ 0, 20 ],
 				zoom: 1,
 				cooperativeGestures: true,
-				attributionControl: { compact: window.innerWidth < 782 },
+				attributionControl: false, // Remplacé par AttributionControl (crédits en texte, ci-dessous).
 				locale: uiLocale()
 			} );
 			// Boutons de zoom et plein écran (comme la carte Google) ; ni rotation ni inclinaison pour une carte d'offres.
 			map.addControl( new ml.NavigationControl( { showCompass: false } ), 'top-right' );
 			map.addControl( new ml.FullscreenControl(), 'top-right' );
+			// Crédits obligatoires (OpenStreetMap, OpenMapTiles, fournisseur des tuiles), rendus en texte.
+			map.addControl( new AttributionControl( window.innerWidth < 782 ), 'bottom-right' );
 			map.dragRotate.disable();
 			map.touchZoomRotate.disableRotation();
 			map.touchPitch.disable();
