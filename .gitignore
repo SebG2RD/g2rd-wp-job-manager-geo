@@ -17,6 +17,9 @@ auth.json
 *.pem
 *.key
 
+# Maquettes de conception (compagnon visuel)
+.superpowers/
+
 # Fichiers d'éditeur et de système
 .idea/
 .vscode/
