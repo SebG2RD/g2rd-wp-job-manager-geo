@@ -469,6 +469,7 @@ function tagField({ value = '', required = false, max = 3 } = {}) {
     const T = tw.g2rdWpjmGeoTags;
     check('decoupage : separateurs forts et « et », mentions vagues et doublons retires', 'Paris|Lyon|Caen' === T.split('Paris et Lyon / Télétravail ; paris ; Caen').join('|'));
     check('decoupage comme le serveur : <br> separe, 30 morceaux au plus', 'Paris|Lyon' === T.split('Paris<br />Lyon').join('|') && 30 === T.split(Array.from({ length: 50 }, (_, i) => 'Lieu' + i).join(';')).length);
+    check('decoupage comme le serveur : balises retirees, 2 000 caracteres lus', 'Paris|Lyon' === T.split('<p>Paris</p> ; Lyon').join('|') && 'Mo' === T.split('a'.repeat(1995) + ' ; Montpellier')[1]);
     const idx = T.regionIndex(REGIONS);
     check('region exacte : nom, sigle, article, prefixe « Region » ; ville refusee', '11' === T.findRegion("l'Île-de-France", idx).code && '93' === T.findRegion('paca', idx).code && '28' === T.findRegion('Région Normandie', idx).code && null === T.findRegion('Rouen', idx));
     check('recherche : debut d un nom (variante « Region Sud » comprise), puis debut d un mot (3 lettres)', 'Normandie' === T.searchRegions('norm', idx, 6)[0].region.name && '93' === T.searchRegions('Région Sud', idx, 6)[0].region.code && 2 === T.searchRegions('alpes', idx, 6).length && 0 === T.searchRegions('al', idx, 6).length);
@@ -498,11 +499,27 @@ function tagField({ value = '', required = false, max = 3 } = {}) {
   f.tags()[2].querySelector('button').click();
   check('retrait sous le plafond : message masque', notice.hidden);
   f = tagField({ value: '&lt;img src=x onerror=alert(1)&gt; ; Normandie ; Paris, Lyon' });
-  check('reouverture : texte decoupe en etiquettes, region coloree, texte insere comme texte, aucun evenement', 3 === f.tags().length && 0 === f.d.querySelectorAll('.g2rd-wpjm-geo-tags img').length && f.tags()[1].classList.contains('g2rd-wpjm-geo-tags__tag--region') && 'Paris' === f.tags()[2].querySelector('.g2rd-wpjm-geo-tags__text').textContent && 0 === f.changes());
+  check('reouverture : balises retirees comme sur le serveur, region coloree, aucun evenement', 2 === f.tags().length && 0 === f.d.querySelectorAll('.g2rd-wpjm-geo-tags img').length && f.tags()[0].classList.contains('g2rd-wpjm-geo-tags__tag--region') && 'Paris' === f.tags()[1].querySelector('.g2rd-wpjm-geo-tags__text').textContent && 0 === f.changes());
+  f.field.add('<b>Gras</b>');
+  check('texte d une etiquette insere comme texte', 0 === f.d.querySelectorAll('.g2rd-wpjm-geo-tags b').length && '<b>Gras</b>' === f.tags()[2].querySelector('.g2rd-wpjm-geo-tags__text').textContent);
   f = tagField({ required: true });
   check('champ obligatoire : verifie sur la saisie des etiquettes', !f.native.required && !f.input.checkValidity() && 'Indiquez au moins un lieu.' === f.input.validationMessage);
   f.field.add('Brest');
   check('champ obligatoire : une etiquette suffit', f.input.checkValidity());
+  f = tagField({ required: true });
+  f.input.value = 'Télétravail'; f.field.commit();
+  check('mention sans lieu (Teletravail) gardee en etiquette : offre en teletravail enregistrable', 1 === f.tags().length && 'Télétravail' === f.native.value && f.input.checkValidity() && 'true' === f.input.getAttribute('aria-required'));
+  f = tagField({ value: 'Rouen ; Caen ; Brest ; Lille ; Nantes' });
+  check('reouverture au-dela du plafond : rien de perdu, reste dans la saisie, aucun message', 3 === f.tags().length && 'Lille ; Nantes' === f.input.value && f.d.querySelector('.g2rd-wpjm-geo-tags__notice').hidden && '' === f.live());
+  f.tags()[0].querySelector('button').click();
+  check('retrait apres reouverture : le champ natif garde les lieux restes dans la saisie', 'Caen ; Brest ; Lille ; Nantes' === f.native.value);
+  f = tagField({ max: 10 });
+  f.field.add('IDF');
+  check('meme region sous deux ecritures : une seule etiquette', false === f.field.add('Île-de-France', '11') && false === f.field.add("Région l'Île-de-France") && 1 === f.tags().length);
+  f.field.add("Saint-Martin $' test");
+  check('libelle avec « $ » : intitule du bouton intact', "Retirer Saint-Martin $' test" === f.tags()[1].querySelector('button').getAttribute('aria-label'));
+  f.input.dispatchEvent(new f.w.KeyboardEvent('keydown', { key: 'Backspace', repeat: true, bubbles: true }));
+  check('Retour arriere maintenu (repetition) : aucune etiquette retiree', 2 === f.tags().length);
 
   console.log('\nResultat JS : ' + pass + ' reussis, ' + fail + ' echoues');
   process.exit(fail ? 1 : 0);

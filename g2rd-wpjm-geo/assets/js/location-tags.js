@@ -13,6 +13,7 @@
 	var EDGES = /^[\s,.:\-\u2013\u2014]+|[\s,.:\-\u2013\u2014]+$/g;
 	var VAGUE = [ 'remote', 'full remote', 'teletravail', 'a distance', 'hybride' ];
 	var MAX_PIECES = 30;
+	var MAX_LENGTH = 2000;
 	var ICON_CITY = '\uD83D\uDCCD';
 	var ICON_REGION = '\uD83D\uDDFA\uFE0F';
 
@@ -30,20 +31,31 @@
 		return normalize( text ).replace( /^(?:le|la|les|l) /, '' );
 	}
 
-	// Même découpage que le serveur : « <br> » sépare comme un retour à la ligne, 30 morceaux au plus.
-	function split( text ) {
-		var seen = {};
+	// Même découpage que PlaceParser::split() côté serveur : 2 000 caractères lus, « <br> » sépare
+	// comme un retour à la ligne, balises retirées, 30 morceaux au plus. Le texte reçu est déjà décodé
+	// (valeur du DOM) : les entités ne sont pas traitées. keepVague garde les mentions sans lieu
+	// (« Télétravail ») : le champ à étiquettes les conserve, seule la carte les ignore.
+	function pieces( text, keepVague ) {
+		var seen = Object.create( null );
 		var out = [];
-		String( text || '' ).replace( /<br\s*\/?>/gi, '\n' ).split( SEPARATORS ).forEach( function ( part ) {
-			var piece = String( part || '' ).replace( EDGES, '' );
-			var id = normalize( piece ) || piece.toLowerCase();
-			if ( out.length >= MAX_PIECES || ! piece || VAGUE.indexOf( normalize( piece ) ) !== -1 || seen[ id ] ) {
-				return;
-			}
-			seen[ id ] = true;
-			out.push( piece );
-		} );
+		String( text || '' ).slice( 0, MAX_LENGTH )
+			.replace( /<br\s*\/?>/gi, '\n' )
+			.replace( /<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, '' )
+			.replace( /<[^>]*>/g, '' )
+			.split( SEPARATORS ).forEach( function ( part ) {
+				var piece = String( part || '' ).replace( EDGES, '' );
+				var id = normalize( piece ) || piece.toLowerCase();
+				if ( out.length >= MAX_PIECES || ! piece || seen[ id ] || ( ! keepVague && VAGUE.indexOf( normalize( piece ) ) !== -1 ) ) {
+					return;
+				}
+				seen[ id ] = true;
+				out.push( piece );
+			} );
 		return out;
+	}
+
+	function split( text ) {
+		return pieces( text, false );
 	}
 
 	function regionIndex( regions ) {
@@ -63,7 +75,7 @@
 
 	function findRegion( text, index ) {
 		var wanted = key( text );
-		var candidates = [ wanted, wanted.replace( /^region /, '' ) ];
+		var candidates = [ wanted, key( wanted.replace( /^region /, '' ) ) ];
 		var found = null;
 		if ( ! wanted ) {
 			return null;
@@ -85,7 +97,7 @@
 	// La saisie est comparée telle quelle (« Région Sud ») et sans le préfixe « Région » (« Région Bretagne »).
 	function searchRegions( query, index, max ) {
 		var full = key( query );
-		var stripped = full.replace( /^region /, '' );
+		var stripped = key( full.replace( /^region /, '' ) );
 		var wanted = stripped && stripped !== full ? [ full, stripped ] : [ full ];
 		var out = [];
 		var seen = {};
@@ -110,7 +122,9 @@
 	}
 
 	function format( template, value ) {
-		return String( template || '%s' ).replace( '%s', value );
+		return String( template || '%s' ).replace( '%s', function () {
+			return value;
+		} );
 	}
 
 	/**
@@ -156,6 +170,9 @@
 		native.hidden = true;
 		native.style.display = 'none';
 		native.required = false;
+		if ( required ) {
+			input.setAttribute( 'aria-required', 'true' );
+		}
 		var label = null;
 		try {
 			label = native.id ? document.querySelector( 'label[for="' + native.id + '"]' ) : null;
@@ -177,9 +194,10 @@
 		}
 
 		function sync() {
+			// Le texte encore dans la saisie (lieux au-delà du plafond) n'est jamais perdu.
 			native.value = tags.map( function ( tag ) {
 				return tag.text;
-			} ).join( ' ; ' );
+			} ).concat( pieces( input.value, true ) ).join( ' ; ' );
 			native.dispatchEvent( new Event( 'input', { bubbles: true } ) );
 			native.dispatchEvent( new Event( 'change', { bubbles: true } ) );
 			validate();
@@ -226,13 +244,17 @@
 			list.hidden = ! tags.length;
 		}
 
-		// Ajoute un lieu ; isRegion force la couleur des régions (proposition choisie).
-		function add( text, isRegion, silent ) {
+		// Ajoute un lieu. region : code de la région choisie dans les propositions (ou true) ;
+		// à défaut, la région est reconnue d'après le texte.
+		function add( text, region, silent ) {
 			var value = String( text || '' ).trim();
 			if ( ! value ) {
 				return false;
 			}
-			var id = normalize( value ) || value.toLowerCase();
+			var found = findRegion( value, index );
+			var code = ( 'string' === typeof region && region ) ? region : ( found ? found.code : '' );
+			// Deux écritures d'une même région (« IDF », « Île-de-France ») ne font qu'une étiquette, comme côté serveur.
+			var id = code ? 'r:' + code : ( normalize( value ) || value.toLowerCase() );
 			if ( tags.some( function ( tag ) {
 				return tag.id === id;
 			} ) ) {
@@ -242,13 +264,15 @@
 				return false;
 			}
 			if ( tags.length >= max ) {
-				notice.textContent = i18n.limit || '';
-				notice.hidden = false;
-				announce( i18n.limit );
+				if ( ! silent ) {
+					notice.textContent = i18n.limit || '';
+					notice.hidden = false;
+					announce( i18n.limit );
+				}
 				return false;
 			}
 			var short = value.split( ',' )[ 0 ].trim() || value;
-			tags.push( { text: value, short: short, id: id, region: !! ( isRegion || findRegion( value, index ) ) } );
+			tags.push( { text: value, short: short, id: id, region: !! ( region || found ) } );
 			render();
 			if ( ! silent ) {
 				sync();
@@ -259,17 +283,22 @@
 
 		// Texte en cours → étiquettes (Entrée, sortie du champ, séparateur tapé ou collé).
 		function commit() {
+			var value = input.value;
 			var rest = [];
-			split( input.value ).forEach( function ( piece ) {
-				if ( ! add( piece, false, false ) && tags.length >= max ) {
+			input.value = '';
+			pieces( value, true ).forEach( function ( piece ) {
+				if ( ! add( piece, '', false ) && tags.length >= max ) {
 					rest.push( piece );
 				}
 			} );
 			input.value = rest.join( ' ; ' );
+			if ( rest.length ) {
+				sync();
+			}
 		}
 
 		input.addEventListener( 'keydown', function ( event ) {
-			if ( 'Backspace' === event.key && '' === input.value && tags.length ) {
+			if ( 'Backspace' === event.key && ! event.repeat && '' === input.value && tags.length ) {
 				removeAt( tags.length - 1 );
 			}
 		} );
@@ -279,9 +308,14 @@
 			}
 		} );
 
-		split( native.value ).forEach( function ( piece ) {
-			add( piece, false, true );
+		// Réouverture : les lieux au-delà du plafond restent dans la saisie, sans message.
+		var overflow = [];
+		pieces( native.value, true ).forEach( function ( piece ) {
+			if ( ! add( piece, '', true ) && tags.length >= max ) {
+				overflow.push( piece );
+			}
 		} );
+		input.value = overflow.join( ' ; ' );
 		validate();
 
 		return {
