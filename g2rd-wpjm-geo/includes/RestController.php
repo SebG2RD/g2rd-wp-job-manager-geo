@@ -336,7 +336,11 @@ class RestController {
 	public static function places( $id, $lat, $lng, $label, $use_list ) {
 		$places = array();
 		$stored = $use_list ? get_post_meta( $id, GeocodingIntegration::META_PLACES, true ) : array();
-		foreach ( is_array( $stored ) ? array_slice( $stored, 0, PlaceLocator::MAX_PLACES ) : array() as $place ) {
+		// Liste périmée (coordonnées réécrites hors du plugin) : le point de WP Job Manager fait foi.
+		if ( ! is_array( $stored ) || ! isset( $stored[0]['lat'], $stored[0]['lng'] ) || ! is_numeric( $stored[0]['lat'] ) || ! is_numeric( $stored[0]['lng'] ) || round( (float) $stored[0]['lat'], 6 ) !== round( (float) $lat, 6 ) || round( (float) $stored[0]['lng'], 6 ) !== round( (float) $lng, 6 ) ) {
+			$stored = array();
+		}
+		foreach ( array_slice( $stored, 0, PlaceLocator::MAX_PLACES ) as $place ) {
 			$clean = self::clean_place( $place );
 			if ( $clean ) {
 				$places[] = $clean;
@@ -365,7 +369,7 @@ class RestController {
 		}
 		$lat = round( (float) $place['lat'], 6 );
 		$lng = round( (float) $place['lng'], 6 );
-		if ( $lat < -90 || $lat > 90 || $lng < -180 || $lng > 180 || ( 0.0 === $lat && 0.0 === $lng ) ) {
+		if ( ! is_finite( $lat ) || ! is_finite( $lng ) || $lat < -90 || $lat > 90 || $lng < -180 || $lng > 180 || ( 0.0 === $lat && 0.0 === $lng ) ) {
 			return null;
 		}
 		$clean = array(
@@ -382,6 +386,8 @@ class RestController {
 			$clean['type']   = 'region';
 			$clean['label']  = $region['name'];
 			$clean['region'] = $region['code'];
+			$clean['lat']    = (float) $region['lat'];
+			$clean['lng']    = (float) $region['lng'];
 		}
 		return $clean;
 	}

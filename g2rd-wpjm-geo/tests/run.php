@@ -1495,6 +1495,15 @@ $p = RestController::places( 701, 48.8566, 2.3522, 'Paris', true );
 check( 'offre sans liste (ancienne offre) : un lieu construit depuis les coordonnées', array( array( 'type' => 'city', 'label' => 'Paris', 'lat' => 48.8566, 'lng' => 2.3522 ) ) === $p );
 $p = RestController::places( 700, 49.4432, 1.0999, 'Rouen', false );
 check( 'mode Google : liste ignorée, point unique', 1 === count( $p ) && 'Rouen' === $p[0]['label'] );
+G2RD_Test_State::$meta[702][ GeocodingIntegration::META_PLACES ] = array(
+	array( 'type' => 'city', 'label' => 'Rouen', 'lat' => '49.4432', 'lng' => '1.0999' ),
+	array( 'type' => 'city', 'label' => 'Nulle part', 'lat' => NAN, 'lng' => 1.0 ),
+	array( 'type' => 'region', 'label' => 'Normandie', 'lat' => '10', 'lng' => '10', 'region' => '28' ),
+);
+$p = RestController::places( 702, 49.4432, 1.0999, 'Rouen', true );
+check( 'coordonnée NAN écartée, réponse encodable ; région à son centre officiel', 2 === count( $p ) && false !== wp_json_encode( $p ) && 49.1202 === $p[1]['lat'] && 0.1128 === $p[1]['lng'] );
+$p = RestController::places( 702, 48.8566, 2.3522, 'Paris', true );
+check( 'liste périmée (premier lieu différent des coordonnées de WP Job Manager) : point unique', array( array( 'type' => 'city', 'label' => 'Paris', 'lat' => 48.8566, 'lng' => 2.3522 ) ) === $p );
 
 $results = $GLOBALS['g2rd_results'];
 echo PHP_EOL . sprintf( 'Résultat : %d réussis, %d échoués', $results['pass'], $results['fail'] ) . PHP_EOL;
