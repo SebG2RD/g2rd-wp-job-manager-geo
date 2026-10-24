@@ -69,6 +69,11 @@ class GeocodeQueue extends JobQueue {
 		if ( is_wp_error( $result ) ) {
 			return false;
 		}
+		// Lieu modifié pendant le calcul : la nouvelle saisie a déjà placé l'offre ou l'a remise en file.
+		wp_cache_delete( $job_id, 'post_meta' );
+		if ( trim( (string) get_post_meta( $job_id, '_job_location', true ) ) !== $location ) {
+			return true;
+		}
 		GeocodingIntegration::write_places( $job_id, $result );
 		return true;
 	}

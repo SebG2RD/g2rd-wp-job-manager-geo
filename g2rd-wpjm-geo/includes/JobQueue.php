@@ -29,6 +29,13 @@ abstract class JobQueue {
 	const LOCK_TTL    = 300;
 
 	/**
+	 * Durée maximale d'un lot (secondes) : au-delà, les offres restantes attendent le
+	 * passage suivant, une minute plus tard. Une offre peut demander plusieurs appels
+	 * à un service externe.
+	 */
+	const TIME_BUDGET = 25;
+
+	/**
 	 * IDs empilés pendant la requête courante, écrits une seule fois à la fin.
 	 *
 	 * @var int[]
@@ -100,9 +107,15 @@ abstract class JobQueue {
 		$this->reschedule( static::LOCK_TTL + MINUTE_IN_SECONDS );
 
 		$retry = false;
+		$start = $this->now();
+		$done  = 0;
 		try {
 			foreach ( array_slice( $this->get_queue(), 0, static::BATCH_SIZE ) as $job_id ) {
+				if ( $done && $this->now() - $start > static::TIME_BUDGET ) {
+					break; // Lot assez long : la suite au passage suivant.
+				}
 				$this->remove( $job_id );
+				++$done;
 				if ( false === $this->process_item( $job_id ) ) {
 					$this->requeue( $job_id );
 					$retry = true;
@@ -118,6 +131,15 @@ abstract class JobQueue {
 			}
 			// File vide : le passage de secours, sans effet, est laissé en place.
 		}
+	}
+
+	/**
+	 * Horloge en secondes (remplaçable dans les tests).
+	 *
+	 * @return float
+	 */
+	protected function now() {
+		return microtime( true );
 	}
 
 	/**

@@ -1343,6 +1343,9 @@ check( 'aucun lieu trouvé : coordonnées et liste effacées', ! isset( G2RD_Tes
 
 check( 'affichage : « Paris ; Lyon ; Normandie » devient « Paris, Lyon, Normandie »', 'Paris, Lyon, Normandie' === apply_filters( 'the_job_location', 'Paris ; Lyon ; Normandie', null ) );
 check( 'affichage : lieu simple inchangé', 'Rouen, Normandie, France' === apply_filters( 'the_job_location', 'Rouen, Normandie, France', null ) );
+check( 'affichage : entités HTML intactes', 'Lille &amp; environs, Villeneuve-d&#039;Ascq' === apply_filters( 'the_job_location', 'Lille &amp; environs ; Villeneuve-d&#039;Ascq', null ) );
+check( 'affichage : « ;; », espace insécable et « ; » de bord', 'Paris, Lyon, Caen' === apply_filters( 'the_job_location', "; Paris ;; Lyon\u{00A0}; Caen ;", null ) );
+check( 'affichage : entité sans séparateur inchangée', 'Paris &amp; Lyon' === apply_filters( 'the_job_location', 'Paris &amp; Lyon', null ) );
 
 unset( G2RD_Test_State::$hooks['shutdown'] );
 $bumps = G2RD_Test_State::$cache_bumps;
@@ -1371,6 +1374,38 @@ G2RD_Test_State::$post_types[504] = 'job_listing';
 G2RD_Test_State::$meta[504]       = array( $src => 'osm', $places => array( array( 'type' => 'city', 'label' => 'Rouen', 'lat' => '49.4432', 'lng' => '1.0999' ) ) );
 do_action( 'job_manager_job_location_edited', 504, 'Paris' );
 check( 'mode Google : liste de lieux oubliée avec la source', ! isset( G2RD_Test_State::$meta[504][ $places ] ) && ! isset( G2RD_Test_State::$meta[504][ $src ] ) );
+
+list( $s ) = geo_boot();
+g2rd_world( array() );
+$clock = new class( $s, new PhotonGeocoder( $s ), '__return_false' ) extends GeocodeQueue {
+	public $t = 0;
+	protected function now() {
+		$now      = $this->t;
+		$this->t += 20;
+		return $now;
+	}
+};
+foreach ( array( 510 => 'Rouen', 511 => 'Caen', 512 => 'Brest' ) as $id => $loc ) {
+	G2RD_Test_State::$post_types[ $id ]            = 'job_listing';
+	G2RD_Test_State::$meta[ $id ]['_job_location'] = $loc;
+	$clock->push( $id );
+}
+$clock->flush();
+$clock->process();
+check( 'file : lot arrêté au-delà de 25 s, offre restante au passage suivant', isset( G2RD_Test_State::$meta[510]['geolocated'], G2RD_Test_State::$meta[511]['geolocated'] ) && array( 512 ) === get_option( GeocodeQueue::OPTION ) && wp_next_scheduled( GeocodeQueue::CRON_HOOK ) <= time() + 60 );
+
+list( $s ) = geo_boot();
+G2RD_Test_State::$post_types[513]              = 'job_listing';
+G2RD_Test_State::$meta[513]['_job_location'] = 'Rouen';
+G2RD_Test_State::$http_responder               = function () {
+	G2RD_Test_State::$meta[513]['_job_location'] = 'Brest'; // L'employeur enregistre pendant le passage de la file.
+	return photon_reply( array( g2rd_world_feature( 'Rouen' ) ) );
+};
+$race = new GeocodeQueue( $s, new PhotonGeocoder( $s ), '__return_false' );
+$race->push( 513 );
+$race->flush();
+$race->process();
+check( 'file : lieu modifié pendant le calcul, rien n’est écrit', ! isset( G2RD_Test_State::$meta[513]['geolocated'] ) );
 G2RD_Test_State::$http_responder = null;
 
 $results = $GLOBALS['g2rd_results'];

@@ -272,6 +272,14 @@ class GeocodingIntegration {
 		if ( ! is_string( $location ) || false === strpos( $location, ';' ) ) {
 			return $location;
 		}
-		return (string) preg_replace( '/\s*;\s*/', ', ', trim( $location, " ;\t\n\r" ) );
+		// Les « ; » qui terminent une entité HTML (« &amp; », « &#039; ») restent en place.
+		$out = preg_replace_callback(
+			'/&(?:#[0-9]+|#x[0-9a-f]+|[a-z][a-z0-9]*);|[\s\x{00A0}\x{202F}]*(?:;[\s\x{00A0}\x{202F}]*)+/iu',
+			function ( $found ) {
+				return '&' === $found[0][0] ? $found[0] : ', ';
+			},
+			$location
+		);
+		return null === $out ? $location : trim( $out, " ,\t\n\r" );
 	}
 }
