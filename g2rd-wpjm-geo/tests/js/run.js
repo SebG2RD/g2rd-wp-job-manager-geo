@@ -513,6 +513,16 @@ function tagField({ value = '', required = false, max = 3 } = {}) {
   check('reouverture au-dela du plafond : rien de perdu, reste dans la saisie, aucun message', 3 === f.tags().length && 'Lille ; Nantes' === f.input.value && f.d.querySelector('.g2rd-wpjm-geo-tags__notice').hidden && '' === f.live());
   f.tags()[0].querySelector('button').click();
   check('retrait apres reouverture : le champ natif garde les lieux restes dans la saisie', 'Caen ; Brest ; Lille ; Nantes' === f.native.value);
+  f.input.value = ''; f.field.commit();
+  check('texte efface de la saisie : retire aussi du champ natif', 'Caen ; Brest' === f.native.value);
+  f = tagField({ value: 'Auvergne ; Rhône-Alpes' });
+  check('reouverture : deux anciens noms d une meme region gardes tels quels', 2 === f.tags().length && false === f.field.add('AURA') && 'Auvergne ; Rhône-Alpes' === f.native.value);
+  f = tagField({ value: 'Rouen ; Caen ; Brest' });
+  f.input.value = 'Rouen'; f.field.commit();
+  check('au plafond, un doublon tape n est pas garde', 'Rouen ; Caen ; Brest' === f.native.value && '' === f.input.value);
+  f = tagField({ value: 'Paris;Lyon' });
+  f.field.commit();
+  check('passage sans modification : texte enregistre non reecrit, aucun evenement', 'Paris;Lyon' === f.native.value && 0 === f.changes());
   f = tagField({ max: 10 });
   f.field.add('IDF');
   check('meme region sous deux ecritures : une seule etiquette', false === f.field.add('Île-de-France', '11') && false === f.field.add("Région l'Île-de-France") && 1 === f.tags().length);

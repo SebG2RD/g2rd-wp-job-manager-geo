@@ -139,6 +139,7 @@
 		var index = regionIndex( opts.regions );
 		var required = !! native.required;
 		var tags = [];
+		var settled = ''; // Texte de la saisie au dernier état enregistré dans le champ natif.
 
 		var root = document.createElement( 'div' );
 		root.className = 'g2rd-wpjm-geo-tags';
@@ -193,11 +194,15 @@
 			}
 		}
 
-		function sync() {
-			// Le texte encore dans la saisie (lieux au-delà du plafond) n'est jamais perdu.
-			native.value = tags.map( function ( tag ) {
+		// Étiquettes, puis texte encore dans la saisie (lieux au-delà du plafond) : rien n'est perdu.
+		function joined() {
+			return tags.map( function ( tag ) {
 				return tag.text;
 			} ).concat( pieces( input.value, true ) ).join( ' ; ' );
+		}
+
+		function sync() {
+			native.value = joined();
 			native.dispatchEvent( new Event( 'input', { bubbles: true } ) );
 			native.dispatchEvent( new Event( 'change', { bubbles: true } ) );
 			validate();
@@ -244,6 +249,23 @@
 			list.hidden = ! tags.length;
 		}
 
+		// Identifiant (texte comparé) et code de région d'un lieu.
+		function identify( value, region ) {
+			var found = findRegion( value, index );
+			return {
+				id: normalize( value ) || value.toLowerCase(),
+				code: ( 'string' === typeof region && region ) ? region : ( found ? found.code : '' ),
+				region: !! ( region || found )
+			};
+		}
+
+		// Déjà présent : même texte, ou, en saisie, même région sous une autre écriture.
+		function known( who, sameRegion ) {
+			return tags.some( function ( tag ) {
+				return tag.id === who.id || ( sameRegion && '' !== who.code && tag.code === who.code );
+			} );
+		}
+
 		// Ajoute un lieu. region : code de la région choisie dans les propositions (ou true) ;
 		// à défaut, la région est reconnue d'après le texte.
 		function add( text, region, silent ) {
@@ -251,13 +273,10 @@
 			if ( ! value ) {
 				return false;
 			}
-			var found = findRegion( value, index );
-			var code = ( 'string' === typeof region && region ) ? region : ( found ? found.code : '' );
-			// Deux écritures d'une même région (« IDF », « Île-de-France ») ne font qu'une étiquette, comme côté serveur.
-			var id = code ? 'r:' + code : ( normalize( value ) || value.toLowerCase() );
-			if ( tags.some( function ( tag ) {
-				return tag.id === id;
-			} ) ) {
+			var who = identify( value, region );
+			// En saisie, deux écritures d'une même région (« IDF », « Île-de-France ») ne font qu'une étiquette,
+			// comme côté serveur. À la réouverture, le texte enregistré est gardé tel quel (« Auvergne ; Rhône-Alpes »).
+			if ( known( who, ! silent ) ) {
 				if ( ! silent ) {
 					announce( format( i18n.duplicate, value ) );
 				}
@@ -272,7 +291,7 @@
 				return false;
 			}
 			var short = value.split( ',' )[ 0 ].trim() || value;
-			tags.push( { text: value, short: short, id: id, region: !! ( region || found ) } );
+			tags.push( { text: value, short: short, id: who.id, code: who.code, region: who.region } );
 			render();
 			if ( ! silent ) {
 				sync();
@@ -285,14 +304,18 @@
 		function commit() {
 			var value = input.value;
 			var rest = [];
+			if ( value === settled ) {
+				return; // Saisie inchangée : le texte enregistré n'est pas réécrit.
+			}
 			input.value = '';
 			pieces( value, true ).forEach( function ( piece ) {
-				if ( ! add( piece, '', false ) && tags.length >= max ) {
-					rest.push( piece );
+				if ( ! add( piece, '', false ) && tags.length >= max && ! known( identify( piece, '' ), true ) ) {
+					rest.push( piece ); // Refusé au plafond : reste dans la saisie (un doublon est abandonné).
 				}
 			} );
 			input.value = rest.join( ' ; ' );
-			if ( rest.length ) {
+			settled = input.value;
+			if ( joined() !== native.value ) {
 				sync();
 			}
 		}
@@ -316,6 +339,7 @@
 			}
 		} );
 		input.value = overflow.join( ' ; ' );
+		settled = input.value;
 		validate();
 
 		return {
