@@ -76,10 +76,10 @@ En mode libre, saisir chaque lieu dans le champ « Lieu » (étiquettes) ; sans 
 
 = Limites connues des lieux multiples =
 * Texte libre et imports, règle de la virgule : « Lyon, Rhône » donne deux lieux, Lyon et « Rhône » (Photon rattache Lyon à la « Métropole de Lyon », pas au département du Rhône) ; « Vienne, Poitiers » ne donne que Poitiers (la Vienne est le département de Poitiers) ; « Normandie, Rouen, Caen » donne la zone Normandie plus Rouen et Caen, alors que « Rouen, Caen, Normandie » donne Rouen et Caen seulement. Pour lever le doute, séparer les lieux par « ; ».
-* Les noms de régions et leurs variantes sont reconnus en français, ainsi que les noms anglais et allemands que Photon renvoie selon la langue du site (Normandy, Brittany, Korsika…) ; les mentions vagues (« Télétravail », « Remote », « Hybride »…) sont reconnues en français et en anglais.
+* Les noms de régions et leurs variantes sont reconnus en français, ainsi que les noms anglais et allemands que Photon renvoie selon la langue du site (Normandy, Brittany, Korsika…). Les mentions vagues ne sont pas toutes reconnues : « Télétravail », « À distance » et « Hybride » en français, mais seulement « Remote » et « Full remote » en anglais ; « Hybrid », « Anywhere » et « Work from home » sont cherchées comme un nom de lieu.
 * Une ancienne région (Alsace, Lorraine…) s'affiche comme la zone actuelle (Grand Est) ; deux anciennes régions de la même zone n'en font qu'une.
-* L'option de WP Job Manager « Display Location Address » affiche l'adresse du premier lieu seulement ; le lien Google Maps de la fiche et les données structurées de WP Job Manager portent aussi sur le premier lieu.
-* L'affichage public remplace « ; » par « , » (« Paris, Lyon, Normandie »), y compris en mode Google.
+* Sans l'option de WP Job Manager « Display Location Address », la fiche affiche les noms de tous les lieux (« Paris, Lyon, Normandie ») et son lien Google Maps cherche ce texte. Avec l'option, la fiche et le lien portent sur l'adresse du premier lieu seulement (l'adresse enregistrée dans `geolocation_formatted_address`).
+* L'affichage public liste le nom court de chaque lieu, séparé par des virgules (« Rouen, Normandie, France ; Caen » devient « Rouen, Caen »), y compris en mode Google ; un lieu seul garde son texte complet.
 * Sur la carte, le nombre d'un regroupement compte les lieux et non les offres distinctes ; à petite échelle, certaines étiquettes de région sont masquées pour éviter les chevauchements (la zone reste cliquable et la région figure dans la liste sous la carte).
 * Retour au mode Google : la liste des lieux est ignorée et WP Job Manager géocode « Paris ; Lyon » comme une seule adresse.
 * Une commune dont le nom contient « et » écrit avec des espaces plutôt qu'avec des tirets (« Saint Germain et Mons ») est coupée en deux. Seuls les départements et collectivités à « -et- » sont protégés.
@@ -97,6 +97,8 @@ Le plugin est prévu pour un site seul : en multisite, la désinstallation ne ne
 * Contours des régions embarqués (data.gouv.fr, ODbL), chargés seulement si une offre régionale est affichée ; repères de secours s'ils manquent.
 * Saisie : au plus un appel à Photon pendant l'enregistrement ; au-delà, les lieux sont placés par la file d'attente.
 * Outil de re-géocodage : reprise des offres libres antérieures pour placer tous leurs lieux.
+* Affichage public : quand une offre a plusieurs lieux, leurs noms sont listés séparés par des virgules (« Paris, Lyon, Normandie »), aussi en mode Google.
+* Après la mise à jour, vider le cache des pages (WP Rocket ou autre) pour que la carte reçoive sa nouvelle configuration.
 * Cache du géocodage Photon renouvelé (version 4).
 
 = 1.1.1 =

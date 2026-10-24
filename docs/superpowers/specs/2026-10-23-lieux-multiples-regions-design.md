@@ -63,7 +63,7 @@ S'applique, en mode OpenStreetMap seulement, au formulaire de dépôt et à l'é
   - **Régions** : liste intégrée (§ 2), sans tenir compte des accents ni de la casse, sigles et anciens noms compris.
   - **Villes** : Photon, avec les filtres actuels.
 - Les régions qui correspondent passent en tête, puis viennent les villes, la France d'abord, comme aujourd'hui.
-- Chaque proposition a une icône (📍 ville, 🗺️ région) et un libellé (« Rouen — Seine-Maritime, Normandie » ou « Normandie — Région »).
+- Chaque proposition a une icône (📍 ville, 🗺️ région) et deux lignes : le nom, puis le détail (« Rouen » puis « Normandie, France », ou « Normandie » puis « Région »). Le libellé écrit dans le champ est « Nom, Région, Pays » (« Rouen, Normandie, France ») ; deux homonymes d'une même région sont distingués par leur département (« Nom, Département, Région, Pays »). Une commune dont le nom est celui d'une région reçoit en plus un indice que le serveur reconnaît : le département tiré du code postal (« Bretagne (36), Centre-Val de Loire, France », « Bretagne (973), … » pour un code en 97) ou, en Corse, le code postal complet (« Bretagne 20100, Corse, France »). Sans code postal, le nom reste seul.
 - Choix à la souris ou au clavier (flèches, Entrée, Échap). Le lieu devient une étiquette, puis la saisie se vide pour le lieu suivant.
 
 ### Étiquettes
@@ -216,7 +216,7 @@ Cas où `Regions::find()` reconnaît le premier segment et où le morceau ne por
   - Pour une région : `formatted_address` « Normandie, France », `state_long` « Normandie », `country_long` « France », `country_short` « FR », et une ville vide.
 - **Source** : la méta `_g2rd_wpjm_geo_source = osm` reste posée.
 - **Aucun lieu trouvé** : les métas sont effacées comme aujourd'hui pour un lieu introuvable, et la liste de lieux est supprimée.
-- **Coordonnées étrangères** : si `geolocation_lat` est écrit par autre chose que le plugin (saisie manuelle, autre extension), la source **et** `_g2rd_wpjm_geo_places` sont effacées. L'offre garde alors ce point unique.
+- **Coordonnées étrangères** : si `geolocation_lat` est écrit par autre chose que le plugin (saisie manuelle, autre extension), la source **et** `_g2rd_wpjm_geo_places` sont effacées. En mode libre, l'offre quitte donc la carte (la carte ne montre que les offres dont la source est `osm`) jusqu'au re-géocodage, par l'outil ou par un nouvel enregistrement.
 
 **Outil de re-géocodage** (sur action de l'administrateur seulement, rien n'est lancé à l'activation)
 
@@ -227,8 +227,8 @@ Cas où `Regions::find()` reconnaît le premier segment et où le morceau ne por
 
 Dans `GET /wp-json/g2rd-wpjm-geo/v1/jobs`, chaque offre gagne un champ `places`, au même format que la méta.
 
-- Les champs actuels `lat` et `lng` restent (premier lieu), pour la compatibilité.
-- **Offre sans liste de lieux** (mode Google, ou ancienne offre pas encore reprise) : `places` contient un seul élément `city`, construit depuis `lat` et `lng`. Son libellé est `geolocation_city`, ou à défaut le texte du lieu.
+- Les champs actuels `latitude` et `longitude` restent (premier lieu), pour la compatibilité.
+- **Offre sans liste de lieux** (mode Google, ou ancienne offre pas encore reprise) : `places` contient un seul élément `city`, construit depuis `latitude` et `longitude`. Son libellé est `geolocation_city`, ou à défaut le texte du lieu.
 - Les règles d'accès (offre publiée, visible, sans mot de passe…) et le cache anonyme ne changent pas.
 - Les libellés passent par la même fonction de texte que les autres champs. Les coordonnées de chaque lieu sont revérifiées (bornes), et un code de région absent de `Regions` fait écarter l'élément.
 
@@ -275,7 +275,7 @@ Dans `GET /wp-json/g2rd-wpjm-geo/v1/jobs`, chaque offre gagne un champ `places`,
 ### Provenance du fichier des contours
 
 - `tools/regions/extract-regions.js` lit le fichier source téléchargé et vérifie son empreinte. Il garde les 18 régions sans toucher aux géométries, écrit `assets/data/regions-fr.geojson` et affiche les centres à reporter dans `Regions`.
-- `tools/regions/SHA256SUMS` contient les empreintes du fichier source et du fichier embarqué. La CI vérifie celle du fichier embarqué (`sha256sum -c`).
+- `tools/regions/SHA256SUMS` ne contient que l'empreinte du fichier embarqué, que la CI vérifie (`sha256sum -c`). L'empreinte du fichier source est une constante de `extract-regions.js`, qui la contrôle avant d'écrire.
 - `tools/verify-plugin-zip.sh` exige `assets/data/regions-fr.geojson` et `assets/data/LICENSE-regions.txt`.
 
 ### Licence
@@ -311,20 +311,20 @@ Dans `GET /wp-json/g2rd-wpjm-geo/v1/jobs`, chaque offre gagne un champ `places`,
   - `_job_location` jamais réécrit.
 - Saisie interactive : une ville absente du cache est placée tout de suite ; deux villes absentes partent en file.
 - Coordonnées étrangères : la source et les lieux sont effacés.
-- REST : champ `places`, repli sur `lat`/`lng`, bornes, code de région inconnu écarté.
+- REST : champ `places`, repli sur `latitude`/`longitude`, bornes, code de région inconnu écarté.
 - Outil de re-géocodage : simulation détaillée, reprise des offres 1.1.x.
 - Filtre `the_job_location`.
 
 **JavaScript** (`tests/js/run.js`, jsdom)
 
-- Étiquettes :
+- Étiquettes (`assets/js/location-tags.js`) :
   - ajout au clic et au clavier ;
   - retrait par ✕ et par Retour arrière ;
   - doublon refusé et plafond annoncé ;
   - texte libre et collage avec séparateurs ;
   - réouverture d'une offre (couleur des régions) ;
   - synchronisation du champ natif, champ obligatoire.
-- Propositions mêlant régions (« idf », « paca », « ile de ») et villes (Photon simulé).
+- Propositions (`assets/js/location-autocomplete.js`) mêlant régions (« idf », « paca », « ile de ») et villes (Photon simulé).
 - Carte :
   - repères multiples d'une offre et ligne « Aussi à » ;
   - zones et pastilles (source GeoJSON, couches `fill` et `line`) et fenêtre de région ;
@@ -349,7 +349,8 @@ Dans `GET /wp-json/g2rd-wpjm-geo/v1/jobs`, chaque offre gagne un champ `places`,
 | `includes/GeocodeQueue.php`, `includes/RegeocodeTool.php` | Placement de tous les lieux ; simulation détaillée. |
 | `includes/RestController.php` | Champ `places`. |
 | `includes/OsmAssets.php`, `includes/LocationAutocomplete.php` | URL du fichier des contours, liste des régions pour l'autocomplétion, textes traduits. |
-| `assets/js/location-autocomplete.js` | Étiquettes, propositions de régions locales. |
+| `assets/js/location-tags.js` (nouveau) | Champ à étiquettes, découpage du texte comme `PlaceParser`, recherche des régions, noms à « -et- ». |
+| `assets/js/location-autocomplete.js` | Propositions Photon et régions locales, libellé choisi (indice des communes homonymes d'une région). |
 | `assets/js/map-common.js`, `assets/js/jobs-map-osm.js` | Lieux multiples, « Aussi à », zones, pastilles, légende, liste. |
 | `assets/css/frontend.css` | Étiquettes, légende, pastilles. |
 | `assets/data/regions-fr.geojson`, `assets/data/LICENSE-regions.txt` (nouveaux) | Contours (ODbL) et mention de licence. |
@@ -372,10 +373,10 @@ Dans `GET /wp-json/g2rd-wpjm-geo/v1/jobs`, chaque offre gagne un champ `places`,
 ## Limites connues
 
 - Texte libre et imports, règle de la virgule : « Lyon, Rhône » donne deux lieux, Lyon et « Rhône » (Photon rattache Lyon à la « Métropole de Lyon », pas au département du Rhône) ; « Vienne, Poitiers » ne donne que Poitiers (la Vienne est le département de Poitiers) ; « Normandie, Rouen, Caen » donne la zone Normandie plus Rouen et Caen, alors que « Rouen, Caen, Normandie » donne Rouen et Caen seulement. Pour lever le doute, séparer les lieux par « ; ».
-- Les noms de régions et leurs variantes sont reconnus en français, ainsi que les noms anglais et allemands que Photon renvoie selon la langue du site (Normandy, Brittany, Korsika…) ; les mentions vagues (« Télétravail », « Remote », « Hybride »…) sont reconnues en français et en anglais.
+- Les noms de régions et leurs variantes sont reconnus en français, ainsi que les noms anglais et allemands que Photon renvoie selon la langue du site (Normandy, Brittany, Korsika…). Les mentions vagues ne sont pas toutes reconnues : « Télétravail », « À distance » et « Hybride » en français, mais seulement « Remote » et « Full remote » en anglais ; « Hybrid », « Anywhere » et « Work from home » sont cherchées comme un nom de lieu.
 - Une ancienne région (Alsace, Lorraine…) s'affiche comme la zone actuelle (Grand Est) ; deux anciennes régions de la même zone n'en font qu'une.
-- L'option de WP Job Manager « Display Location Address » affiche l'adresse du premier lieu seulement ; le lien Google Maps de la fiche et les données structurées de WP Job Manager portent aussi sur le premier lieu.
-- L'affichage public remplace « ; » par « , » (« Paris, Lyon, Normandie »), y compris en mode Google.
+- Sans l'option de WP Job Manager « Display Location Address », la fiche affiche les noms de tous les lieux (« Paris, Lyon, Normandie ») et son lien Google Maps cherche ce texte. Avec l'option, la fiche et le lien portent sur l'adresse du premier lieu seulement (l'adresse enregistrée dans `geolocation_formatted_address`).
+- L'affichage public liste le nom court de chaque lieu, séparé par des virgules (« Rouen, Normandie, France ; Caen » devient « Rouen, Caen »), y compris en mode Google ; un lieu seul garde son texte complet.
 - Sur la carte, le nombre d'un regroupement compte les lieux et non les offres distinctes ; à petite échelle, certaines étiquettes de région sont masquées pour éviter les chevauchements (la zone reste cliquable et la région figure dans la liste sous la carte).
 - Retour au mode Google : la liste des lieux est ignorée et WP Job Manager géocode « Paris ; Lyon » comme une seule adresse.
 - Une commune dont le nom contient « et » écrit avec des espaces plutôt qu'avec des tirets (« Saint Germain et Mons ») est coupée en deux. Seuls les départements et collectivités à « -et- » sont protégés.
