@@ -65,7 +65,7 @@
 			addLine( wrapper, 'g2rd-wpjm-geo-iw__place', placeLabel( job ) );
 		}
 		if ( Array.isArray( job._also ) && job._also.length ) {
-			addLine( wrapper, 'g2rd-wpjm-geo-iw__also', ( i18n.alsoAt || '' ) + ' ' + job._also.join( ', ' ) );
+			addLine( wrapper, 'g2rd-wpjm-geo-iw__also', ( i18n.alsoAt ? i18n.alsoAt + ' ' : '' ) + job._also.join( ', ' ) );
 		}
 		addLine( wrapper, 'g2rd-wpjm-geo-iw__type', job.job_type );
 
@@ -138,24 +138,47 @@
 	 */
 	function splitPlaces( jobs ) {
 		var points = [];
-		var regions = {};
+		var regions = Object.create( null );
 		var order = [];
 		jobs.forEach( function ( job ) {
-			var places = placesOf( job );
+			// Un même lieu répété dans une offre n'est gardé qu'une fois.
+			var seen = Object.create( null );
+			var places = placesOf( job ).filter( function ( place ) {
+				var key;
+				if ( 'region' === place.type ) {
+					key = 'r' + place.region;
+				} else {
+					var cLat = parseFloat( place.lat );
+					var cLng = parseFloat( place.lng );
+					if ( ! isFinite( cLat ) || ! isFinite( cLng ) ) {
+						return true; // Écarté plus tard par groupByCoordinates().
+					}
+					key = cLat.toFixed( 5 ) + ',' + cLng.toFixed( 5 );
+				}
+				if ( seen[ key ] ) {
+					return false;
+				}
+				seen[ key ] = true;
+				return true;
+			} );
 			places.forEach( function ( place, index ) {
 				var copy = {};
 				Object.keys( job ).forEach( function ( name ) {
-					copy[ name ] = job[ name ];
+					if ( 'places' !== name ) {
+						copy[ name ] = job[ name ];
+					}
 				} );
-				copy._also = places.filter( function ( other, i ) {
-					return i !== index && other.label;
-				} ).map( function ( other ) {
-					return other.label;
+				var also = [];
+				places.forEach( function ( other, i ) {
+					if ( i !== index && other.label && other.label !== place.label && -1 === also.indexOf( other.label ) ) {
+						also.push( other.label );
+					}
 				} );
+				copy._also = also;
 				if ( 'region' === place.type ) {
 					var lat = parseFloat( place.lat );
 					var lng = parseFloat( place.lng );
-					if ( ! isFinite( lat ) || ! isFinite( lng ) ) {
+					if ( ! isFinite( lat ) || ! isFinite( lng ) || Math.abs( lat ) > 90 || Math.abs( lng ) > 180 ) {
 						return;
 					}
 					if ( ! regions[ place.region ] ) {
@@ -167,9 +190,13 @@
 				}
 				copy.latitude = place.lat;
 				copy.longitude = place.lng;
+				// La copie d'indice 0 garde city/country de WP Job Manager : le serveur garantit que le
+				// premier lieu correspond aux coordonnées de l'offre (sinon `places` vaut null).
+				// Les autres copies prennent le libellé de leur lieu.
 				if ( index > 0 ) {
 					copy.city = place.label || '';
 					copy.country = '';
+					copy.location = '';
 				} else if ( ! copy.city && place.label ) {
 					copy.city = place.label;
 				}

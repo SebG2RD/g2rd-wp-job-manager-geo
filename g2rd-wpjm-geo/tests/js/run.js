@@ -781,6 +781,24 @@ async function tagsAc({ features = null, max = 10, required = false, regions = R
     lw.document.body.appendChild(box);
     C.places(box, C.groupByCoordinates(sp.points), { places: 'Liste', alsoAt: 'Aussi à :', regionTitle: '%s (toute la région)', oneJob: '1 offre', manyJobsShort: '%d offres' }, sp.regions);
     check('liste sous la carte : regions comprises', /Normandie \(toute la région\) — 2 offres/.test(box.nextElementSibling.textContent));
+    let proto = null;
+    try {
+      proto = C.splitPlaces([{ id: 1, places: [{ type: 'region', label: 'X', lat: 1, lng: 1, region: 'constructor' }, { type: 'region', label: 'Y', lat: 2, lng: 2, region: '__proto__' }] }]);
+    } catch (e) { proto = null; }
+    check('code de region egal a une cle du prototype : deux entrees, sans exception', !!proto && 2 === proto.regions.length);
+    const dupR = C.splitPlaces([{ id: 1, title: 'T', places: [{ type: 'region', label: 'Normandie', lat: 49, lng: 0, region: '28' }, { type: 'region', label: 'Normandie', lat: 49, lng: 0, region: '28' }] }]);
+    check('meme region deux fois : une seule offre, pas de « Aussi a »', 1 === dupR.regions[0].jobs.length && !/Aussi à : Normandie/.test(C.buildInfoContent([dupR.regions[0].jobs[0]], mi).textContent));
+    const dupC = C.splitPlaces([{ id: 1, places: [{ type: 'city', label: 'Paris', lat: 48.856611, lng: 2.35 }, { type: 'city', label: 'Paris 2', lat: 48.856613, lng: 2.35 }] }]);
+    check('deux villes aux memes coordonnees (5 decimales) : un seul point', 1 === dupC.points.length);
+    check('centre de region hors bornes : ecarte', 0 === C.splitPlaces([{ id: 1, places: [{ type: 'region', label: 'Z', lat: 200, lng: 0, region: '11' }] }]).regions.length);
+    const noLbl = C.splitPlaces([{ id: 1, title: 'T', location: 'Rouen ; X ; Normandie', city: 'Rouen', places: [{ type: 'city', label: 'Rouen', lat: 49.44, lng: 1.09 }, { type: 'city', label: '', lat: 45.76, lng: 4.83 }] }]);
+    check('ville d indice > 0 sans libelle : le champ Lieu brut n est pas affiche', !/Rouen ; X/.test(C.buildInfoContent([noLbl.points[1]], mi).textContent));
+    const noI18n = C.buildInfoContent([{ title: 't', _also: ['Lyon'] }], {});
+    check('« Aussi a » sans texte i18n : pas d espace initial', 'Lyon' === noI18n.querySelector('.g2rd-wpjm-geo-iw__also').textContent);
+    const again = C.splitPlaces(sp.points);
+    check('splitPlaces idempotent : meme nombre de points, aucune copie ne porte places', again.points.length === sp.points.length && again.points.every(function (p) { return !('places' in p); }) && sp.points.every(function (p) { return !('places' in p); }));
+    const homo = C.splitPlaces([{ id: 1, places: [{ type: 'city', label: 'Saint-Denis', lat: 48.93, lng: 2.35 }, { type: 'city', label: 'Saint-Denis', lat: -20.88, lng: 55.45 }, { type: 'city', label: 'Rouen', lat: 49.44, lng: 1.09 }] }]);
+    check('homonymes : « Aussi a » sans doublon de libelle', 'Saint-Denis' === homo.points[2]._also.join(', '));
   }
 
   console.log('\nResultat JS : ' + pass + ' reussis, ' + fail + ' echoues');
