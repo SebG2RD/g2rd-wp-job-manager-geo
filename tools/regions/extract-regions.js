@@ -55,7 +55,7 @@ function largestPolygon(geometry) {
 }
 
 // Centre de gravité du plus grand polygone ; s'il tombe dehors (contour concave),
-// point intérieur d'une grille 60 × 60 le plus proche de lui.
+// point intérieur d'une grille de 59 × 59 points le plus proche de lui.
 function centre(geometry) {
   const polygon = largestPolygon(geometry);
   const c = ringCentroid(polygon[0]);
