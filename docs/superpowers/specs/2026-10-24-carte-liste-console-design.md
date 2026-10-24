@@ -18,7 +18,7 @@ Trois corrections d'interface, constatées sur le site après la 1.2.0. Concepti
 
 `placesList( container, groups, i18n, regions )` (`assets/js/map-common.js`) construit désormais son propre balisage ; les fenêtres de la carte (`buildInfoContent`, `buildRegionContent`) ne changent pas.
 
-```
+```html
 <details class="g2rd-wpjm-geo-map__places">
   <summary>Liste des offres de la carte (64 offres)</summary>
   <div class="g2rd-wpjm-geo-places">
@@ -50,10 +50,10 @@ Trois corrections d'interface, constatées sur le site après la 1.2.0. Concepti
 
 - `SettingsPage::toc()` : la navigation reçoit la classe `g2rd-geo-toc`, chaque lien la classe `g2rd-geo-toc__link` (plus de `g2rd-chip--muted`).
 - Nouvelle feuille `assets/css/admin-geo.css`, chargée par `AdminScreen::enqueue()` sur les écrans du plugin **dans les deux cas** (console du thème G2RD ou feuille de repli du plugin), avec des sélecteurs préfixés `.g2rd-app` :
-  - texte blanc 13 px, graisse 600, fond `rgba(255,255,255,0.14)`, liseré `rgba(255,255,255,0.35)`, rayon 999 px, marges internes 6 px × 14 px, sans soulignement ;
-  - au survol et au focus : fond `0.26`, liseré `0.6` ;
-  - au focus clavier : contour blanc de 2 px, décalé de 2 px.
-- Le sommaire doit être posé sur le bandeau sombre ; si ce n'est pas le cas dans une mise en page, le signaler plutôt que d'ajuster les couleurs à l'aveugle.
+  - pastilles **blanches** à texte bleu nuit `#0b1b2b`, 13 px, graisse 600, liseré `rgba(11,27,43,0.15)`, rayon 999 px, marges internes 6 px × 14 px, ombre légère, sans soulignement ;
+  - au survol et au focus : fond `#e6eef6`, ombre un peu plus marquée ;
+  - au focus clavier : contour turquoise `#2dd4bf` de 2 px, décalé de 2 px.
+- Pourquoi des pastilles blanches plutôt que le « verre » du bandeau : le bandeau a une hauteur fixe (336 px, 380 px sur écran moyen) ; sur écran étroit, les tuiles s'empilent et le sommaire passe sous le bandeau, sur fond clair, où un texte blanc deviendrait invisible. Les pastilles blanches restent lisibles dans les deux cas (contraste d'environ 12:1).
 
 ## Version
 
