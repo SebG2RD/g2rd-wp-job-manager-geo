@@ -1237,6 +1237,9 @@ g2rd_world(
 		'Paris, Lyon'             => array( 'Paris', 'Lyon' ),
 		'Rouen, Caen, Normandie'  => array( 'Caen' ), // Rouen absente des 5 premiers résultats.
 		'Paris, Normandie'        => array( 'Paris' ),
+		'Paris, télétravail'      => array( 'Paris' ),
+		'Rouen, Caen, France'     => array( 'Caen' ),
+		'Rouen, Caen, Calvados'   => array( 'Caen' ),
 	)
 );
 $cases = array(
@@ -1269,6 +1272,26 @@ check( 'ville introuvable retirée et signalée, les autres restent', 'city:Pari
 $r = $locator->locate( 'Paris, télétravail' );
 check( 'mention vague après une virgule : ignorée', 'city:Paris' === g2rd_labels( $r ) && array() === $r['missing'] );
 check( 'texte vide : aucun lieu', array() === $locator->locate( '' )['places'] && null === $locator->locate( '' )['address'] );
+check( 'seconde passe : « France » n’est pas un lieu', 'city:Rouen | city:Caen' === g2rd_labels( $locator->locate( 'Rouen, Caen, France' ) ) );
+$r = $locator->locate( 'Rouen, Caen, Calvados' );
+check( 'seconde passe : le département d’une ville trouvée n’est pas un lieu', 'city:Rouen | city:Caen' === g2rd_labels( $r ) && array() === $r['missing'] );
+check( 'précision avec indice : « Rouen, Seine-Maritime (76) » donne Rouen seul', 'city:Rouen' === g2rd_labels( $locator->locate( 'Rouen, Seine-Maritime (76)' ) ) );
+$r = $locator->locate( 'Rouen, 76000' );
+check( 'code postal après une virgule : indice, ni lieu ni introuvable', 'city:Rouen' === g2rd_labels( $r ) && array() === $r['missing'] );
+check( 'indice sur le morceau : « Bretagne, 90300 » est la commune', 'city:Bretagne' === g2rd_labels( $locator->locate( 'Bretagne, 90300' ) ) );
+$r = $locator->locate( 'Atlantide, Atlantide' );
+check( 'introuvables sans doublon', array() === $r['places'] && array( 'Atlantide' ) === $r['missing'] );
+$pieces = array();
+for ( $i = 0; $i < 30; $i++ ) {
+	$segments = array();
+	for ( $j = 0; $j < 12; $j++ ) {
+		$segments[] = 'Lieu' . chr( 97 + $i % 26 ) . chr( 97 + $j ) . $i;
+	}
+	$pieces[] = implode( ', ', $segments );
+}
+$before = count( $GLOBALS['g2rd_world_queries'] );
+$r      = $locator->locate( implode( ' ; ', $pieces ) );
+check( 'texte démesuré : au plus 20 appels à Photon par offre', is_array( $r ) && count( $GLOBALS['g2rd_world_queries'] ) - $before <= PlaceLocator::MAX_LOOKUPS && array() === $r['places'] );
 
 list( $s ) = boot();
 $locator   = new PlaceLocator( new PhotonGeocoder( $s ) );

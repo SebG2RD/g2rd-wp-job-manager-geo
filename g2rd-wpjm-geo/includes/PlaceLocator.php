@@ -32,6 +32,12 @@ class PlaceLocator {
 	const DEFER = 'defer';
 
 	/**
+	 * Appels réels à Photon par locate() au plus : un texte démesuré (virgules à la
+	 * chaîne) ne bloque ni la file d'attente ni l'instance publique de Photon.
+	 */
+	const MAX_LOOKUPS = 20;
+
+	/**
 	 * Géocodeur.
 	 *
 	 * @var PhotonGeocoder
@@ -53,6 +59,13 @@ class PlaceLocator {
 	private $budget = self::UNLIMITED;
 
 	/**
+	 * Appels réels à Photon déjà faits pendant locate().
+	 *
+	 * @var int
+	 */
+	private $lookups = 0;
+
+	/**
 	 * Constructeur.
 	 *
 	 * @param PhotonGeocoder $geocoder Géocodeur.
@@ -71,11 +84,12 @@ class PlaceLocator {
 	 * @return array{places:list<array<string,string>>,address:array<string,string>|null,missing:list<string>,deferred:bool}|\WP_Error
 	 */
 	public function locate( $text, $budget = self::UNLIMITED ) {
-		$this->budget = (int) $budget;
-		$found        = array();
-		$seen         = array();
-		$missing      = array();
-		$queue        = PlaceParser::split( $text );
+		$this->budget  = (int) $budget;
+		$this->lookups = 0;
+		$found         = array();
+		$seen          = array();
+		$missing       = array();
+		$queue         = PlaceParser::split( $text );
 		while ( $queue && count( $found ) < self::MAX_PLACES ) {
 			$result = $this->piece( (string) array_shift( $queue ) );
 			if ( is_wp_error( $result ) ) {
@@ -103,7 +117,7 @@ class PlaceLocator {
 		return array(
 			'places'   => array_values( array_column( $found, 'place' ) ),
 			'address'  => $found ? $found[0]['address'] : null,
-			'missing'  => $missing,
+			'missing'  => array_values( array_unique( $missing ) ),
 			'deferred' => false,
 		);
 	}
@@ -115,13 +129,17 @@ class PlaceLocator {
 	 * @return array{found:list<array{place:array<string,string>,address:array<string,string>}>,missing:list<string>,more:list<string>}|\WP_Error|string DEFER si le budget est épuisé.
 	 */
 	private function piece( $piece ) {
-		$segments = array_values(
-			array_filter(
-				array_map( 'trim', explode( ',', $piece ) ),
-				function ( $segment ) {
-					return '' !== $segment;
-				}
-			)
+		$segments = array_slice(
+			array_values(
+				array_filter(
+					array_map( 'trim', explode( ',', $piece ) ),
+					function ( $segment ) {
+						return '' !== $segment;
+					}
+				)
+			),
+			0,
+			self::MAX_PLACES
 		);
 		if ( ! $segments ) {
 			return self::result( array(), array(), array() );
@@ -129,11 +147,11 @@ class PlaceLocator {
 		$first = $segments[0];
 		$rest  = array_slice( $segments, 1 );
 
-		$region = '' === PhotonGeocoder::hint( $first ) ? Regions::find( $first ) : null;
+		$region = '' === PhotonGeocoder::hint( $piece ) ? Regions::find( $first ) : null;
 		if ( $region ) {
 			$more = array();
 			foreach ( $rest as $segment ) {
-				if ( 'france' !== self::key( $segment ) ) {
+				if ( '' !== self::segment_key( $segment ) ) {
 					$more[] = $segment;
 				}
 			}
@@ -154,23 +172,29 @@ class PlaceLocator {
 	}
 
 	/**
-	 * Seconde passe : chaque segment est cherché seul ; une région déjà couverte
-	 * par une ville trouvée dans le même morceau est retirée.
+	 * Seconde passe : chaque segment est cherché seul. Un segment qui précise une
+	 * ville trouvée dans le même morceau (son pays, sa région, son département) n'est
+	 * pas un lieu, et une région déjà couverte par une de ces villes est retirée.
 	 *
 	 * @param list<string> $segments Segments du morceau.
 	 * @return array{found:list<array{place:array<string,string>,address:array<string,string>}>,missing:list<string>,more:list<string>}|\WP_Error|string
 	 */
 	private function each_segment( array $segments ) {
-		$entries = array();
-		$missing = array();
+		$items   = array();
+		$lost    = array();
 		$covered = array();
 		foreach ( $segments as $segment ) {
-			if ( in_array( PhotonGeocoder::normalize( $segment ), PhotonGeocoder::VAGUE, true ) ) {
-				continue;
+			$key = self::segment_key( $segment );
+			if ( '' === $key || self::in_context( $key, $items, -1 ) ) {
+				continue; // Ni un lieu, ni autre chose qu'une précision d'une ville déjà trouvée.
 			}
 			$region = '' === PhotonGeocoder::hint( $segment ) ? Regions::find( $segment ) : null;
 			if ( $region ) {
-				$entries[] = self::region_entry( $region );
+				$items[] = array(
+					'key'     => $key,
+					'entry'   => self::region_entry( $region ),
+					'context' => array(),
+				);
 				continue;
 			}
 			$detailed = $this->geocode( $segment );
@@ -178,19 +202,31 @@ class PlaceLocator {
 				return $detailed;
 			}
 			if ( ! is_array( $detailed ) ) {
-				$missing[] = $segment;
+				$lost[ $key ] = $segment;
 				continue;
 			}
-			$entries[] = self::city_entry( $detailed );
-			$own       = Regions::find( $detailed['address']['state_long'] );
+			$own = Regions::find( $detailed['address']['state_long'] );
 			if ( $own ) {
 				$covered[ $own['code'] ] = true;
 			}
+			$items[] = array(
+				'key'     => $key,
+				'entry'   => self::city_entry( $detailed ),
+				'context' => self::context( $detailed ),
+			);
 		}
 		$found = array();
-		foreach ( $entries as $entry ) {
-			if ( 'region' !== $entry['place']['type'] || ! isset( $covered[ $entry['place']['region'] ] ) ) {
-				$found[] = $entry;
+		foreach ( $items as $index => $item ) {
+			$place      = $item['entry']['place'];
+			$is_covered = 'region' === $place['type'] && isset( $covered[ $place['region'] ] );
+			if ( ! $is_covered && ! self::in_context( $item['key'], $items, $index ) ) {
+				$found[] = $item['entry'];
+			}
+		}
+		$missing = array();
+		foreach ( $lost as $key => $segment ) {
+			if ( ! self::in_context( (string) $key, $items, -1 ) ) {
+				$missing[] = $segment;
 			}
 		}
 		return self::result( $found, $missing, array() );
@@ -204,22 +240,66 @@ class PlaceLocator {
 	 * @return list<string>
 	 */
 	private static function unused( array $detailed, array $rest ) {
+		$context = self::context( $detailed );
+		$own     = Regions::find( $detailed['address']['state_long'] );
+		$more    = array();
+		foreach ( $rest as $segment ) {
+			$key = self::segment_key( $segment );
+			if ( '' === $key || in_array( $key, $context, true ) ) {
+				continue;
+			}
+			$named = Regions::find( $segment );
+			if ( $own && $named && $own['code'] === $named['code'] ) {
+				continue;
+			}
+			$more[] = $segment;
+		}
+		return $more;
+	}
+
+	/**
+	 * Formes comparées du pays, de la région et du département d'un lieu trouvé.
+	 *
+	 * @param array{address:array<string,string>,county:string,name:string} $detailed Résultat de geocode_detailed().
+	 * @return list<string>
+	 */
+	private static function context( array $detailed ) {
 		$context = array();
 		foreach ( array( $detailed['address']['country_long'], $detailed['address']['state_long'], $detailed['county'] ) as $value ) {
 			if ( '' !== (string) $value ) {
 				$context[] = self::key( $value );
 			}
 		}
-		$own  = Regions::find( $detailed['address']['state_long'] );
-		$more = array();
-		foreach ( $rest as $segment ) {
-			$named = Regions::find( $segment );
-			if ( in_array( self::key( $segment ), $context, true ) || ( $own && $named && $own['code'] === $named['code'] ) ) {
-				continue;
+		return $context;
+	}
+
+	/**
+	 * Le segment précise-t-il une ville trouvée du morceau (autre que lui-même) ?
+	 *
+	 * @param string                                                                                                    $key   Forme comparée du segment.
+	 * @param list<array{key:string,entry:array{place:array<string,string>,address:array<string,string>},context:list<string>}> $items Lieux du morceau.
+	 * @param int                                                                                                       $skip  Index du segment lui-même, -1 si aucun.
+	 * @return bool
+	 */
+	private static function in_context( $key, array $items, $skip ) {
+		foreach ( $items as $index => $item ) {
+			if ( $index !== $skip && in_array( $key, $item['context'], true ) ) {
+				return true;
 			}
-			$more[] = $segment;
 		}
-		return $more;
+		return false;
+	}
+
+	/**
+	 * Forme comparée d'un segment, ou chaîne vide s'il ne désigne aucun lieu :
+	 * indice seul (« 76000 », « (76) »), mention vague, pays du site (« France »).
+	 *
+	 * @param string $segment Segment.
+	 * @return string
+	 */
+	private static function segment_key( $segment ) {
+		$key = self::key( PhotonGeocoder::clean( $segment ) );
+		return ( in_array( $key, PhotonGeocoder::VAGUE, true ) || 'france' === $key ) ? '' : $key;
 	}
 
 	/**
@@ -233,9 +313,13 @@ class PlaceLocator {
 			if ( 0 === $this->budget ) {
 				return self::DEFER;
 			}
+			if ( $this->lookups >= self::MAX_LOOKUPS ) {
+				return null; // Plafond atteint : le texte est compté introuvable.
+			}
 			if ( $this->budget > 0 ) {
 				--$this->budget;
 			}
+			++$this->lookups;
 		}
 		$result = $this->geocoder->geocode_detailed( $text );
 		if ( $this->sleeper && ! $this->geocoder->last_was_cached() ) {
