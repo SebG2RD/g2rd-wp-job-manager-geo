@@ -588,6 +588,36 @@ async function tagsAc({ features = null } = {}) {
   await type(g, 'norm');
   check('Photon injoignable : les regions restent proposees', 1 === g.options().length && /Normandie/.test(g.options()[0].textContent));
 
+  // Réponses Photon différées : le test les résout lui-même.
+  const deferFetch = g => { const waiting = []; g.w.fetch = () => new Promise(res => waiting.push(res)); return features => waiting.splice(0).forEach(res => res({ ok: true, status: 200, json: () => Promise.resolve({ features }) })); };
+  const place = (name, county, state) => ({ properties: { name, county, state, country: 'France', osm_key: 'place' } });
+  g = await tagsAc({});
+  const answer = deferFetch(g);
+  await type(g, 'Rou');
+  key(g.w, g.input, 'Enter'); await wait(10);
+  answer([place('Rouen', 'Seine-Maritime', 'Normandie')]); await wait(20);
+  check('reponse arrivee apres Entree : panneau reste ferme', g.panel.hidden && 'false' === g.input.getAttribute('aria-expanded') && 'Rou' === g.native.value);
+  g = await tagsAc({});
+  await type(g, 'Rou');
+  const old = g.options()[0];
+  const answer2 = deferFetch(g);
+  g.input.value = 'Roue'; g.input.dispatchEvent(new g.w.Event('input', { bubbles: true })); await wait(350);
+  old.dispatchEvent(new g.w.MouseEvent('mousedown', { bubbles: true, cancelable: true })); await wait(10);
+  answer2([place('Rouen', 'Seine-Maritime', 'Normandie')]); await wait(20);
+  check('choix dans l ancienne liste pendant une requete : la liste ne se rouvre pas', g.panel.hidden && 'Rouen, Normandie, France' === g.native.value);
+  g = await tagsAc({});
+  g.input.value = 'Brest'; key(g.w, g.input, 'Enter');
+  g.input.value = 'Lille'; key(g.w, g.input, 'Enter');
+  g.input.value = 'Nantes';
+  const x = g.d.querySelector('.g2rd-wpjm-geo-tags__remove');
+  x.focus(); await wait(10);
+  check('« × » focalise : la sortie du champ valide la saisie sans le detacher', 3 === g.tags().length && x.isConnected && g.d.activeElement === x);
+  x.click(); await wait(10);
+  check('« × » : le clic retire bien la premiere etiquette', 'Lille ; Nantes' === g.native.value && 2 === g.tags().length);
+  g = await tagsAc({ features: [place('Paris', 'Paris', 'Île-de-France')] });
+  await type(g, 'Paris');
+  check('ville avant la region trouvee par un mot de son alias', !/Région/.test(g.options()[0].textContent) && /Paris/.test(g.options()[0].textContent) && /Île-de-France/.test(g.options()[1].textContent) && /Région/.test(g.options()[1].textContent));
+
   console.log('\nResultat JS : ' + pass + ' reussis, ' + fail + ' echoues');
   process.exit(fail ? 1 : 0);
 })().catch(e => { console.error('ERREUR BANC DE TEST:', e); process.exit(2); });

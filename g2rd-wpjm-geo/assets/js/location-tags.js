@@ -114,7 +114,7 @@
 				} );
 				if ( hit ) {
 					seen[ entry.region.code ] = true;
-					out.push( { region: entry.region, matched: entry.name } );
+					out.push( { region: entry.region, matched: entry.name, start: 0 === pass } );
 				}
 			} );
 		} );
@@ -220,9 +220,21 @@
 			announce( format( i18n.removed, tag.short ) );
 		}
 
+		// Les nœuds existants sont gardés (un « × » qui a le focus ne doit être ni détaché ni déplacé) :
+		// seules les étiquettes nouvelles reçoivent un nœud, ajouté en fin de liste.
 		function render() {
-			list.textContent = '';
-			tags.forEach( function ( tag, position ) {
+			Array.prototype.slice.call( list.children ).forEach( function ( node ) {
+				var kept = tags.some( function ( tag ) {
+					return tag.node === node;
+				} );
+				if ( ! kept ) {
+					list.removeChild( node );
+				}
+			} );
+			tags.forEach( function ( tag ) {
+				if ( tag.node ) {
+					return;
+				}
 				var item = document.createElement( 'li' );
 				item.className = 'g2rd-wpjm-geo-tags__tag' + ( tag.region ? ' g2rd-wpjm-geo-tags__tag--region' : '' );
 				item.title = tag.text;
@@ -239,13 +251,14 @@
 				remove.setAttribute( 'aria-label', format( i18n.remove, tag.short ) );
 				remove.textContent = '\u2715';
 				remove.addEventListener( 'click', function () {
-					removeAt( position );
+					removeAt( tags.indexOf( tag ) );
 					input.focus();
 				} );
 				item.appendChild( icon );
 				item.appendChild( text );
 				item.appendChild( remove );
 				list.appendChild( item );
+				tag.node = item;
 			} );
 			list.hidden = ! tags.length;
 		}

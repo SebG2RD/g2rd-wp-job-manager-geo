@@ -110,9 +110,21 @@
 				label: hit.region.name,
 				main: hit.region.name,
 				secondary: hit.matched !== hit.region.name ? kind + ' (' + hit.matched + ')' : kind,
-				region: hit.region.code
+				region: hit.region.code,
+				start: hit.start
 			};
 		} );
+	}
+
+	// Mode étiquettes : régions dont le nom commence par la saisie, puis villes Photon, puis régions trouvées par un mot.
+	function merge( local, cities ) {
+		var first = local.filter( function ( item ) {
+			return item.start;
+		} );
+		var later = local.filter( function ( item ) {
+			return ! item.start;
+		} );
+		return first.concat( cities, later ).slice( 0, MAX_SUGGESTIONS );
 	}
 
 	function attach( input, field ) {
@@ -368,10 +380,15 @@
 				} );
 			}
 
+			// Réponse encore utile : ni nouvelle frappe, ni perte du focus, ni texte changé (étiquettes : Entrée ou choix ont pu vider la saisie).
+			function fresh() {
+				return current === requestId && document.activeElement === input && ( ! field || input.value.trim() === value );
+			}
+
 			pending.then( function ( suggestions ) {
 				// Ignore les réponses obsolètes (l'utilisateur a continué à taper).
-				if ( current === requestId && document.activeElement === input ) {
-					render( field ? local.concat( suggestions ).slice( 0, MAX_SUGGESTIONS ) : suggestions );
+				if ( fresh() ) {
+					render( field ? merge( local, suggestions ) : suggestions );
 				}
 			} ).catch( function ( error ) {
 				if ( error && 'AbortError' === error.name ) {
@@ -379,7 +396,7 @@
 				}
 				// Service indisponible ou clé refusée : le champ redevient un simple champ texte (les régions restent proposées).
 				disabled = true;
-				if ( local.length && current === requestId && document.activeElement === input ) {
+				if ( local.length && fresh() ) {
 					render( local );
 				} else {
 					close();
@@ -401,6 +418,9 @@
 				return;
 			}
 			window.clearTimeout( timer );
+			if ( field && input.value.trim().length < MIN_LENGTH ) {
+				close();
+			}
 			timer = window.setTimeout( search, DEBOUNCE );
 		} );
 
