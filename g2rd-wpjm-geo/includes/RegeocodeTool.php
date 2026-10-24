@@ -77,10 +77,10 @@ class RegeocodeTool {
 	 */
 	public static function rows() {
 		global $wpdb;
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery -- agrégat en lecture seule sur trois métadonnées, sans équivalent WP_Query.
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery -- agrégat en lecture seule sur quatre métadonnées, sans équivalent WP_Query.
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT p.ID AS id, p.post_status AS status, loc.meta_value AS location, src.meta_value AS source, geo.meta_value AS geolocated, pl.meta_value AS places
+				"SELECT p.ID AS id, p.post_status AS status, loc.meta_value AS location, src.meta_value AS source, geo.meta_value AS geolocated, pl.meta_id AS places
 				FROM {$wpdb->posts} p
 				INNER JOIN {$wpdb->postmeta} loc ON loc.post_id = p.ID AND loc.meta_key = %s
 				LEFT JOIN {$wpdb->postmeta} src ON src.post_id = p.ID AND src.meta_key = %s
@@ -244,15 +244,21 @@ class RegeocodeTool {
 		);
 		$results = array();
 		$stopped = false;
-		$start   = microtime( true );
+		$start   = $this->now();
 		foreach ( array_slice( $keys, 0, self::BATCH ) as $key ) {
-			if ( $results && microtime( true ) - $start > self::TIME_BUDGET ) {
+			$elapsed = $this->now() - $start;
+			if ( $results && $elapsed > self::TIME_BUDGET ) {
 				// Requête AJAX courte : la suite au lot suivant.
 				break;
 			}
+			// Appels à Photon bornés par le temps restant (environ 2 s chacun, pause comprise).
+			$budget = max( 1, (int) floor( ( self::TIME_BUDGET - $elapsed ) / 2 ) );
+			$row    = $this->process( $key % self::KEY_OFFSET, 'run' === $task, $provider, $budget );
+			if ( null === $row ) {
+				// Offre trop longue pour ce lot : reprise au lot suivant, avec le cache déjà rempli.
+				break;
+			}
 			$cursor    = $key;
-			$id        = $key % self::KEY_OFFSET;
-			$row       = $this->process( $id, 'run' === $task, $provider );
 			$results[] = $row;
 			if ( 'error' === $row['status'] ) {
 				// Service indisponible : inutile d'insister sur les offres suivantes.
@@ -271,14 +277,24 @@ class RegeocodeTool {
 	}
 
 	/**
+	 * Horloge en secondes (remplaçable dans les tests).
+	 *
+	 * @return float
+	 */
+	protected function now() {
+		return microtime( true );
+	}
+
+	/**
 	 * Re-géocode (ou simule) une offre.
 	 *
 	 * @param int    $job_id   ID de l'offre.
 	 * @param bool   $write    Écrire le résultat.
 	 * @param string $provider Fournisseur actif.
-	 * @return array{id:int,location:string,result:string,status:string,edit:string} Statut : ok|done|not_found|error|pending.
+	 * @param int    $budget   Textes absents du cache que l'on peut envoyer à Photon.
+	 * @return array{id:int,location:string,result:string,status:string,edit:string}|null Statut : ok|done|not_found|error|pending ; null : offre reportée au lot suivant (temps épuisé).
 	 */
-	private function process( $job_id, $write, $provider ) {
+	private function process( $job_id, $write, $provider, $budget = PlaceLocator::UNLIMITED ) {
 		$location = trim( (string) get_post_meta( $job_id, '_job_location', true ) );
 		$row      = array(
 			'id'       => $job_id,
@@ -294,14 +310,21 @@ class RegeocodeTool {
 		}
 
 		if ( Settings::PROVIDER_OSM === $provider ) {
-			$located = $this->locator->locate( $location );
+			$located = $this->locator->locate( $location, $budget );
 			if ( is_wp_error( $located ) ) {
 				$row['status'] = 'error';
 				$row['result'] = $located->get_error_message();
 				return $row;
 			}
+			if ( $located['deferred'] ) {
+				return null;
+			}
 			if ( ! $located['places'] ) {
 				$row['status'] = 'not_found';
+				if ( $located['missing'] ) {
+					/* translators: %s: comma-separated locations that were not found. */
+					$row['result'] = sprintf( __( 'introuvable : %s', 'g2rd-wpjm-geo' ), implode( ', ', $located['missing'] ) );
+				}
 				return $row;
 			}
 			$row['result'] = self::describe( $located );

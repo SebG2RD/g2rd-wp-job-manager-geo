@@ -1419,12 +1419,48 @@ check( 'mode Google : aucune mise à jour d’offre libre', 0 === RegeocodeTool:
 list( $s ) = geo_boot();
 g2rd_world( array() );
 G2RD_Test_State::$post_types[600] = 'job_listing';
-G2RD_Test_State::$meta[600]       = array( '_job_location' => 'Rouen ; Normandie ; Atlantide', 'geolocated' => 1, 'geolocation_lat' => '49.4432', $src => 'osm' );
+G2RD_Test_State::$meta[600]       = array( '_job_location' => 'Rouen ; Normandie ; Atlantide', 'geolocated' => 1, 'geolocation_lat' => '1.5', $src => 'osm' );
 $tool = new RegeocodeTool( $s, new PhotonGeocoder( $s ), '__return_false' );
 $sim  = $tool->handle( 'simulate', 0, $mrows );
 check( 'simulation : lieux trouvés et introuvables listés, aucune écriture', 'ok' === $sim['rows'][0]['status'] && 'Rouen, Normandie — introuvable : Atlantide' === $sim['rows'][0]['result'] && ! isset( G2RD_Test_State::$meta[600][ GeocodingIntegration::META_PLACES ] ) );
 $run = $tool->handle( 'run', 0, $mrows );
-check( 'exécution : liste de lieux écrite', 'done' === $run['rows'][0]['status'] && 2 === count( G2RD_Test_State::$meta[600][ GeocodingIntegration::META_PLACES ] ) );
+check( 'exécution : liste de lieux écrite', 'done' === $run['rows'][0]['status'] && 2 === count( G2RD_Test_State::$meta[600][ GeocodingIntegration::META_PLACES ] ) && '49.4432' === G2RD_Test_State::$meta[600]['geolocation_lat'] );
+
+G2RD_Test_State::$post_types[602] = 'job_listing';
+G2RD_Test_State::$meta[602]       = array( '_job_location' => 'Atlantide', 'geolocated' => 1, $src => 'google' );
+$nf = $tool->handle( 'simulate', 0, array( array( 'id' => '602', 'location' => 'Atlantide', 'source' => 'google', 'geolocated' => '1' ) ) );
+check( 'introuvable : le texte en cause est affiché', 'not_found' === $nf['rows'][0]['status'] && 'introuvable : Atlantide' === $nf['rows'][0]['result'] );
+
+G2RD_Test_State::$post_types[610] = 'job_listing';
+G2RD_Test_State::$meta[610]       = array( '_job_location' => 'Caen ; Le Havre', 'geolocated' => 1, $src => 'google' );
+$rows610 = array( array( 'id' => '610', 'location' => 'Caen ; Le Havre', 'source' => 'google', 'geolocated' => '1', 'places' => null ) );
+$late    = new class( $s, new PhotonGeocoder( $s ), '__return_false' ) extends RegeocodeTool {
+	public $times = array( 0, 19 );
+	protected function now() {
+		return count( $this->times ) > 1 ? array_shift( $this->times ) : $this->times[0];
+	}
+};
+$first = $late->handle( 'run', 0, $rows610 );
+check( 'temps presque écoulé : offre reportée au lot suivant, curseur inchangé', array() === $first['rows'] && 0 === $first['cursor'] && false === $first['done'] );
+$second = $late->handle( 'run', $first['cursor'], $rows610 );
+check( 'lot suivant : offre placée grâce au cache déjà rempli', 'done' === $second['rows'][0]['status'] && 2 === count( G2RD_Test_State::$meta[610][ GeocodingIntegration::META_PLACES ] ) );
+
+$GLOBALS['wpdb'] = new class() extends G2RD_Test_Wpdb {
+	public function get_results( $query, $output = null ) {
+		return array(
+			array( 'id' => '620', 'status' => 'publish', 'location' => 'Rouen', 'source' => 'osm', 'geolocated' => '1', 'places' => null ),
+			array( 'id' => '621', 'status' => 'publish', 'location' => 'Paris', 'source' => null, 'geolocated' => '1', 'places' => null ),
+		);
+	}
+};
+list( $s ) = boot( array( 'provider' => 'osm' ) );
+AdminMenu::reset();
+ob_start();
+( new \G2RD\WPJMGeo\SettingsPage( $s ) )->render();
+$html            = ob_get_clean();
+$GLOBALS['wpdb'] = new G2RD_Test_Wpdb();
+AdminMenu::reset();
+check( 'bandeau : seule l’offre hors carte est signalée absente, l’offre 1.1.x est invitée à la mise à jour', false !== strpos( $html, '1 offre n’est pas géocodée par le fournisseur actif' ) && false !== strpos( $html, '1 offre libre n’affiche qu’un lieu' ) );
 G2RD_Test_State::$http_responder = null;
 
 $results = $GLOBALS['g2rd_results'];

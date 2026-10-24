@@ -214,13 +214,27 @@ class SettingsPage {
 			__( 'Services publics gratuits, sans garantie de disponibilité. L’attribution « © OpenStreetMap contributors » est affichée automatiquement. L’adresse IP des visiteurs de la carte est transmise à OpenFreeMap, celle des personnes qui saisissent une ville au serveur Photon : un texte suggéré est disponible dans Réglages → Confidentialité.', 'g2rd-wpjm-geo' ),
 			Settings::PROVIDER_OSM
 		);
-		if ( $stats['todo'] > 0 ) {
+		$absent = $stats['todo'] - $stats['update'];
+		if ( $absent > 0 ) {
 			$this->alert(
 				'warning',
 				sprintf(
 					/* translators: %d: number of jobs. */
-					_n( '%d offre n’est pas géocodée par le fournisseur actif : elle n’apparaît pas sur la carte.', '%d offres ne sont pas géocodées par le fournisseur actif : elles n’apparaissent pas sur la carte.', $stats['todo'], 'g2rd-wpjm-geo' ),
-					$stats['todo']
+					_n( '%d offre n’est pas géocodée par le fournisseur actif : elle n’apparaît pas sur la carte.', '%d offres ne sont pas géocodées par le fournisseur actif : elles n’apparaissent pas sur la carte.', $absent, 'g2rd-wpjm-geo' ),
+					$absent
+				),
+				'',
+				'#g2rd-geo-outils',
+				__( 'Re-géocoder les offres', 'g2rd-wpjm-geo' )
+			);
+		}
+		if ( $stats['update'] > 0 ) {
+			$this->alert(
+				'info',
+				sprintf(
+					/* translators: %d: number of jobs. */
+					_n( '%d offre libre n’affiche qu’un lieu sur la carte : re-géocodez-la pour placer tous ses lieux (villes et régions).', '%d offres libres n’affichent qu’un lieu sur la carte : re-géocodez-les pour placer tous leurs lieux (villes et régions).', $stats['update'], 'g2rd-wpjm-geo' ),
+					$stats['update']
 				),
 				'',
 				'#g2rd-geo-outils',
