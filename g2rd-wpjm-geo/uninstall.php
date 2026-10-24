@@ -25,6 +25,7 @@ delete_transient( 'g2rd_wpjm_geo_geocode_lock' );
 delete_transient( 'g2rd_wpjm_geo_photon_down' );
 wp_clear_scheduled_hook( 'g2rd_wpjm_geo_geocode' );
 delete_post_meta_by_key( '_g2rd_wpjm_geo_source' );
+delete_post_meta_by_key( '_g2rd_wpjm_geo_places' );
 
 // Caches des réponses Photon, des vérifications d'URL et de la réponse REST de la carte.
 // phpcs:ignore WordPress.DB.DirectDatabaseQuery

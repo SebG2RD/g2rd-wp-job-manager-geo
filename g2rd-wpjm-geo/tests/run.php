@@ -654,7 +654,7 @@ check( 'saisie : coordonnées Photon au format WPJM', '45.5031' === $m['geolocat
 check( 'saisie : source osm', 'osm' === $m[ $src ] );
 
 job_with_google_coords( 201 );
-do_action( 'job_manager_job_location_edited', 201, 'IDF' );
+do_action( 'job_manager_job_location_edited', 201, 'Atlantide' );
 check( 'introuvable : anciennes coordonnées effacées, pas de source', ! isset( G2RD_Test_State::$meta[201]['geolocation_lat'] ) && ! isset( G2RD_Test_State::$meta[201]['geolocated'] ) && ! isset( G2RD_Test_State::$meta[201][ $src ] ) );
 
 job_with_google_coords( 202 );
@@ -1310,6 +1310,67 @@ G2RD_Test_State::$http_responder = function () {
 	return new WP_Error( 'http_request_failed', 'timeout' );
 };
 check( 'Photon en panne : WP_Error', is_wp_error( $locator->locate( 'Nantes ; Normandie' ) ) );
+G2RD_Test_State::$http_responder = null;
+
+echo PHP_EOL . '36. Plusieurs lieux sur une offre : enregistrement' . PHP_EOL;
+$places = GeocodingIntegration::META_PLACES;
+$types  = function ( $list ) {
+	return array_map(
+		function ( $place ) {
+			return $place['type'] . ':' . $place['label'];
+		},
+		(array) $list
+	);
+};
+
+geo_boot();
+g2rd_world( array() );
+job_with_google_coords( 500 );
+G2RD_Test_State::$meta[500]['_job_location'] = 'Rouen ; Normandie';
+do_action( 'job_manager_job_location_edited', 500, 'Rouen ; Normandie' );
+$m = G2RD_Test_State::$meta[500];
+check( 'saisie : premier lieu dans les champs WPJM, source osm', '49.4432' === $m['geolocation_lat'] && 'Rouen' === $m['geolocation_city'] && 'osm' === $m[ $src ] );
+check( 'saisie : liste des lieux (ville puis région)', array( 'city:Rouen', 'region:Normandie' ) === $types( $m[ $places ] ) && '28' === $m[ $places ][1]['region'] );
+check( 'saisie : texte saisi jamais réécrit', 'Rouen ; Normandie' === $m['_job_location'] );
+
+job_with_google_coords( 501 );
+do_action( 'job_manager_job_location_edited', 501, 'Normandie, France' );
+$m = G2RD_Test_State::$meta[501];
+check( 'région en premier : centre, région et pays dans les champs WPJM, sans ville', '49.1202' === $m['geolocation_lat'] && ! isset( $m['geolocation_city'] ) && 'Normandie' === $m['geolocation_state_long'] && 'FR' === $m['geolocation_country_short'] && 'Normandie, France' === $m['geolocation_formatted_address'] );
+
+do_action( 'job_manager_job_location_edited', 500, 'Atlantide' );
+check( 'aucun lieu trouvé : coordonnées et liste effacées', ! isset( G2RD_Test_State::$meta[500]['geolocated'] ) && ! isset( G2RD_Test_State::$meta[500][ $places ] ) );
+
+check( 'affichage : « Paris ; Lyon ; Normandie » devient « Paris, Lyon, Normandie »', 'Paris, Lyon, Normandie' === apply_filters( 'the_job_location', 'Paris ; Lyon ; Normandie', null ) );
+check( 'affichage : lieu simple inchangé', 'Rouen, Normandie, France' === apply_filters( 'the_job_location', 'Rouen, Normandie, France', null ) );
+
+unset( G2RD_Test_State::$hooks['shutdown'] );
+$bumps = G2RD_Test_State::$cache_bumps;
+GeocodingIntegration::on_map_meta_changed( 0, 500, $places );
+do_action( 'shutdown' );
+check( 'liste de lieux modifiée : cache des offres renouvelé', 1 === G2RD_Test_State::$cache_bumps - $bumps );
+
+list( , , $queue ) = geo_boot();
+g2rd_world( array() );
+job_with_google_coords( 502 );
+do_action( 'job_manager_job_location_edited', 502, 'Caen ; Le Havre' );
+$queue->flush();
+check( 'deux villes absentes du cache : file d’attente, anciennes coordonnées effacées, une seule requête', array( 502 ) === get_option( GeocodeQueue::OPTION ) && ! isset( G2RD_Test_State::$meta[502]['geolocated'] ) && 1 === count( $GLOBALS['g2rd_world_queries'] ) );
+G2RD_Test_State::$meta[502]['_job_location'] = 'Caen ; Le Havre';
+unset( G2RD_Test_State::$scheduled[ GeocodeQueue::CRON_HOOK ] );
+do_action( GeocodeQueue::CRON_HOOK );
+check( 'file : tous les lieux placés', 'Caen' === G2RD_Test_State::$meta[502]['geolocation_city'] && array( 'city:Caen', 'city:Le Havre' ) === $types( G2RD_Test_State::$meta[502][ $places ] ) );
+check( 'file : une pause après l’appel réel (Le Havre), aucune sur le cache (Caen)', 1 === $GLOBALS['g2rd_sleeps'] );
+
+geo_boot( 'google' );
+G2RD_Test_State::$post_types[503] = 'job_listing';
+G2RD_Test_State::$meta[503]       = array( 'geolocated' => 1, 'geolocation_lat' => '49.4432', $src => 'osm', $places => array( array( 'type' => 'city', 'label' => 'Rouen', 'lat' => '49.4432', 'lng' => '1.0999' ) ) );
+WP_Job_Manager_Geocode::save_location_data( 503, array( 'lat' => '48.85', 'long' => '2.35' ) );
+check( 'coordonnées écrites par un tiers : source et liste effacées', ! isset( G2RD_Test_State::$meta[503][ $src ] ) && ! isset( G2RD_Test_State::$meta[503][ $places ] ) );
+G2RD_Test_State::$post_types[504] = 'job_listing';
+G2RD_Test_State::$meta[504]       = array( $src => 'osm', $places => array( array( 'type' => 'city', 'label' => 'Rouen', 'lat' => '49.4432', 'lng' => '1.0999' ) ) );
+do_action( 'job_manager_job_location_edited', 504, 'Paris' );
+check( 'mode Google : liste de lieux oubliée avec la source', ! isset( G2RD_Test_State::$meta[504][ $places ] ) && ! isset( G2RD_Test_State::$meta[504][ $src ] ) );
 G2RD_Test_State::$http_responder = null;
 
 $results = $GLOBALS['g2rd_results'];

@@ -12,8 +12,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Lot de 10 offres, une seconde de pause entre deux appels réels à Photon
- * (usage raisonnable de l'instance publique).
+ * Lot de 10 offres ; tous les lieux de chaque offre sont placés, avec une
+ * seconde de pause après chaque appel réel à Photon (usage raisonnable de
+ * l'instance publique).
  */
 class GeocodeQueue extends JobQueue {
 
@@ -30,18 +31,11 @@ class GeocodeQueue extends JobQueue {
 	private $settings;
 
 	/**
-	 * Géocodeur.
+	 * Placement des lieux.
 	 *
-	 * @var PhotonGeocoder
+	 * @var PlaceLocator
 	 */
-	private $geocoder;
-
-	/**
-	 * Fonction de pause (remplaçable dans les tests).
-	 *
-	 * @var callable
-	 */
-	private $sleeper;
+	private $locator;
 
 	/**
 	 * Constructeur.
@@ -52,12 +46,11 @@ class GeocodeQueue extends JobQueue {
 	 */
 	public function __construct( Settings $settings, PhotonGeocoder $geocoder, $sleeper = null ) {
 		$this->settings = $settings;
-		$this->geocoder = $geocoder;
-		$this->sleeper  = is_callable( $sleeper ) ? $sleeper : 'sleep';
+		$this->locator  = new PlaceLocator( $geocoder, is_callable( $sleeper ) ? $sleeper : 'sleep' );
 	}
 
 	/**
-	 * Géocode une offre de la file.
+	 * Place les lieux d'une offre de la file.
 	 *
 	 * @param int $job_id ID de l'offre.
 	 * @return bool false si Photon est indisponible.
@@ -72,14 +65,11 @@ class GeocodeQueue extends JobQueue {
 			return true;
 		}
 
-		$result = $this->geocoder->geocode( $location );
+		$result = $this->locator->locate( $location );
 		if ( is_wp_error( $result ) ) {
 			return false;
 		}
-		GeocodingIntegration::write( $job_id, $result, Settings::PROVIDER_OSM );
-		if ( ! $this->geocoder->last_was_cached() ) {
-			call_user_func( $this->sleeper, 1 );
-		}
+		GeocodingIntegration::write_places( $job_id, $result );
 		return true;
 	}
 }

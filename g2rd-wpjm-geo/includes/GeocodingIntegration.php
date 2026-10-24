@@ -25,6 +25,11 @@ class GeocodingIntegration {
 	const META_SOURCE = '_g2rd_wpjm_geo_source';
 
 	/**
+	 * Lieux de l'offre en mode libre (villes et régions), le premier étant aussi dans les champs de WP Job Manager.
+	 */
+	const META_PLACES = '_g2rd_wpjm_geo_places';
+
+	/**
 	 * Drapeau posé quand Photon ne répond pas : les enregistrements suivants
 	 * passent directement par la file, sans attendre le délai réseau.
 	 */
@@ -46,11 +51,11 @@ class GeocodingIntegration {
 	private $settings;
 
 	/**
-	 * Géocodeur.
+	 * Placement des lieux (sans pause : saisie interactive).
 	 *
-	 * @var PhotonGeocoder
+	 * @var PlaceLocator
 	 */
-	private $geocoder;
+	private $locator;
 
 	/**
 	 * File différée.
@@ -68,7 +73,7 @@ class GeocodingIntegration {
 	 */
 	public function __construct( Settings $settings, PhotonGeocoder $geocoder, GeocodeQueue $queue ) {
 		$this->settings = $settings;
-		$this->geocoder = $geocoder;
+		$this->locator  = new PlaceLocator( $geocoder );
 		$this->queue    = $queue;
 	}
 
@@ -84,6 +89,8 @@ class GeocodingIntegration {
 			add_action( $hook, array( __CLASS__, 'on_foreign_coords' ), 10, 3 );
 			add_action( $hook, array( __CLASS__, 'on_map_meta_changed' ), 10, 3 );
 		}
+		// Dans les deux modes : « Paris ; Lyon » s'affiche « Paris, Lyon » (fiche, listes, colonne de l'administration).
+		add_filter( 'the_job_location', array( __CLASS__, 'display_location' ), 10, 1 );
 		if ( Settings::PROVIDER_OSM === $this->settings->get_provider() ) {
 			add_filter( 'job_manager_geolocation_enabled', '__return_false', 99 );
 			add_action( 'job_manager_job_location_edited', array( $this, 'on_location_edited' ), 20, 2 );
@@ -102,6 +109,7 @@ class GeocodingIntegration {
 		$job_id = absint( $job_id );
 		if ( $job_id ) {
 			delete_post_meta( $job_id, self::META_SOURCE );
+			delete_post_meta( $job_id, self::META_PLACES );
 		}
 	}
 
@@ -117,6 +125,7 @@ class GeocodingIntegration {
 		$object_id = absint( $object_id );
 		if ( ! self::$writing && $object_id && 'geolocation_lat' === $meta_key ) {
 			delete_post_meta( $object_id, self::META_SOURCE );
+			delete_post_meta( $object_id, self::META_PLACES );
 		}
 	}
 
@@ -130,7 +139,7 @@ class GeocodingIntegration {
 	 * @return void
 	 */
 	public static function on_map_meta_changed( $meta_id, $object_id, $meta_key ) {
-		if ( in_array( $meta_key, array( self::META_SOURCE, 'geolocation_lat' ), true ) ) {
+		if ( in_array( $meta_key, array( self::META_SOURCE, self::META_PLACES, 'geolocation_lat' ), true ) ) {
 			// WordPress n'enregistre qu'une fois le même rappel sur le même hook : un seul renouvellement par requête.
 			add_action( 'shutdown', array( __CLASS__, 'bump_listings_cache' ) );
 		}
@@ -172,14 +181,21 @@ class GeocodingIntegration {
 			return;
 		}
 
-		$result = $this->geocoder->geocode( $location );
+		// Budget d'un texte absent du cache : au plus un appel à Photon pendant l'enregistrement, comme pour un lieu unique.
+		$result = $this->locator->locate( $location, 1 );
 		if ( is_wp_error( $result ) ) {
 			set_transient( self::DOWN_FLAG, 1, self::DOWN_TTL );
 			self::write( $job_id, null, Settings::PROVIDER_OSM );
 			$this->queue->push( $job_id );
 			return;
 		}
-		self::write( $job_id, $result, Settings::PROVIDER_OSM );
+		if ( $result['deferred'] ) {
+			// Plusieurs villes inconnues du cache : placées par la file, pour ne pas ralentir l'enregistrement.
+			self::write( $job_id, null, Settings::PROVIDER_OSM );
+			$this->queue->push( $job_id );
+			return;
+		}
+		self::write_places( $job_id, $result );
 	}
 
 	/**
@@ -216,6 +232,7 @@ class GeocodingIntegration {
 		try {
 			\WP_Job_Manager_Geocode::clear_location_data( $job_id );
 			delete_post_meta( $job_id, self::META_SOURCE );
+			delete_post_meta( $job_id, self::META_PLACES );
 			if ( is_array( $address ) && $address ) {
 				\WP_Job_Manager_Geocode::save_location_data( $job_id, $address );
 				update_post_meta( $job_id, self::META_SOURCE, $source );
@@ -224,5 +241,37 @@ class GeocodingIntegration {
 			self::$writing = false;
 		}
 		return true;
+	}
+
+	/**
+	 * Écrit les lieux d'une offre : le premier dans les champs de WP Job Manager, tous dans META_PLACES.
+	 *
+	 * @param int                 $job_id ID de l'offre.
+	 * @param array<string,mixed> $result Résultat de PlaceLocator::locate().
+	 * @return bool false si WP Job Manager est absent.
+	 */
+	public static function write_places( $job_id, array $result ) {
+		$address = ( isset( $result['address'] ) && is_array( $result['address'] ) ) ? $result['address'] : null;
+		if ( ! self::write( $job_id, $address, Settings::PROVIDER_OSM ) ) {
+			return false;
+		}
+		if ( $address && ! empty( $result['places'] ) && is_array( $result['places'] ) ) {
+			update_post_meta( $job_id, self::META_PLACES, array_values( $result['places'] ) );
+		}
+		return true;
+	}
+
+	/**
+	 * Lieu affiché : « Paris ; Lyon » devient « Paris, Lyon ». Le formulaire
+	 * d'édition lit la métadonnée directement et garde les « ; ».
+	 *
+	 * @param mixed $location Lieu (filtre the_job_location).
+	 * @return mixed
+	 */
+	public static function display_location( $location ) {
+		if ( ! is_string( $location ) || false === strpos( $location, ';' ) ) {
+			return $location;
+		}
+		return (string) preg_replace( '/\s*;\s*/', ', ', trim( $location, " ;\t\n\r" ) );
 	}
 }
