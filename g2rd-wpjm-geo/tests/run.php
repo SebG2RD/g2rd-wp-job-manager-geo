@@ -1164,6 +1164,11 @@ check( 'doublons fusionnés (accents, casse)', array( 'Évreux', 'Lyon' ) === Pl
 check( 'texte vide ou UTF-8 invalide : aucun morceau, sans avertissement', array() === PlaceParser::split( '' ) && array() === PlaceParser::split( "Lyon \xC3\x28" ) );
 check( 'au plus 30 morceaux', 30 === count( PlaceParser::split( implode( ';', range( 1, 50 ) ) ) ) );
 check( 'texte importé : entités décodées, balises retirées (<br> vaut un retour à la ligne)', array( "Villeneuve-d'Ascq", 'Paris & Lyon', 'Lille' ) === PlaceParser::split( 'Villeneuve-d&#039;Ascq ; Paris &amp; Lyon<br />Lille' ) );
+check( 'départements à « -et- » écrits avec des espaces : un seul lieu', array( 'Seine-et-Marne' ) === PlaceParser::split( 'Seine et Marne' ) && array( 'Maine-et-Loire' ) === PlaceParser::split( 'Maine et Loire' ) && array( 'Ille-et-Vilaine' ) === PlaceParser::split( 'Ille et Vilaine' ) );
+check( 'département à « -et- » dans une liste', array( 'Paris', 'Seine-et-Marne' ) === PlaceParser::split( 'Paris et Seine et Marne' ) );
+check( 'département à « -et- » : casse, accent de Saône, espaces multiples ou insécables', array( 'Saône-et-Loire' ) === PlaceParser::split( 'saone ET loire' ) && array( 'Saône-et-Loire' ) === PlaceParser::split( "SAÔNE  et\u{00A0}LOIRE" ) && array( 'Wallis-et-Futuna' ) === PlaceParser::split( 'wallis - et - futuna' ) && array( 'Saint-Pierre-et-Miquelon' ) === PlaceParser::split( 'Saint Pierre et Miquelon' ) );
+check( 'département à « -et- » : nom collé à d’autres lettres non touché', array( 'Xseine', 'Marne' ) === PlaceParser::split( 'Xseine et Marne' ) && array( 'Seine', 'Marnes' ) === PlaceParser::split( 'Seine et Marnes' ) );
+check( 'deux lieux ordinaires séparés par « et » toujours séparés', array( 'Paris', 'Lyon' ) === PlaceParser::split( 'Paris et Lyon' ) );
 $long  = 'Paris' . str_repeat( "\u{00A0}", 20000 ) . 'b ; Lyon';
 $start = microtime( true );
 $parts = PlaceParser::split( $long );

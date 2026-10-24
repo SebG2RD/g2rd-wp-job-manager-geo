@@ -520,11 +520,16 @@ const regionNoBox = { id: 15, title: 'Sans boite', permalink: 'https://x.test/jo
     check('decoupage : separateurs forts et « et », mentions vagues et doublons retires', 'Paris|Lyon|Caen' === T.split('Paris et Lyon / Télétravail ; paris ; Caen').join('|'));
     check('decoupage comme le serveur : <br> separe, 30 morceaux au plus', 'Paris|Lyon' === T.split('Paris<br />Lyon').join('|') && 30 === T.split(Array.from({ length: 50 }, (_, i) => 'Lieu' + i).join(';')).length);
     check('decoupage comme le serveur : balises retirees, 2 000 caracteres lus', 'Paris|Lyon' === T.split('<p>Paris</p> ; Lyon').join('|') && 'Mo' === T.split('a'.repeat(1995) + ' ; Montpellier')[1]);
+    check('departements a « -et- » ecrits avec des espaces : un seul lieu, comme le serveur', 'Seine-et-Marne' === T.split('Seine et Marne').join('|') && 'Paris|Seine-et-Marne' === T.split('Paris et Seine et Marne').join('|') && 'Saône-et-Loire' === T.split('saone ET loire').join('|') && 'Paris|Lyon' === T.split('Paris et Lyon').join('|'));
+    check('departements a « -et- » : nom colle a des lettres non touche, espaces insecables et tirets multiples acceptes', 'Xseine|Marne' === T.split('Xseine et Marne').join('|') && 'Seine|Marnes' === T.split('Seine et Marnes').join('|') && 'Wallis-et-Futuna' === T.split('wallis' + String.fromCharCode(160) + ' - et - futuna').join('|'));
     const idx = T.regionIndex(REGIONS);
     check('region exacte : nom, sigle, article, prefixe « Region » ; ville refusee', '11' === T.findRegion("l'Île-de-France", idx).code && '93' === T.findRegion('paca', idx).code && '28' === T.findRegion('Région Normandie', idx).code && null === T.findRegion('Rouen', idx));
     check('recherche : debut d un nom (variante « Region Sud » comprise), puis debut d un mot (3 lettres)', 'Normandie' === T.searchRegions('norm', idx, 6)[0].region.name && '93' === T.searchRegions('Région Sud', idx, 6)[0].region.code && 2 === T.searchRegions('alpes', idx, 6).length && 0 === T.searchRegions('al', idx, 6).length);
   }
   let f = tagField({});
+  f.input.value = 'Maine et Loire'; f.field.commit();
+  check('saisie « Maine et Loire » puis Entree : une seule etiquette Maine-et-Loire', 1 === f.tags().length && 'Maine-et-Loire' === f.tags()[0].querySelector('.g2rd-wpjm-geo-tags__text').textContent && 'Maine-et-Loire' === f.native.value);
+  f = tagField({});
   check('champ natif masque (attribut et style) mais envoye, saisie visible juste apres', f.native.hidden && 'none' === f.native.style.display && 'job_location' === f.native.name && f.native.nextElementSibling.classList.contains('g2rd-wpjm-geo-tags') && f.native.nextElementSibling.contains(f.input));
   check('libelle redirige vers la saisie, exemple repris, un seul champ nomme', f.d.querySelector('label').htmlFor === f.input.id && 'ex. Paris' === f.input.placeholder && 1 === f.d.querySelectorAll('input[name]').length);
   f.field.add('Île-de-France', true);

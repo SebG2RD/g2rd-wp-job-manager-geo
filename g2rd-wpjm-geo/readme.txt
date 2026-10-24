@@ -82,6 +82,7 @@ En mode libre, saisir chaque lieu dans le champ « Lieu » (étiquettes) ; sans 
 * L'affichage public remplace « ; » par « , » (« Paris, Lyon, Normandie »), y compris en mode Google.
 * Sur la carte, le nombre d'un regroupement compte les lieux et non les offres distinctes ; à petite échelle, certaines étiquettes de région sont masquées pour éviter les chevauchements (la zone reste cliquable et la région figure dans la liste sous la carte).
 * Retour au mode Google : la liste des lieux est ignorée et WP Job Manager géocode « Paris ; Lyon » comme une seule adresse.
+* Une commune dont le nom contient « et » écrit avec des espaces plutôt qu'avec des tirets (« Saint Germain et Mons ») est coupée en deux. Seuls les départements et collectivités à « -et- » sont protégés.
 
 = Multisite =
 Le plugin est prévu pour un site seul : en multisite, la désinstallation ne nettoie que le site courant.

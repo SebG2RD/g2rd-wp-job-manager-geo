@@ -12,6 +12,19 @@
 	var LIVE = /[;|\/\r\n]/;
 	var EDGES = /^[\s,.:\-\u2013\u2014]+|[\s,.:\-\u2013\u2014]+$/g;
 	var VAGUE = [ 'remote', 'full remote', 'teletravail', 'a distance', 'hybride' ];
+	// Departements et collectivites a « -et- » : ecrits avec des espaces (« Seine et Marne »), ils seraient
+	// coupes en deux par « et ». Meme liste que PlaceParser::HYPHENATED.
+	var LETTER = 'A-Za-z\u00C0-\u024F';
+	var HYPHENATED = [
+		'Eure-et-Loir', 'Ille-et-Vilaine', 'Indre-et-Loire', 'Loir-et-Cher', 'Lot-et-Garonne', 'Maine-et-Loire',
+		'Meurthe-et-Moselle', 'Sa\u00f4ne-et-Loire', 'Seine-et-Marne', 'Tarn-et-Garonne', 'Saint-Pierre-et-Miquelon',
+		'Wallis-et-Futuna'
+	].map( function ( name ) {
+		return {
+			name: name,
+			pattern: new RegExp( '(^|[^' + LETTER + '])' + name.replace( /-/g, '[\\s\\u00A0\\u202F\\-]+' ).replace( /\u00f4/, '[o\u00f4]' ) + '(?![' + LETTER + '])', 'gi' )
+		};
+	} );
 	var MAX_PIECES = 30;
 	var MAX_LENGTH = 2000;
 	var ICON_CITY = '\uD83D\uDCCD';
@@ -31,6 +44,15 @@
 		return normalize( text ).replace( /^(?:le|la|les|l) /, '' );
 	}
 
+	// Ramene les noms de HYPHENATED a leur forme a tirets ; le caractere qui precede est restitue.
+	function protect( text ) {
+		return HYPHENATED.reduce( function ( value, entry ) {
+			return value.replace( entry.pattern, function ( match, before ) {
+				return before + entry.name;
+			} );
+		}, text );
+	}
+
 	// Même découpage que PlaceParser::split() côté serveur : 2 000 caractères lus, « <br> » sépare
 	// comme un retour à la ligne, balises retirées, 30 morceaux au plus. Le texte reçu est déjà décodé
 	// (valeur du DOM) : les entités ne sont pas traitées. keepVague garde les mentions sans lieu
@@ -38,10 +60,10 @@
 	function pieces( text, keepVague ) {
 		var seen = Object.create( null );
 		var out = [];
-		String( text || '' ).slice( 0, MAX_LENGTH )
+		protect( String( text || '' ).slice( 0, MAX_LENGTH )
 			.replace( /<br\s*\/?>/gi, '\n' )
 			.replace( /<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, '' )
-			.replace( /<[^>]*>/g, '' )
+			.replace( /<[^>]*>/g, '' ) )
 			.split( SEPARATORS ).forEach( function ( part ) {
 				var piece = String( part || '' ).replace( EDGES, '' );
 				var id = normalize( piece ) || piece.toLowerCase();
