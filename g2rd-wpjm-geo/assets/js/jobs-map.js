@@ -11,6 +11,9 @@
 	var C = window.g2rdWpjmGeoMapCommon;
 	var loader = window.g2rdWpjmGeoLoader;
 	var COLOR = '#c0392b';
+	// Mêmes réglages que la carte libre ; le zoom Google (tuiles de 256 px) vaut le zoom MapLibre + 1.
+	var CLUSTER_RADIUS = 25;
+	var CLUSTER_MAX_ZOOM = 11;
 
 	function circleSvg( count, size ) {
 		var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + size + '" height="' + size + '" viewBox="0 0 ' + size + ' ' + size + '">' +
@@ -110,7 +113,7 @@
 			} );
 
 			if ( clustering && markers.length > 1 ) {
-				new window.markerClusterer.MarkerClusterer( {
+				var clusterOptions = {
 					map: map,
 					markers: markers,
 					renderer: {
@@ -122,7 +125,11 @@
 							return createMarker( cluster.position, Math.max( total, 2 ), C.sprintf( i18n.cluster, total ), 1000 + total );
 						}
 					}
-				} );
+				};
+				if ( 'function' === typeof window.markerClusterer.SuperClusterAlgorithm ) {
+					clusterOptions.algorithm = new window.markerClusterer.SuperClusterAlgorithm( { radius: CLUSTER_RADIUS, maxZoom: CLUSTER_MAX_ZOOM } );
+				}
+				new window.markerClusterer.MarkerClusterer( clusterOptions );
 			} else {
 				markers.forEach( function ( marker ) {
 					if ( useAdvanced ) {

@@ -43,7 +43,7 @@ const jobs = [
   { id: 7, title: 'Invalide', permalink: 'https://x.test/job/7', latitude: 'abc', longitude: 999 }
 ];
 
-async function map({ mapId, clustering, data, restFail, nonce }) {
+async function map({ mapId, clustering, data, restFail, nonce, noAlgorithm = false }) {
   const i18n = JSON.stringify({ loading: 'Chargement', error: 'ERREUR', empty: 'VIDE', view: 'Voir offre', manyJobs: '%d offres ici', cluster: 'Groupe de %d offres' }).replace(/"/g, '&quot;');
   const html = '<div class="g2rd-wpjm-geo-map" data-rest-url="https://x.test/wp-json/g2rd-wpjm-geo/v1/jobs" data-per-page="4" data-clustering="' + (clustering ? 1 : 0) + '" data-map-id="' + (mapId || '') + '" data-nonce="' + (nonce || '') + '" data-i18n="' + i18n + '"><div class="g2rd-wpjm-geo-map__canvas"></div><p class="g2rd-wpjm-geo-map__status">Chargement</p></div>';
   const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://x.test/' });
@@ -58,6 +58,7 @@ async function map({ mapId, clustering, data, restFail, nonce }) {
   };
   w.g2rdWpjmGeoLoader = { load: () => Promise.resolve({ importLibrary: n => Promise.resolve(libs[n]) }) };
   w.markerClusterer = { MarkerClusterer: function (o) { st.cluster = o; } };
+  if (!noAlgorithm) w.markerClusterer.SuperClusterAlgorithm = function (o) { this.options = o; };
   w.IntersectionObserver = undefined;
   w.fetch = (url, opt) => {
     st.fetches.push({ url, nonce: opt.headers['X-WP-Nonce'] });
@@ -961,6 +962,14 @@ const regionNoBox = { id: 15, title: 'Sans boite', permalink: 'https://x.test/jo
   rg = await regeo({ total: 4, osm: 4, update: 2, todo: 2 });
   check('mode libre : la ligne « a mettre a jour » est affichee avec sa valeur', rg.items.includes('A mettre a jour : 2'));
   check('offre ignoree : etiquette neutre', !!rg.tag && rg.tag.classList.contains('g2rd-tag--neutral'));
+
+  console.log('\nP. Regroupement des points');
+  o = await osmMap({ data: jobs });
+  check('carte libre : regroupement sur 25 px, jusqu au zoom 10', 25 === o.st.sources['g2rd-jobs'].clusterRadius && 10 === o.st.sources['g2rd-jobs'].clusterMaxZoom);
+  let gm = await map({ clustering: true, data: jobs });
+  check('carte Google : algorithme SuperCluster sur 25 px, jusqu au zoom 11', !!gm.st.cluster && !!gm.st.cluster.algorithm && 25 === gm.st.cluster.algorithm.options.radius && 11 === gm.st.cluster.algorithm.options.maxZoom);
+  gm = await map({ clustering: true, data: jobs, noAlgorithm: true });
+  check('carte Google sans SuperClusterAlgorithm : regroupement par defaut', !!gm.st.cluster && undefined === gm.st.cluster.algorithm);
 
   console.log('\nResultat JS : ' + pass + ' reussis, ' + fail + ' echoues');
   process.exit(fail ? 1 : 0);

@@ -18,6 +18,9 @@
 	var cfg = window.g2rdWpjmGeoOsm || {};
 	var COLOR = '#c0392b';
 	var SOURCE = 'g2rd-jobs';
+	// Regroupement des points : assez serré pour que Paris, Évreux, le Nord ou Lyon restent distincts en vue France.
+	var CLUSTER_RADIUS = 25;
+	var CLUSTER_MAX_ZOOM = 10;
 	var maplibrePromise = null;
 	var REGION_COLOR = '#ef6c00';
 	var REGION_LINE_COLOR = '#d35400';
@@ -523,8 +526,8 @@
 					type: 'geojson',
 					data: { type: 'FeatureCollection', features: features },
 					cluster: clustering,
-					clusterMaxZoom: 14,
-					clusterRadius: 50,
+					clusterMaxZoom: CLUSTER_MAX_ZOOM,
+					clusterRadius: CLUSTER_RADIUS,
 					clusterProperties: { jobs: [ '+', [ 'get', 'count' ] ] }
 				} );
 				map.addLayer( {
