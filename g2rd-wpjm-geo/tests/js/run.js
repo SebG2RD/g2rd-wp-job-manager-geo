@@ -651,7 +651,7 @@ const regionNoBox = { id: 15, title: 'Sans boite', permalink: 'https://x.test/jo
   check('ville avant la region trouvee par un mot de son alias', !/Région/.test(g.options()[0].textContent) && /Paris/.test(g.options()[0].textContent) && /Île-de-France/.test(g.options()[1].textContent) && /Région/.test(g.options()[1].textContent));
 
   // Commune homonyme d'une region : le libelle porte un indice que le serveur reconnait.
-  const homonym = { properties: { name: 'Bretagne', county: 'Indre', state: 'Centre-Val de Loire', country: 'France', postcode: '36110', osm_key: 'place' } };
+  const homonym = { properties: { name: 'Bretagne', county: 'Indre', state: 'Centre-Val de Loire', country: 'France', countrycode: 'FR', postcode: '36110', osm_key: 'place' } };
   const BRETAGNE = { code: '53', name: 'Bretagne', aliases: [] };
   g = await tagsAc({ features: [homonym], regions: REGIONS.concat([BRETAGNE]) });
   await type(g, 'bret');
@@ -659,12 +659,20 @@ const regionNoBox = { id: 15, title: 'Sans boite', permalink: 'https://x.test/jo
   g.options()[1].dispatchEvent(new g.w.MouseEvent('mousedown', { bubbles: true, cancelable: true })); await wait(10);
   check('commune homonyme choisie : libelle avec le departement, etiquette qui n est pas une region', 'Bretagne (36), Centre-Val de Loire, France' === g.native.value && 1 === g.tags().length && !g.tags()[0].classList.contains('g2rd-wpjm-geo-tags__tag--region'));
   const pick = async (state, postcode) => {
-    const h = await tagsAc({ features: [{ properties: { name: 'Bretagne', state, country: 'France', postcode, osm_key: 'place' } }], regions: REGIONS.concat([BRETAGNE]) });
+    const h = await tagsAc({ features: [{ properties: { name: 'Bretagne', state, country: 'France', countrycode: 'FR', postcode, osm_key: 'place' } }], regions: REGIONS.concat([BRETAGNE]) });
     await type(h, 'bret');
     h.options()[1].dispatchEvent(new h.w.MouseEvent('mousedown', { bubbles: true, cancelable: true })); await wait(10);
     return h.native.value;
   };
-  check('indice : 3 chiffres pour un code en 97, code postal complet pour la Corse, rien sans code postal', 'Bretagne (973), Guyane, France' === await pick('Guyane', '97351') && 'Bretagne 20100, Corse, France' === await pick('Corse', '20100') && 'Bretagne, Normandie, France' === await pick('Normandie', undefined) && 'Rouen, Normandie, France' === (await (async () => { const h = await tagsAc({ features: [{ properties: { name: 'Rouen', state: 'Normandie', country: 'France', postcode: '76000', osm_key: 'place' } }] }); await type(h, 'rou'); h.options()[0].dispatchEvent(new h.w.MouseEvent('mousedown', { bubbles: true, cancelable: true })); await wait(10); return h.native.value; })()));
+  check('indice : 3 chiffres pour un code en 97, code postal complet pour la Corse, rien sans code postal', 'Bretagne (973), Guyane, France' === await pick('Guyane', '97351') && 'Bretagne 20100, Corse, France' === await pick('Corse', '20100') && 'Bretagne, Normandie, France' === await pick('Normandie', undefined) && 'Rouen, Normandie, France' === (await (async () => { const h = await tagsAc({ features: [{ properties: { name: 'Rouen', state: 'Normandie', country: 'France', countrycode: 'FR', postcode: '76000', osm_key: 'place' } }] }); await type(h, 'rou'); h.options()[0].dispatchEvent(new h.w.MouseEvent('mousedown', { bubbles: true, cancelable: true })); await wait(10); return h.native.value; })()));
+  const foreign = async (countrycode, postcode) => {
+    const h = await tagsAc({ features: [{ properties: { name: 'Normandy', state: 'Missouri', country: 'Etats-Unis', countrycode, postcode, osm_key: 'place' } }], regions: REGIONS.map(r => '28' === r.code ? Object.assign({}, r, { aliases: r.aliases.concat(['Normandy']) }) : r) });
+    await type(h, 'normandy');
+    const o = h.options().find(x => /Missouri/.test(x.textContent));
+    o.dispatchEvent(new h.w.MouseEvent('mousedown', { bubbles: true, cancelable: true })); await wait(10);
+    return h.native.value;
+  };
+  check('ville etrangere homonyme d une region : code postal complet, jamais un faux departement', 'Normandy 63121, Missouri, Etats-Unis' === await foreign('US', '63121') && 'Normandy (63), Missouri, Etats-Unis' === await foreign('FR', '63121'));
   // B1 : régions affichées sans attendre Photon.
   g = await tagsAc({});
   g.w.fetch = () => new Promise(() => {});

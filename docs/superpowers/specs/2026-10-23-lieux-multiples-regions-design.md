@@ -63,7 +63,7 @@ S'applique, en mode OpenStreetMap seulement, au formulaire de dépôt et à l'é
   - **Régions** : liste intégrée (§ 2), sans tenir compte des accents ni de la casse, sigles et anciens noms compris.
   - **Villes** : Photon, avec les filtres actuels.
 - Les régions qui correspondent passent en tête, puis viennent les villes, la France d'abord, comme aujourd'hui.
-- Chaque proposition a une icône (📍 ville, 🗺️ région) et deux lignes : le nom, puis le détail (« Rouen » puis « Normandie, France », ou « Normandie » puis « Région »). Le libellé écrit dans le champ est « Nom, Région, Pays » (« Rouen, Normandie, France ») ; deux homonymes d'une même région sont distingués par leur département (« Nom, Département, Région, Pays »). Une commune dont le nom est celui d'une région reçoit en plus un indice que le serveur reconnaît : le département tiré du code postal (« Bretagne (36), Centre-Val de Loire, France », « Bretagne (973), … » pour un code en 97) ou, en Corse, le code postal complet (« Bretagne 20100, Corse, France »). Sans code postal, le nom reste seul.
+- Chaque proposition a une icône (📍 ville, 🗺️ région) et une seule ligne : le nom en gras suivi du détail en gris (« Rouen » puis « Normandie, France », ou « Normandie » puis « Région »). Le libellé écrit dans le champ est « Nom, Région, Pays » (« Rouen, Normandie, France ») ; deux homonymes d'une même région sont distingués par leur département (« Nom, Département, Région, Pays »). Une commune dont le nom est celui d'une région reçoit en plus un indice que le serveur reconnaît, quand Photon donne un code postal à 5 chiffres : pour une commune française, le département tiré du code postal (« Bretagne (36), Centre-Val de Loire, France », « Bretagne (973), … » pour un code en 97) ; en Corse ou hors de France, le code postal complet (« Bretagne 20100, Corse, France »). Sans code postal, le nom reste seul.
 - Choix à la souris ou au clavier (flèches, Entrée, Échap). Le lieu devient une étiquette, puis la saisie se vide pour le lieu suivant.
 
 ### Étiquettes
@@ -216,7 +216,7 @@ Cas où `Regions::find()` reconnaît le premier segment et où le morceau ne por
   - Pour une région : `formatted_address` « Normandie, France », `state_long` « Normandie », `country_long` « France », `country_short` « FR », et une ville vide.
 - **Source** : la méta `_g2rd_wpjm_geo_source = osm` reste posée.
 - **Aucun lieu trouvé** : les métas sont effacées comme aujourd'hui pour un lieu introuvable, et la liste de lieux est supprimée.
-- **Coordonnées étrangères** : si `geolocation_lat` est écrit par autre chose que le plugin (saisie manuelle, autre extension), la source **et** `_g2rd_wpjm_geo_places` sont effacées. En mode libre, l'offre quitte donc la carte (la carte ne montre que les offres dont la source est `osm`) jusqu'au re-géocodage, par l'outil ou par un nouvel enregistrement.
+- **Coordonnées étrangères** : si `geolocation_lat` est écrit par autre chose que le plugin (saisie manuelle, autre extension), la source **et** `_g2rd_wpjm_geo_places` sont effacées. En mode libre, l'offre quitte donc la carte (la carte ne montre que les offres dont la source est `osm`) jusqu'au re-géocodage, par l'outil, ou par un nouvel enregistrement qui change le texte du lieu (WordPress ne déclenche pas le hook pour une valeur identique).
 
 **Outil de re-géocodage** (sur action de l'administrateur seulement, rien n'est lancé à l'activation)
 
@@ -259,7 +259,7 @@ Dans `GET /wp-json/g2rd-wpjm-geo/v1/jobs`, chaque offre gagne un champ `places`,
 
 ### Fiche publique et administration
 
-- Le filtre `the_job_location` remplace ` ; ` par `, ` à l'affichage : « Paris, Lyon, Normandie ».
+- Le filtre `the_job_location` affiche, quand il y a plusieurs lieux, le nom court de chacun séparé par des virgules (« Paris, Lyon, Normandie ») ; un lieu seul garde son texte.
 - Le formulaire d'édition lit la méta directement : il garde les « ; ».
 
 **Mode Google** : rien ne change.
@@ -375,12 +375,12 @@ Dans `GET /wp-json/g2rd-wpjm-geo/v1/jobs`, chaque offre gagne un champ `places`,
 - Texte libre et imports, règle de la virgule : « Lyon, Rhône » donne deux lieux, Lyon et « Rhône » (Photon rattache Lyon à la « Métropole de Lyon », pas au département du Rhône) ; « Vienne, Poitiers » ne donne que Poitiers (la Vienne est le département de Poitiers) ; « Normandie, Rouen, Caen » donne la zone Normandie plus Rouen et Caen, alors que « Rouen, Caen, Normandie » donne Rouen et Caen seulement. Pour lever le doute, séparer les lieux par « ; ».
 - Les noms de régions et leurs variantes sont reconnus en français, ainsi que les noms anglais et allemands que Photon renvoie selon la langue du site (Normandy, Brittany, Korsika…). Les mentions vagues ne sont pas toutes reconnues : « Télétravail », « À distance » et « Hybride » en français, mais seulement « Remote » et « Full remote » en anglais ; « Hybrid », « Anywhere » et « Work from home » sont cherchées comme un nom de lieu.
 - Une ancienne région (Alsace, Lorraine…) s'affiche comme la zone actuelle (Grand Est) ; deux anciennes régions de la même zone n'en font qu'une.
-- Sans l'option de WP Job Manager « Display Location Address », la fiche affiche les noms de tous les lieux (« Paris, Lyon, Normandie ») et son lien Google Maps cherche ce texte. Avec l'option, la fiche et le lien portent sur l'adresse du premier lieu seulement (l'adresse enregistrée dans `geolocation_formatted_address`).
+- Sans l'option de WP Job Manager « Display Location Address », la fiche affiche les noms de tous les lieux (« Paris, Lyon, Normandie ») et son lien Google Maps cherche ce texte. Avec l'option, la fiche et le lien portent sur l'adresse du premier lieu seulement. Les données structurées de WP Job Manager portent sur le premier lieu (champs de géolocalisation) ; à défaut de géolocalisation, elles reprennent le texte affiché.
 - L'affichage public liste le nom court de chaque lieu, séparé par des virgules (« Rouen, Normandie, France ; Caen » devient « Rouen, Caen »), y compris en mode Google ; un lieu seul garde son texte complet.
 - Sur la carte, le nombre d'un regroupement compte les lieux et non les offres distinctes ; à petite échelle, certaines étiquettes de région sont masquées pour éviter les chevauchements (la zone reste cliquable et la région figure dans la liste sous la carte).
 - Retour au mode Google : la liste des lieux est ignorée et WP Job Manager géocode « Paris ; Lyon » comme une seule adresse.
 - Une commune dont le nom contient « et » écrit avec des espaces plutôt qu'avec des tirets (« Saint Germain et Mons ») est coupée en deux. Seuls les départements et collectivités à « -et- » sont protégés.
-- Une commune dont le nom est celui d'une région (« Bretagne », dans l'Indre) saisie à la main, sans indice de département ni code postal, est lue comme la région. Choisie dans la liste, elle reçoit un indice (« Bretagne (36), Centre-Val de Loire, France »).
+- Une commune dont le nom est celui d'une région (« Bretagne », dans l'Indre) saisie à la main, sans indice de département ni code postal, est lue comme la région. Choisie dans la liste, elle reçoit un indice quand Photon donne un code postal à 5 chiffres : le département pour une commune française (« Bretagne (36), Centre-Val de Loire, France »), le code postal complet pour la Corse ou hors de France. Sans code postal à 5 chiffres, elle ne reçoit aucun indice et est lue comme la région.
 - Homonymes dans « Aussi à » : une offre à deux Saint-Denis n'affiche pas l'autre Saint-Denis sur le point d'un Saint-Denis.
 - « et » dans un libellé Photon choisi n'est pas neutralisé (contrairement à « / », « | » et « ; »).
 - « Lorraine » après « Grand Est » est refusé comme doublon (même région).

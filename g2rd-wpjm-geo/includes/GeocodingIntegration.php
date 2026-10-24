@@ -287,15 +287,26 @@ class GeocodingIntegration {
 		if ( null === $marked ) {
 			return $location;
 		}
-		$names = array();
+		$trim   = '/^[\s\x{00A0}\x{202F}]+|[\s\x{00A0}\x{202F}]+$/u';
+		$places = array();
 		foreach ( explode( chr( 1 ), $marked ) as $place ) {
+			$place = (string) preg_replace( $trim, '', $place );
+			if ( '' !== $place ) {
+				$places[] = $place;
+			}
+		}
+		if ( count( $places ) < 2 ) {
+			// Un seul lieu (« ; » de bord écartés) : texte entier ; aucun lieu : chaîne vide.
+			return $places ? $places[0] : '';
+		}
+		$names = array();
+		foreach ( $places as $place ) {
 			$comma = strpos( $place, ',' );
-			$name  = false === $comma ? $place : substr( $place, 0, $comma );
-			$name  = (string) preg_replace( '/^[\s\x{00A0}\x{202F}]+|[\s\x{00A0}\x{202F}]+$/u', '', $name );
+			$name  = (string) preg_replace( $trim, '', false === $comma ? $place : substr( $place, 0, $comma ) );
 			if ( '' !== $name ) {
 				$names[] = $name;
 			}
 		}
-		return $names ? implode( ', ', $names ) : $location;
+		return $names ? implode( ', ', $names ) : '';
 	}
 }

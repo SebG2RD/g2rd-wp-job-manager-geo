@@ -1393,6 +1393,8 @@ check( 'affichage : « ;; », espace insécable et « ; » de bord', 'Paris, Lyo
 check( 'affichage : plusieurs lieux choisis dans la liste, nom court de chacun', 'Rouen, Caen, Saint-Denis' === apply_filters( 'the_job_location', 'Rouen, Normandie, France ; Caen, Normandie, France ; Saint-Denis, La Réunion, France', null ) );
 check( 'affichage : entité HTML conservée dans un lieu parmi plusieurs', 'Saint-L&#039;Ô, Caen' === apply_filters( 'the_job_location', 'Saint-L&#039;Ô, Normandie ; Caen', null ) );
 check( 'affichage : parties vides écartées avec des libellés complets', 'Rouen, Caen' === apply_filters( 'the_job_location', "Rouen, Normandie ; , Calvados ;\u{00A0}Caen, Normandie ;", null ) );
+check( 'affichage : un seul lieu avec « ; » de bord garde son texte entier', 'Rouen, Normandie, France' === apply_filters( 'the_job_location', 'Rouen, Normandie, France ; ', null ) && 'Rouen, Normandie, France' === apply_filters( 'the_job_location', '; Rouen, Normandie, France', null ) );
+check( 'affichage : « ;;; » donne une chaîne vide', '' === apply_filters( 'the_job_location', ';;;', null ) );
 check( 'affichage : entité sans séparateur inchangée', 'Paris &amp; Lyon' === apply_filters( 'the_job_location', 'Paris &amp; Lyon', null ) );
 
 unset( G2RD_Test_State::$hooks['shutdown'] );

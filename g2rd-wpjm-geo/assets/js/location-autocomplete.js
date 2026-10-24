@@ -75,7 +75,9 @@
 		if ( ! T || ! code || ! T.findRegion( props.name, regionIndex ) ) {
 			return props.name;
 		}
-		if ( '20' === code.slice( 0, 2 ) ) {
+		// Hors de France, ou Corse : code postal complet (pas de departement deduit du code).
+		var foreign = String( props.countrycode || '' ).toUpperCase() !== 'FR';
+		if ( foreign || '20' === code.slice( 0, 2 ) ) {
 			return props.name + ' ' + code;
 		}
 		return props.name + ' (' + code.slice( 0, '97' === code.slice( 0, 2 ) ? 3 : 2 ) + ')';
