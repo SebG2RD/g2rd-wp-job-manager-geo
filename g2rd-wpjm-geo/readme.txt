@@ -76,7 +76,7 @@ En mode libre, saisir chaque lieu dans le champ « Lieu » (étiquettes) ; sans 
 
 = Limites connues des lieux multiples =
 * Texte libre et imports, règle de la virgule : « Lyon, Rhône » donne deux lieux, Lyon et « Rhône » (Photon rattache Lyon à la « Métropole de Lyon », pas au département du Rhône) ; « Vienne, Poitiers » ne donne que Poitiers (la Vienne est le département de Poitiers) ; « Normandie, Rouen, Caen » donne la zone Normandie plus Rouen et Caen, alors que « Rouen, Caen, Normandie » donne Rouen et Caen seulement. Pour lever le doute, séparer les lieux par « ; ».
-* Les noms de régions, leurs variantes et les mentions vagues (« Télétravail », « Remote », « Hybride »…) sont reconnus en français.
+* Les noms de régions et leurs variantes sont reconnus en français, ainsi que les noms anglais et allemands que Photon renvoie selon la langue du site (Normandy, Brittany, Korsika…) ; les mentions vagues (« Télétravail », « Remote », « Hybride »…) sont reconnues en français et en anglais.
 * Une ancienne région (Alsace, Lorraine…) s'affiche comme la zone actuelle (Grand Est) ; deux anciennes régions de la même zone n'en font qu'une.
 * L'option de WP Job Manager « Display Location Address » affiche l'adresse du premier lieu seulement ; le lien Google Maps de la fiche et les données structurées de WP Job Manager portent aussi sur le premier lieu.
 * L'affichage public remplace « ; » par « , » (« Paris, Lyon, Normandie »), y compris en mode Google.

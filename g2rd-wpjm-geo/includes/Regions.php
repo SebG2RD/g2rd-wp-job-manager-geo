@@ -73,6 +73,21 @@ class Regions {
 		'Picardie'             => '32',
 		'Haute-Normandie'      => '28',
 		'Basse-Normandie'      => '28',
+		// Noms anglais et allemands : ceux que Photon renvoie selon la langue du site.
+		'Normandy'            => '28',
+		'Upper Normandy'      => '28',
+		'Lower Normandy'      => '28',
+		'Brittany'            => '53',
+		'Corsica'             => '94',
+		'Korsika'             => '94',
+		'Occitania'           => '76',
+		'Okzitanien'          => '76',
+		'New Aquitaine'       => '75',
+		'Neu-Aquitanien'      => '75',
+		'French Guiana'       => '03',
+		'Französisch-Guayana' => '03',
+		'Burgundy'            => '27',
+		'Picardy'             => '32',
 	);
 
 	/**

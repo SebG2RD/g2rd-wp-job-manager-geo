@@ -106,7 +106,7 @@ La virgule ne sépare rien à cette étape : elle est traitée au § 3.
 - le code INSEE ;
 - le nom officiel ;
 - un centre fixe : centre de gravité du plus grand polygone, vérifié à l'intérieur du contour et précalculé depuis le fichier des contours (§ 6) ;
-- des variantes.
+- des variantes, dont les noms anglais et allemands que Photon renvoie selon la langue du site (« Normandy », « Brittany », « Corsica », « Korsika », « Occitania »…), pour que la règle de la virgule reconnaisse la région d'un résultat quelle que soit la langue du site.
 
 | Codes | Régions |
 |---|---|
@@ -362,7 +362,7 @@ Dans `GET /wp-json/g2rd-wpjm-geo/v1/jobs`, chaque offre gagne un champ `places`,
 - **Charge sur Photon** : jusqu'à 10 textes par offre, voire plus en seconde passe. Le cache par texte exact, le budget d'un appel en saisie interactive et la file d'attente la limitent. La saisie à étiquettes produit des « ; », sans recours à la règle de la virgule.
 - **Règle de la virgule** : elle ne joue que pour le texte libre et les imports.
   - `Paris, Normandie` : si Photon connaît un lieu nommé « Paris » en Normandie, ce lieu l'emporte. C'est déjà le comportement actuel des indices.
-  - Une région écrite autrement que dans Photon et absente des variantes (« Normandy ») devient un lieu à part, donc une zone en trop.
+  - Une région écrite autrement que dans Photon et absente des variantes devient un lieu à part, donc une zone en trop.
 - **Première passe** : Photon reçoit tout le texte et ne renvoie que 5 résultats. La ville cherchée peut en être absente (`Rouen, Caen, Le Havre`) ; c'est le rôle de la seconde passe.
 - **Homonymes de régions** (Bretagne, Lorraine…) : la commune n'est retrouvée qu'avec un indice de département ou de code postal.
 - **Anciennes régions** : « Alsace » s'affiche comme toute la zone Grand Est.
@@ -372,7 +372,7 @@ Dans `GET /wp-json/g2rd-wpjm-geo/v1/jobs`, chaque offre gagne un champ `places`,
 ## Limites connues
 
 - Texte libre et imports, règle de la virgule : « Lyon, Rhône » donne deux lieux, Lyon et « Rhône » (Photon rattache Lyon à la « Métropole de Lyon », pas au département du Rhône) ; « Vienne, Poitiers » ne donne que Poitiers (la Vienne est le département de Poitiers) ; « Normandie, Rouen, Caen » donne la zone Normandie plus Rouen et Caen, alors que « Rouen, Caen, Normandie » donne Rouen et Caen seulement. Pour lever le doute, séparer les lieux par « ; ».
-- Les noms de régions, leurs variantes et les mentions vagues (« Télétravail », « Remote », « Hybride »…) sont reconnus en français.
+- Les noms de régions et leurs variantes sont reconnus en français, ainsi que les noms anglais et allemands que Photon renvoie selon la langue du site (Normandy, Brittany, Korsika…) ; les mentions vagues (« Télétravail », « Remote », « Hybride »…) sont reconnues en français et en anglais.
 - Une ancienne région (Alsace, Lorraine…) s'affiche comme la zone actuelle (Grand Est) ; deux anciennes régions de la même zone n'en font qu'une.
 - L'option de WP Job Manager « Display Location Address » affiche l'adresse du premier lieu seulement ; le lien Google Maps de la fiche et les données structurées de WP Job Manager portent aussi sur le premier lieu.
 - L'affichage public remplace « ; » par « , » (« Paris, Lyon, Normandie »), y compris en mode Google.

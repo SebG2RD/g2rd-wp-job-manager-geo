@@ -1079,6 +1079,7 @@ check( 'nom officiel : code, nom, centre', is_array( $n ) && '28' === $n['code']
 check( 'accents, casse, tirets et article ignorés', '11' === Regions::find( 'ile de france' )['code'] && '11' === Regions::find( "l'Île-de-France" )['code'] && '04' === Regions::find( 'la réunion' )['code'] && '93' === Regions::find( 'provence alpes cote d azur' )['code'] );
 check( 'sigles et variantes', '11' === Regions::find( 'IDF' )['code'] && '11' === Regions::find( 'Région parisienne' )['code'] && '93' === Regions::find( 'paca' )['code'] && '93' === Regions::find( 'Région Sud' )['code'] && '84' === Regions::find( 'AURA' )['code'] && '32' === Regions::find( 'HDF' )['code'] && '27' === Regions::find( 'BFC' )['code'] && '24' === Regions::find( 'Région Centre' )['code'] && '04' === Regions::find( 'Réunion' )['code'] && '03' === Regions::find( 'Guyane française' )['code'] );
 check( 'anciennes régions rattachées à l’actuelle', '44' === Regions::find( 'Alsace' )['code'] && '75' === Regions::find( 'Poitou-Charentes' )['code'] && '84' === Regions::find( 'Rhône-Alpes' )['code'] && '27' === Regions::find( 'Franche-Comté' )['code'] && '76' === Regions::find( 'Midi-Pyrénées' )['code'] && '32' === Regions::find( 'Picardie' )['code'] && '28' === Regions::find( 'Haute-Normandie' )['code'] );
+check( 'noms anglais et allemands renvoyés par Photon', '53' === Regions::find( 'Brittany' )['code'] && '94' === Regions::find( 'korsika' )['code'] && '28' === Regions::find( 'Normandy' )['code'] && '76' === Regions::find( 'Okzitanien' )['code'] && '03' === Regions::find( 'French Guiana' )['code'] );
 check( 'préfixe « Région » accepté', '53' === Regions::find( 'Région Bretagne' )['code'] );
 $every = 0;
 foreach ( Regions::DATA as $code => $row ) {
@@ -1087,7 +1088,7 @@ foreach ( Regions::DATA as $code => $row ) {
 foreach ( Regions::ALIASES as $alias => $code ) {
 	$every += ( $code === Regions::find( (string) $alias )['code'] ) ? 1 : 0;
 }
-check( 'chaque nom officiel et chaque variante retrouve sa région (44 entrées)', 44 === $every );
+check( 'chaque nom officiel et chaque variante retrouve sa région (' . ( count( Regions::DATA ) + count( Regions::ALIASES ) ) . ' entrées)', count( Regions::DATA ) + count( Regions::ALIASES ) === $every );
 check( 'apostrophe typographique, « Région » seul, nom complet malgré la variante « Région Centre »', '11' === Regions::find( 'l’Île-de-France' )['code'] && null === Regions::find( 'Région' ) && '24' === Regions::find( 'Région Centre-Val de Loire' )['code'] );
 check( 'texte qui n’est pas une région : null', null === Regions::find( 'Rouen' ) && null === Regions::find( 'Centre' ) && null === Regions::find( 'Bretagne (90)' ) && null === Regions::find( '' ) && null === Regions::get( '99' ) );
 $all = Regions::all();
@@ -1293,6 +1294,14 @@ $r      = $locator->locate( 'Normandie' );
 check( 'région seule : centre fixe, adresse régionale, sans requête', is_array( $r ) && array( 'type' => 'region', 'label' => 'Normandie', 'lat' => '49.1202', 'lng' => '0.1128', 'region' => '28' ) === $r['places'][0] && 'Normandie' === $r['address']['state_long'] && 'FR' === $r['address']['country_short'] && '' === $r['address']['city'] && 'Normandie, France' === $r['address']['formatted_address'] && count( $GLOBALS['g2rd_world_queries'] ) === $before );
 check( 'homonyme avec indice : « Bretagne (90) » cherché comme une ville', 'city:Bretagne' === g2rd_labels( $locator->locate( 'Bretagne (90)' ) ) && in_array( 'Bretagne', $GLOBALS['g2rd_world_queries'], true ) );
 check( 'doublons après placement : « Alsace ; Lorraine » donne une seule zone Grand Est', 'region:Grand Est' === g2rd_labels( $locator->locate( 'Alsace ; Lorraine' ) ) );
+$world_responder = G2RD_Test_State::$http_responder;
+// Photon d'un site en anglais : la région de Rouen s'appelle « Normandy ».
+G2RD_Test_State::$http_responder = function () {
+	return photon_reply( array( photon_feature( 'Rouen', 'place', 'city', 1.0999, 49.4432, array( 'county' => 'Seine-Maritime', 'state' => 'Normandy', 'country' => 'France', 'countrycode' => 'FR' ) ) ) );
+};
+check( 'région renvoyée en anglais par Photon : « Rouen, Normandie, France » donne un seul lieu', 'city:Rouen' === g2rd_labels( $locator->locate( 'Rouen, Normandie, France' ) ) );
+check( 'saisie « Rouen, Normandy » : un seul lieu', 'city:Rouen' === g2rd_labels( $locator->locate( 'Rouen, Normandy' ) ) );
+G2RD_Test_State::$http_responder = $world_responder;
 check( 'doublons après placement : même ville sous deux écritures', 'city:Rouen' === g2rd_labels( $locator->locate( 'Rouen ; Rouen, Normandie' ) ) );
 $twelve = implode( ' ; ', array_slice( array_column( Regions::all(), 'name' ), 0, 12 ) );
 check( 'plafond : 10 lieux au plus', 10 === count( $locator->locate( $twelve )['places'] ) );
