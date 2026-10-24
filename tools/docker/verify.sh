@@ -20,6 +20,14 @@ wp core is-installed >/dev/null 2>&1 || wp core install --url="$B" --title="G2RD
 wp rewrite structure '/%postname%/' >/dev/null
 wp theme activate twentytwentyfive >/dev/null 2>&1
 wp plugin activate wp-job-manager go-fetch-jobs-wp-job-manager g2rd-wpjm-geo >/dev/null
+# Remise à zéro : la base survit d'une exécution à l'autre, et les offres laissées par les passages
+# précédents (géocodées en 1.1.x, sans liste de lieux) fausseraient les comptes et l'ordre de la section 8.
+# Le cache des réponses Photon est conservé : il épargne le service public et ne fausse aucun contrôle.
+OLD=$(wp post list --post_type=job_listing --post_status=publish,draft,pending,private,future,trash --field=ID 2>/dev/null | tr '
+' ' ')
+[ -n "${OLD// /}" ] && wp post delete $OLD --force >/dev/null
+for k in g2rd_wpjm_geo_geocode_queue g2rd_wpjm_geo_url_queue; do wp option delete "$k" >/dev/null 2>&1; done
+for k in g2rd_wpjm_geo_geocode_lock g2rd_wpjm_geo_url_queue_lock g2rd_wpjm_geo_photon_down; do wp transient delete "$k" >/dev/null 2>&1; done
 wp option update job_manager_user_requires_account 0 >/dev/null
 wp option update g2rd_wpjm_geo_settings '{"provider":"google"}' --format=json >/dev/null
 
