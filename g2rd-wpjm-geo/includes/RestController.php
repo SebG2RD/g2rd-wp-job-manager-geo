@@ -277,22 +277,25 @@ class RestController {
 		if ( get_option( 'job_manager_enable_types' ) && function_exists( 'wpjm_get_the_job_types' ) ) {
 			foreach ( (array) wpjm_get_the_job_types( $post ) as $type ) {
 				if ( is_object( $type ) && isset( $type->name ) ) {
-					$types[] = $this->text( $type->name );
+					$types[] = self::plain( $type->name );
 				}
 			}
 		}
 
-		$job = array(
+		$location = self::plain( get_post_meta( $id, '_job_location', true ) );
+		$city     = self::plain( get_post_meta( $id, 'geolocation_city', true ) );
+		$job      = array(
 			'id'        => (int) $id,
-			'title'     => $this->text( get_the_title( $post ) ),
+			'title'     => self::plain( get_the_title( $post ) ),
 			'permalink' => esc_url_raw( get_permalink( $post ), array( 'http', 'https' ) ),
-			'company'   => $this->text( function_exists( 'get_the_company_name' ) ? get_the_company_name( $post ) : '' ),
-			'location'  => $this->text( get_post_meta( $id, '_job_location', true ) ),
-			'city'      => $this->text( get_post_meta( $id, 'geolocation_city', true ) ),
-			'country'   => $this->text( get_post_meta( $id, 'geolocation_country_long', true ) ),
+			'company'   => self::plain( function_exists( 'get_the_company_name' ) ? get_the_company_name( $post ) : '' ),
+			'location'  => $location,
+			'city'      => $city,
+			'country'   => self::plain( get_post_meta( $id, 'geolocation_country_long', true ) ),
 			'latitude'  => $lat,
 			'longitude' => $lng,
 			'job_type'  => implode( ', ', array_filter( $types ) ),
+			'places'    => self::places( $id, $lat, $lng, '' !== $city ? $city : $location, Settings::PROVIDER_OSM === $this->settings->get_provider() ),
 		);
 
 		/**
@@ -312,11 +315,75 @@ class RestController {
 	 * @param mixed $value Valeur.
 	 * @return string
 	 */
-	private function text( $value ) {
+	private static function plain( $value ) {
 		if ( ! is_scalar( $value ) ) {
 			return '';
 		}
 		return trim( html_entity_decode( wp_strip_all_tags( (string) $value ), ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
+	}
+
+	/**
+	 * Lieux de l'offre pour la carte : la liste du plugin (mode libre), sinon un
+	 * seul lieu construit depuis les coordonnées de WP Job Manager.
+	 *
+	 * @param int    $id       ID de l'offre.
+	 * @param float  $lat      Latitude du premier lieu.
+	 * @param float  $lng      Longitude du premier lieu.
+	 * @param string $label    Libellé du lieu unique (ville, ou texte du lieu).
+	 * @param bool   $use_list Lire la liste du plugin (mode libre).
+	 * @return list<array<string,string|float>>
+	 */
+	public static function places( $id, $lat, $lng, $label, $use_list ) {
+		$places = array();
+		$stored = $use_list ? get_post_meta( $id, GeocodingIntegration::META_PLACES, true ) : array();
+		foreach ( is_array( $stored ) ? array_slice( $stored, 0, PlaceLocator::MAX_PLACES ) : array() as $place ) {
+			$clean = self::clean_place( $place );
+			if ( $clean ) {
+				$places[] = $clean;
+			}
+		}
+		if ( ! $places ) {
+			$places[] = array(
+				'type'  => 'city',
+				'label' => (string) $label,
+				'lat'   => (float) $lat,
+				'lng'   => (float) $lng,
+			);
+		}
+		return $places;
+	}
+
+	/**
+	 * Lieu enregistré, revérifié : coordonnées bornées, région connue (nom officiel).
+	 *
+	 * @param mixed $place Élément de la métadonnée.
+	 * @return array<string,string|float>|null
+	 */
+	private static function clean_place( $place ) {
+		if ( ! is_array( $place ) || ! isset( $place['type'], $place['label'], $place['lat'], $place['lng'] ) || ! is_numeric( $place['lat'] ) || ! is_numeric( $place['lng'] ) ) {
+			return null;
+		}
+		$lat = round( (float) $place['lat'], 6 );
+		$lng = round( (float) $place['lng'], 6 );
+		if ( $lat < -90 || $lat > 90 || $lng < -180 || $lng > 180 || ( 0.0 === $lat && 0.0 === $lng ) ) {
+			return null;
+		}
+		$clean = array(
+			'type'  => 'city',
+			'label' => self::plain( $place['label'] ),
+			'lat'   => $lat,
+			'lng'   => $lng,
+		);
+		if ( 'region' === $place['type'] ) {
+			$region = isset( $place['region'] ) && is_scalar( $place['region'] ) ? Regions::get( (string) $place['region'] ) : null;
+			if ( ! $region ) {
+				return null;
+			}
+			$clean['type']   = 'region';
+			$clean['label']  = $region['name'];
+			$clean['region'] = $region['code'];
+		}
+		return $clean;
 	}
 
 	/**

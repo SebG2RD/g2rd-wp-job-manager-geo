@@ -1478,6 +1478,24 @@ AdminMenu::reset();
 check( 'bandeau : seule l’offre hors carte est signalée absente, l’offre 1.1.x est invitée à la mise à jour', false !== strpos( $html, '1 offre n’est pas géocodée par le fournisseur actif' ) && false !== strpos( $html, '1 offre libre n’affiche qu’un lieu' ) );
 G2RD_Test_State::$http_responder = null;
 
+echo PHP_EOL . '38. Carte : lieux de chaque offre (REST)' . PHP_EOL;
+boot();
+G2RD_Test_State::$meta[700][ GeocodingIntegration::META_PLACES ] = array(
+	array( 'type' => 'city', 'label' => 'Rouen', 'lat' => '49.4432', 'lng' => '1.0999' ),
+	array( 'type' => 'region', 'label' => '<b>Normandie</b>', 'lat' => '49.1202', 'lng' => '0.1128', 'region' => '28' ),
+	array( 'type' => 'region', 'label' => 'Inconnue', 'lat' => '1', 'lng' => '1', 'region' => '99' ),
+	array( 'type' => 'city', 'label' => 'Hors bornes', 'lat' => '120', 'lng' => '1' ),
+	array( 'type' => 'city', 'label' => '<img src=x onerror=alert(1)>Lyon', 'lat' => '45.764', 'lng' => '4.8357' ),
+	'pas un tableau',
+);
+$p = RestController::places( 700, 49.4432, 1.0999, 'Rouen', true );
+check( 'liste du plugin : villes et régions, coordonnées revérifiées, région inconnue écartée', 3 === count( $p ) && 'city' === $p[0]['type'] && 49.4432 === $p[0]['lat'] && 'region' === $p[1]['type'] && '28' === $p[1]['region'] && 0.1128 === $p[1]['lng'] && 'Lyon' === $p[2]['label'] );
+check( 'libellés en texte brut ; région sous son nom officiel', 'Normandie' === $p[1]['label'] && false === strpos( wp_json_encode( $p ), '<' ) );
+$p = RestController::places( 701, 48.8566, 2.3522, 'Paris', true );
+check( 'offre sans liste (ancienne offre) : un lieu construit depuis les coordonnées', array( array( 'type' => 'city', 'label' => 'Paris', 'lat' => 48.8566, 'lng' => 2.3522 ) ) === $p );
+$p = RestController::places( 700, 49.4432, 1.0999, 'Rouen', false );
+check( 'mode Google : liste ignorée, point unique', 1 === count( $p ) && 'Rouen' === $p[0]['label'] );
+
 $results = $GLOBALS['g2rd_results'];
 echo PHP_EOL . sprintf( 'Résultat : %d réussis, %d échoués', $results['pass'], $results['fail'] ) . PHP_EOL;
 exit( $results['fail'] ? 1 : 0 );
