@@ -29,6 +29,7 @@ use G2RD\WPJMGeo\Logger;
 use G2RD\WPJMGeo\MigrationTool;
 use G2RD\WPJMGeo\PhotonGeocoder;
 use G2RD\WPJMGeo\PlaceParser;
+use G2RD\WPJMGeo\PlaceLocator;
 use G2RD\WPJMGeo\PrivacyPolicy;
 use G2RD\WPJMGeo\Regions;
 use G2RD\WPJMGeo\RegeocodeTool;
@@ -1170,6 +1171,120 @@ $down = $geo->geocode_detailed( 'Caen' );
 check( 'panne de Photon : erreur non mise en cache, l’appel suivant interroge Photon', is_wp_error( $down ) && false === $geo->is_cached( 'Caen' ) && is_wp_error( $geo->geocode_detailed( 'Caen' ) ) && 4 === count( $urls ) );
 G2RD_Test_State::$transients[ array_keys( G2RD_Test_State::$transients )[0] ] = array( 'r' => array( 'foo' => 'bar' ) );
 check( 'entrée de cache mal formée (sans coordonnées) : ignorée', null === $geo->geocode_detailed( 'Rouen, Seine-Maritime' ) );
+G2RD_Test_State::$http_responder = null;
+
+echo PHP_EOL . '35. Lieux d’une offre : règle de la virgule' . PHP_EOL;
+
+/** Villes connues du Photon simulé : longitude, latitude, département, région, pays, code pays, code postal. */
+function g2rd_world_feature( $name ) {
+	$cities = array(
+		'Rouen'    => array( 1.0999, 49.4432, 'Seine-Maritime', 'Normandie', 'France', 'FR', '76000' ),
+		'Caen'     => array( -0.3707, 49.1829, 'Calvados', 'Normandie', 'France', 'FR', '14000' ),
+		'Le Havre' => array( 0.1079, 49.4938, 'Seine-Maritime', 'Normandie', 'France', 'FR', '76600' ),
+		'Paris'    => array( 2.3522, 48.8566, 'Paris', 'Île-de-France', 'France', 'FR', '75001' ),
+		'Lyon'     => array( 4.8357, 45.764, 'Métropole de Lyon', 'Auvergne-Rhône-Alpes', 'France', 'FR', '69001' ),
+		'Brest'    => array( -4.4861, 48.3904, 'Finistère', 'Bretagne', 'France', 'FR', '29200' ),
+		'Bretagne' => array( 6.9917, 47.5986, 'Territoire de Belfort', 'Bourgogne-Franche-Comté', 'France', 'FR', '90130' ),
+		'London'   => array( -81.2497, 42.9837, 'Middlesex County', 'Ontario', 'Canada', 'CA', 'N6A' ),
+	);
+	list( $lng, $lat, $county, $state, $country, $code, $postcode ) = $cities[ $name ];
+	return photon_feature( $name, 'place', 'city', $lng, $lat, array( 'county' => $county, 'state' => $state, 'country' => $country, 'countrycode' => $code, 'postcode' => $postcode ) );
+}
+/**
+ * Photon simulé : $replies associe un texte exact envoyé à Photon aux villes renvoyées
+ * (dans l'ordre de Photon) ; un texte égal au nom d'une ville connue renvoie cette ville.
+ */
+function g2rd_world( array $replies ) {
+	$GLOBALS['g2rd_world_queries']   = array();
+	G2RD_Test_State::$http_responder = function ( $method, $url ) use ( $replies ) {
+		parse_str( (string) parse_url( $url, PHP_URL_QUERY ), $query );
+		$q                                 = isset( $query['q'] ) ? (string) $query['q'] : '';
+		$GLOBALS['g2rd_world_queries'][] = $q;
+		$known                             = array( 'Rouen', 'Caen', 'Le Havre', 'Paris', 'Lyon', 'Brest', 'Bretagne', 'London' );
+		$names                             = isset( $replies[ $q ] ) ? $replies[ $q ] : ( in_array( $q, $known, true ) ? array( $q ) : array() );
+		return photon_reply( array_map( 'g2rd_world_feature', $names ) );
+	};
+}
+/** « type:libellé » de chaque lieu, joints par « | ». */
+function g2rd_labels( $result ) {
+	if ( ! is_array( $result ) ) {
+		return 'erreur';
+	}
+	return implode(
+		' | ',
+		array_map(
+			function ( $place ) {
+				return $place['type'] . ':' . $place['label'];
+			},
+			$result['places']
+		)
+	);
+}
+
+list( $s ) = boot();
+$sleeps    = 0;
+$locator   = new PlaceLocator(
+	new PhotonGeocoder( $s ),
+	function () use ( &$sleeps ) {
+		$sleeps++;
+	}
+);
+g2rd_world(
+	array(
+		'London, Ontario, Canada' => array( 'London' ),
+		'Rouen, Normandie'        => array( 'Rouen' ),
+		'Rouen, Seine-Maritime'   => array( 'Rouen' ),
+		'Paris, Lyon'             => array( 'Paris', 'Lyon' ),
+		'Rouen, Caen, Normandie'  => array( 'Caen' ), // Rouen absente des 5 premiers résultats.
+		'Paris, Normandie'        => array( 'Paris' ),
+	)
+);
+$cases = array(
+	'London, Ontario, Canada'  => 'city:London',
+	'Rouen, Normandie'         => 'city:Rouen',
+	'Rouen, Seine-Maritime'    => 'city:Rouen',
+	'Paris, Lyon'              => 'city:Paris | city:Lyon',
+	'Rouen, Caen, Normandie'   => 'city:Rouen | city:Caen',
+	'Paris, Normandie'         => 'city:Paris | region:Normandie',
+	'Normandie, Bretagne'      => 'region:Normandie | region:Bretagne',
+	'Paris ; Lyon ; Normandie' => 'city:Paris | city:Lyon | region:Normandie',
+);
+foreach ( $cases as $text => $expected ) {
+	check( sprintf( '« %s » → %s', $text, $expected ), $expected === g2rd_labels( $locator->locate( $text ) ) );
+}
+check( 'une pause après chaque requête réelle à Photon, aucune sur le cache', $sleeps > 0 && count( $GLOBALS['g2rd_world_queries'] ) === $sleeps );
+
+$r = $locator->locate( 'Rouen, Normandie ; Paris' );
+check( 'premier lieu : adresse WPJM ; lieux en chaînes, sans le département', is_array( $r ) && '49.4432' === $r['address']['lat'] && 'Rouen' === $r['address']['city'] && array( 'type' => 'city', 'label' => 'Rouen', 'lat' => '49.4432', 'lng' => '1.0999' ) === $r['places'][0] && false === $r['deferred'] );
+$before = count( $GLOBALS['g2rd_world_queries'] );
+$r      = $locator->locate( 'Normandie' );
+check( 'région seule : centre fixe, adresse régionale, sans requête', is_array( $r ) && array( 'type' => 'region', 'label' => 'Normandie', 'lat' => '49.1202', 'lng' => '0.1128', 'region' => '28' ) === $r['places'][0] && 'Normandie' === $r['address']['state_long'] && 'FR' === $r['address']['country_short'] && '' === $r['address']['city'] && 'Normandie, France' === $r['address']['formatted_address'] && count( $GLOBALS['g2rd_world_queries'] ) === $before );
+check( 'homonyme avec indice : « Bretagne (90) » cherché comme une ville', 'city:Bretagne' === g2rd_labels( $locator->locate( 'Bretagne (90)' ) ) && in_array( 'Bretagne', $GLOBALS['g2rd_world_queries'], true ) );
+check( 'doublons après placement : « Alsace ; Lorraine » donne une seule zone Grand Est', 'region:Grand Est' === g2rd_labels( $locator->locate( 'Alsace ; Lorraine' ) ) );
+check( 'doublons après placement : même ville sous deux écritures', 'city:Rouen' === g2rd_labels( $locator->locate( 'Rouen ; Rouen, Normandie' ) ) );
+$twelve = implode( ' ; ', array_slice( array_column( Regions::all(), 'name' ), 0, 12 ) );
+check( 'plafond : 10 lieux au plus', 10 === count( $locator->locate( $twelve )['places'] ) );
+$r = $locator->locate( 'Paris ; Atlantide' );
+check( 'ville introuvable retirée et signalée, les autres restent', 'city:Paris' === g2rd_labels( $r ) && array( 'Atlantide' ) === $r['missing'] );
+$r = $locator->locate( 'Paris, télétravail' );
+check( 'mention vague après une virgule : ignorée', 'city:Paris' === g2rd_labels( $r ) && array() === $r['missing'] );
+check( 'texte vide : aucun lieu', array() === $locator->locate( '' )['places'] && null === $locator->locate( '' )['address'] );
+
+list( $s ) = boot();
+$locator   = new PlaceLocator( new PhotonGeocoder( $s ) );
+g2rd_world( array() );
+$r = $locator->locate( 'Brest', 1 );
+check( 'budget 1 : une ville absente du cache est placée', 'city:Brest' === g2rd_labels( $r ) && false === $r['deferred'] );
+$r = $locator->locate( 'Caen ; Le Havre', 1 );
+check( 'budget 1 : une deuxième ville absente du cache → à différer, au plus une requête', is_array( $r ) && true === $r['deferred'] && array() === $r['places'] && 2 === count( $GLOBALS['g2rd_world_queries'] ) );
+$r = $locator->locate( 'Brest ; Normandie ; Caen', 1 );
+check( 'budget 1 : villes en cache et régions ne comptent pas', 'city:Brest | region:Normandie | city:Caen' === g2rd_labels( $r ) && false === $r['deferred'] && 2 === count( $GLOBALS['g2rd_world_queries'] ) );
+$r = $locator->locate( 'Le Havre', 0 );
+check( 'budget 0 : texte absent du cache → à différer, sans requête', true === $r['deferred'] && 2 === count( $GLOBALS['g2rd_world_queries'] ) );
+G2RD_Test_State::$http_responder = function () {
+	return new WP_Error( 'http_request_failed', 'timeout' );
+};
+check( 'Photon en panne : WP_Error', is_wp_error( $locator->locate( 'Nantes ; Normandie' ) ) );
 G2RD_Test_State::$http_responder = null;
 
 $results = $GLOBALS['g2rd_results'];
