@@ -287,10 +287,9 @@ class GeocodingIntegration {
 		if ( null === $marked ) {
 			return $location;
 		}
-		$trim   = '/^[\s\x{00A0}\x{202F}]+|[\s\x{00A0}\x{202F}]+$/u';
 		$places = array();
 		foreach ( explode( chr( 1 ), $marked ) as $place ) {
-			$place = (string) preg_replace( $trim, '', $place );
+			$place = (string) preg_replace( '/^[\s\x{00A0}\x{202F}]+|[\s\x{00A0}\x{202F}]+$/u', '', $place );
 			if ( '' !== $place ) {
 				$places[] = $place;
 			}
@@ -302,7 +301,7 @@ class GeocodingIntegration {
 		$names = array();
 		foreach ( $places as $place ) {
 			$comma = strpos( $place, ',' );
-			$name  = (string) preg_replace( $trim, '', false === $comma ? $place : substr( $place, 0, $comma ) );
+			$name  = (string) preg_replace( '/^[\s\x{00A0}\x{202F}]+|[\s\x{00A0}\x{202F}]+$/u', '', false === $comma ? $place : substr( $place, 0, $comma ) );
 			if ( '' !== $name ) {
 				$names[] = $name;
 			}
