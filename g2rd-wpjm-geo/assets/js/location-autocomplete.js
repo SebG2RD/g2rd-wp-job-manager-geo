@@ -138,6 +138,7 @@
 		var active = -1;
 		var typeSet = 0;
 		var choosing = false;
+		var byKeyboard = false; // L'option active vient des flèches (et non du simple survol de la souris).
 		var photonFiltered = true;
 		var controller = null;
 		var cache = {};
@@ -171,15 +172,18 @@
 
 		function position() {
 			var rect = input.getBoundingClientRect();
+			// Étiquettes : le panneau suit la largeur de toute la zone, pas celle de la saisie restante.
+			var box = field ? field.root.getBoundingClientRect() : rect;
 			panel.style.top = ( rect.bottom + window.pageYOffset ) + 'px';
-			panel.style.left = ( rect.left + window.pageXOffset ) + 'px';
-			panel.style.width = rect.width + 'px';
+			panel.style.left = ( box.left + window.pageXOffset ) + 'px';
+			panel.style.width = box.width + 'px';
 		}
 
 		function close() {
 			panel.hidden = true;
 			items = [];
 			active = -1;
+			byKeyboard = false;
 			list.textContent = '';
 			input.setAttribute( 'aria-expanded', 'false' );
 			input.removeAttribute( 'aria-activedescendant' );
@@ -207,8 +211,13 @@
 			}
 			if ( field ) {
 				// Mode étiquettes : la saisie est vidée d'abord (son texte serait sinon enregistré avec l'étiquette).
+				var typed = input.value;
 				input.value = '';
-				field.add( item.label, item.region || '' );
+				// Ni le serveur ni la réouverture de l'offre ne doivent découper ce libellé (« Biel/Bienne »).
+				var label = item.label.replace( /\s*[\/|;]\s*/g, '-' );
+				if ( ! field.add( label, item.region || '' ) && field.values().length >= ( settings.maxPlaces || 10 ) && ! field.has( label, item.region || '' ) ) {
+					input.value = typed; // Refusé au plafond : le texte tapé reste dans la saisie (un doublon est abandonné).
+				}
 				close();
 				return;
 			}
@@ -224,8 +233,11 @@
 		}
 
 		function render( suggestions ) {
+			// Option atteinte aux flèches : elle est réactivée si la nouvelle liste la contient encore.
+			var keep = field && byKeyboard && active >= 0 && items[ active ] ? items[ active ] : null;
 			list.textContent = '';
 			items = [];
+			byKeyboard = false;
 			// Nouvelle liste : aucune option active (sinon le lecteur d'écran annoncerait une option qu'Entrée ne choisit pas).
 			active = -1;
 			input.removeAttribute( 'aria-activedescendant' );
@@ -265,6 +277,7 @@
 					choose( index );
 				} );
 				option.addEventListener( 'mouseenter', function () {
+					byKeyboard = false;
 					setActive( index );
 				} );
 
@@ -277,6 +290,12 @@
 				panel.hidden = false;
 				input.setAttribute( 'aria-expanded', 'true' );
 				active = -1;
+				items.forEach( function ( item, i ) {
+					if ( keep && item.label === keep.label && item.region === keep.region ) {
+						byKeyboard = true;
+						setActive( i );
+					}
+				} );
 			} else {
 				close();
 			}
@@ -368,6 +387,9 @@
 				close();
 				return;
 			}
+			if ( local.length && document.activeElement === input ) {
+				render( local ); // Les régions n'attendent pas la réponse de Photon.
+			}
 			var current = ++requestId;
 			var pending;
 			if ( 'photon' === source ) {
@@ -426,7 +448,7 @@
 
 		input.addEventListener( 'keydown', function ( event ) {
 			if ( panel.hidden ) {
-				if ( field && 'Enter' === event.key ) {
+				if ( field && 'Enter' === event.key && input.value.trim() ) {
 					event.preventDefault(); // Entrée valide le texte en cours sans envoyer le formulaire.
 					field.commit();
 				}
@@ -434,10 +456,12 @@
 			}
 			switch ( event.key ) {
 				case 'ArrowDown':
+					byKeyboard = true;
 					event.preventDefault();
 					setActive( ( active + 1 ) % items.length );
 					break;
 				case 'ArrowUp':
+					byKeyboard = true;
 					event.preventDefault();
 					setActive( ( active - 1 + items.length ) % items.length );
 					break;
@@ -445,7 +469,7 @@
 					if ( active >= 0 ) {
 						event.preventDefault(); // Ne soumet pas le formulaire pendant le choix d'une ville.
 						choose( active );
-					} else if ( field ) {
+					} else if ( field && input.value.trim() ) {
 						event.preventDefault();
 						close();
 						field.commit();
@@ -456,6 +480,9 @@
 					close();
 					break;
 				case 'Tab':
+					if ( field && active >= 0 && byKeyboard ) {
+						choose( active ); // Sans preventDefault : le focus continue vers le champ suivant.
+					}
 					close();
 					break;
 			}
@@ -465,10 +492,18 @@
 			window.clearTimeout( timer );
 			requestId++;
 			close();
-			if ( field ) {
-				field.commit(); // Un texte laissé dans la saisie devient une étiquette.
+			// Un texte laissé dans la saisie devient une étiquette, sauf si la fenêtre ou l'onglet a seulement perdu le focus.
+			if ( field && ( 'function' !== typeof document.hasFocus || document.hasFocus() ) ) {
+				field.commit();
 			}
 		} );
+
+		if ( field ) {
+			// Un clic dans le panneau hors d'une option (attribution, barre de défilement) ne fait pas perdre le focus.
+			panel.addEventListener( 'mousedown', function ( event ) {
+				event.preventDefault();
+			} );
+		}
 
 		window.addEventListener( 'resize', function () {
 			if ( ! panel.hidden ) {

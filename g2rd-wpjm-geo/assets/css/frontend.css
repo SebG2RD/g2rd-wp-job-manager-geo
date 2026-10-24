@@ -280,8 +280,8 @@ a.g2rd-wpjm-geo-iw__title:focus {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	width: 22px;
-	height: 22px;
+	width: 24px;
+	height: 24px;
 	margin: 0;
 	padding: 0;
 	color: #50575e;
@@ -324,5 +324,5 @@ a.g2rd-wpjm-geo-iw__title:focus {
 }
 
 .g2rd-wpjm-geo-ac__icon {
-	margin-right: 6px;
+	margin-inline-end: 6px;
 }

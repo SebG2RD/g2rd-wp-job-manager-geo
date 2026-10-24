@@ -148,7 +148,8 @@
 		list.hidden = true;
 		var input = document.createElement( 'input' );
 		input.type = 'text';
-		input.className = 'g2rd-wpjm-geo-tags__input';
+		// Classes du champ natif reprises (« input-text » de WP Job Manager, styles du thème).
+		input.className = 'g2rd-wpjm-geo-tags__input' + ( native.className ? ' ' + native.className : '' );
 		input.id = ( native.id || 'g2rd-wpjm-geo-location' ) + '-g2rd-tags';
 		input.setAttribute( 'autocomplete', 'off' );
 		if ( native.placeholder ) {
@@ -173,6 +174,21 @@
 		native.required = false;
 		if ( required ) {
 			input.setAttribute( 'aria-required', 'true' );
+		}
+		// Description du champ (gabarit WPJM : <small class="description"> frère du champ) lue avec la saisie.
+		var described = native.getAttribute( 'aria-describedby' );
+		if ( ! described && native.parentNode ) {
+			Array.prototype.some.call( native.parentNode.children, function ( child ) {
+				if ( 'SMALL' === child.tagName && child.classList.contains( 'description' ) ) {
+					child.id = child.id || input.id + '-description';
+					described = child.id;
+					return true;
+				}
+				return false;
+			} );
+		}
+		if ( described ) {
+			input.setAttribute( 'aria-describedby', described );
 		}
 		var label = null;
 		try {
@@ -361,6 +377,10 @@
 			input: input,
 			add: add,
 			commit: commit,
+			has: function ( text, region ) {
+				var value = String( text || '' ).trim();
+				return '' !== value && known( identify( value, region || '' ), true );
+			},
 			values: function () {
 				return tags.map( function ( tag ) {
 					return tag.text;

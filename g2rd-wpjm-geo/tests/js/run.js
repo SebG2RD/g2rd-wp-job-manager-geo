@@ -183,10 +183,10 @@ function tagField({ value = '', required = false, max = 3 } = {}) {
 }
 
 // Autocomplétion Photon en mode étiquettes, comme le PHP la configure en mode libre.
-async function tagsAc({ features = null } = {}) {
-  const dom = new JSDOM('<form id="f"><label for="job_location">Lieu</label><input type="text" id="job_location" name="job_location" placeholder="ex. Paris"><button id="go">Envoyer</button></form>', { runScripts: 'outside-only', pretendToBeVisual: true });
+async function tagsAc({ features = null, max = 10, required = false } = {}) {
+  const dom = new JSDOM('<form id="f"><label for="job_location">Lieu</label><input type="text" id="job_location" name="job_location" placeholder="ex. Paris"' + (required ? ' required' : '') + '><button id="go">Envoyer</button></form>', { runScripts: 'outside-only', pretendToBeVisual: true });
   const w = dom.window, calls = [];
-  w.g2rdWpjmGeoAutocomplete = { source: 'photon', photonUrl: 'https://photon.test/api/', lang: 'fr', selectors: ['#job_location'], minLength: 2, tags: true, maxPlaces: 10, regions: REGIONS, tagsI18n: TAGS_I18N,
+  w.g2rdWpjmGeoAutocomplete = { source: 'photon', photonUrl: 'https://photon.test/api/', lang: 'fr', selectors: ['#job_location'], minLength: 2, tags: true, maxPlaces: max, regions: REGIONS, tagsI18n: TAGS_I18N,
     i18n: { poweredBy: 'Recherche (c) OpenStreetMap contributors', results: 'Suggestions', region: 'Région' } };
   w.AbortController = class { constructor() { this.signal = { aborted: false }; } abort() { this.signal.aborted = true; } };
   const feature = (name, county, state) => ({ properties: { name, county, state, country: 'France', osm_key: 'place' } });
@@ -196,6 +196,7 @@ async function tagsAc({ features = null } = {}) {
     const list = features || (q.indexOf('ro') === 0 ? [feature('Rouen', 'Seine-Maritime', 'Normandie'), feature('Roubaix', 'Nord', 'Hauts-de-France')] : []);
     return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ features: list }) });
   };
+  w.document.hasFocus = () => true; // jsdom : hasFocus() est toujours faux (aucune fenetre active) ; un vrai navigateur renvoie vrai quand le focus change de champ.
   w.eval(src('js/location-tags.js'));
   w.eval(src('js/location-autocomplete.js'));
   await wait(10); // jsdom : document encore « loading », l'initialisation attend DOMContentLoaded.
@@ -617,6 +618,96 @@ async function tagsAc({ features = null } = {}) {
   g = await tagsAc({ features: [place('Paris', 'Paris', 'Île-de-France')] });
   await type(g, 'Paris');
   check('ville avant la region trouvee par un mot de son alias', !/Région/.test(g.options()[0].textContent) && /Paris/.test(g.options()[0].textContent) && /Île-de-France/.test(g.options()[1].textContent) && /Région/.test(g.options()[1].textContent));
+
+  // B1 : régions affichées sans attendre Photon.
+  g = await tagsAc({});
+  g.w.fetch = () => new Promise(() => {});
+  await type(g, 'norm');
+  check('Photon qui ne repond jamais : la region est proposee tout de suite', 1 === g.options().length && /Normandie/.test(g.options()[0].textContent));
+  // B1 : l'option atteinte au clavier reste active quand la liste fusionnée arrive.
+  g = await tagsAc({});
+  const answer3 = deferFetch(g);
+  g.input.value = 'norm'; g.input.dispatchEvent(new g.w.Event('input', { bubbles: true })); await wait(350);
+  key(g.w, g.input, 'ArrowDown');
+  answer3([place('Normandel', 'X', 'Normandie')]); await wait(30);
+  check('liste fusionnee : option atteinte au clavier retrouvee', 2 === g.options().length && 'true' === g.options()[0].getAttribute('aria-selected') && /Normandie/.test(g.options()[0].textContent));
+  // B2 : choix au plafond.
+  g = await tagsAc({ max: 2 });
+  g.input.value = 'Brest'; key(g.w, g.input, 'Enter');
+  g.input.value = 'Lille'; key(g.w, g.input, 'Enter');
+  await type(g, 'Rou');
+  g.options()[0].dispatchEvent(new g.w.MouseEvent('mousedown', { bubbles: true, cancelable: true })); await wait(10);
+  check('choix au plafond : etiquette refusee, texte tape garde dans la saisie', 2 === g.tags().length && 'Rou' === g.input.value);
+  g = await tagsAc({ max: 2 });
+  g.input.value = 'Normandie'; key(g.w, g.input, 'Enter');
+  g.input.value = 'Lille'; key(g.w, g.input, 'Enter');
+  await type(g, 'norm');
+  g.options()[0].dispatchEvent(new g.w.MouseEvent('mousedown', { bubbles: true, cancelable: true })); await wait(10);
+  check('choix au plafond : un doublon est abandonne', 2 === g.tags().length && '' === g.input.value);
+  // B3 : séparateurs dans le libellé choisi.
+  g = await tagsAc({ features: [place('Biel/Bienne', 'X', 'Berne')] });
+  await type(g, 'Bie');
+  g.options()[0].dispatchEvent(new g.w.MouseEvent('mousedown', { bubbles: true, cancelable: true })); await wait(10);
+  check('libelle avec « / » : une seule etiquette, non decoupee a la reouverture', 1 === g.tags().length && 'Biel-Bienne, Berne, France' === g.native.value && 1 === g.w.g2rdWpjmGeoTags.split(g.native.value).length);
+  // B4 : Entrée sur une saisie vide, ou panneau ouvert sans option active.
+  g = await tagsAc({});
+  const emptyEnter = key(g.w, g.input, 'Enter');
+  check('Entree sur une saisie vide : le formulaire part normalement', !emptyEnter.defaultPrevented);
+  await type(g, 'Rou');
+  check('liste ouverte, aucune option active', !g.panel.hidden && g.panel.querySelector('.is-active') === null);
+  const openEnter = key(g.w, g.input, 'Enter'); await wait(10);
+  check('Entree liste ouverte sans option active : texte valide, formulaire non envoye', openEnter.defaultPrevented && 1 === g.tags().length && 'Rou' === g.native.value && g.panel.hidden);
+  g = await tagsAc({});
+  g.input.value = '   ';
+  check('Entree sur des espaces : le formulaire part normalement', !key(g.w, g.input, 'Enter').defaultPrevented);
+  // B5 : Tab.
+  g = await tagsAc({});
+  await type(g, 'Rou');
+  key(g.w, g.input, 'ArrowDown');
+  const tabEvent = key(g.w, g.input, 'Tab'); g.input.blur(); await wait(10);
+  check('Tab sur une option atteinte au clavier : elle est choisie, le focus continue', !tabEvent.defaultPrevented && /Rouen, Normandie, France$/.test(g.native.value) && '' === g.input.value);
+  g = await tagsAc({});
+  await type(g, 'Rou');
+  g.options()[0].dispatchEvent(new g.w.MouseEvent('mouseenter', { bubbles: true }));
+  key(g.w, g.input, 'Tab'); g.input.blur(); await wait(10);
+  check('Tab apres un simple survol : le texte tape est valide', 'Rou' === g.native.value);
+  // B6 : changement de fenêtre.
+  g = await tagsAc({});
+  g.d.hasFocus = () => false;
+  await type(g, 'Rou');
+  g.input.blur(); await wait(10);
+  check('fenetre sans focus : le texte reste dans la saisie, sans etiquette', 'Rou' === g.input.value && 0 === g.tags().length);
+  // B7 : clic dans le panneau hors d'une option.
+  g = await tagsAc({});
+  await type(g, 'Rou');
+  const down = new g.w.MouseEvent('mousedown', { bubbles: true, cancelable: true });
+  g.panel.querySelector('.g2rd-wpjm-geo-ac__attribution').dispatchEvent(down);
+  check('clic sur l attribution : mousedown annule, la liste reste ouverte', down.defaultPrevented && !g.panel.hidden);
+  // B8 : position du panneau.
+  g = await tagsAc({});
+  g.input.getBoundingClientRect = () => ({ top: 10, bottom: 50, left: 120, width: 80 });
+  g.d.querySelector('.g2rd-wpjm-geo-tags').getBoundingClientRect = () => ({ top: 8, bottom: 52, left: 40, width: 300 });
+  await type(g, 'norm');
+  check('panneau : sous la saisie, largeur et bord gauche de la zone a etiquettes', '50px' === g.panel.style.top && '40px' === g.panel.style.left && '300px' === g.panel.style.width);
+  // B9 : styles et description du champ natif.
+  {
+    const dom = new JSDOM('<form><label for="job_location">Lieu</label><input type="text" class="input-text" id="job_location" name="job_location"><small class="description">Aide</small></form>', { runScripts: 'outside-only' });
+    dom.window.eval(src('js/location-tags.js'));
+    const f = dom.window.g2rdWpjmGeoTags.create(dom.window.document.getElementById('job_location'), { regions: REGIONS, max: 3, i18n: TAGS_I18N });
+    const desc = dom.window.document.querySelector('small.description');
+    check('saisie visible : classe du champ natif reprise', f.input.classList.contains('input-text') && f.input.classList.contains('g2rd-wpjm-geo-tags__input'));
+    check('saisie visible : aria-describedby vers la description', !!desc.id && f.input.getAttribute('aria-describedby') === desc.id);
+    const dom2 = new JSDOM('<form><input type="text" id="job_location" aria-describedby="mine"><small class="description">Aide</small></form>', { runScripts: 'outside-only' });
+    dom2.window.eval(src('js/location-tags.js'));
+    const f2 = dom2.window.g2rdWpjmGeoTags.create(dom2.window.document.getElementById('job_location'), { regions: REGIONS, max: 3, i18n: TAGS_I18N });
+    check('aria-describedby deja present sur le champ natif : recopie', 'mine' === f2.input.getAttribute('aria-describedby'));
+  }
+  // B12 : champ obligatoire avec l'autocomplétion.
+  g = await tagsAc({ required: true });
+  check('champ obligatoire : saisie invalide au depart', false === g.input.checkValidity());
+  await type(g, 'Rou');
+  g.options()[0].dispatchEvent(new g.w.MouseEvent('mousedown', { bubbles: true, cancelable: true })); await wait(10);
+  check('champ obligatoire : valide apres le choix d une suggestion', true === g.input.checkValidity() && true === g.d.getElementById('f').checkValidity());
 
   console.log('\nResultat JS : ' + pass + ' reussis, ' + fail + ' echoues');
   process.exit(fail ? 1 : 0);

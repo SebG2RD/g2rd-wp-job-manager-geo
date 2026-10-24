@@ -520,7 +520,7 @@ namespace G2RD\WPJMGeo {
 }
 
 namespace {
-	foreach ( array( 'Settings', 'Logger', 'UrlChecker', 'ApplicationNormalizer', 'JobQueue', 'UrlCheckQueue', 'GoFetchIntegration', 'PhotonGeocoder', 'Regions', 'PlaceParser', 'PlaceLocator', 'GeocodingIntegration', 'GeocodeQueue', 'RestController', 'AdminMenu', 'RegeocodeTool', 'AdminScreen', 'Dependencies', 'GoogleAssets', 'OsmAssets', 'SettingsPage', 'MigrationTool', 'LocationAutocomplete', 'AdminLocation', 'PrivacyPolicy' ) as $class ) {
+	foreach ( array( 'Settings', 'Logger', 'UrlChecker', 'ApplicationNormalizer', 'JobQueue', 'UrlCheckQueue', 'GoFetchIntegration', 'PhotonGeocoder', 'Regions', 'PlaceParser', 'PlaceLocator', 'GeocodingIntegration', 'GeocodeQueue', 'RestController', 'AdminMenu', 'RegeocodeTool', 'AdminScreen', 'Dependencies', 'GoogleAssets', 'OsmAssets', 'SettingsPage', 'MigrationTool', 'LocationAutocomplete', 'AdminLocation', 'LocationHelp', 'PrivacyPolicy' ) as $class ) {
 		require_once dirname( __DIR__ ) . '/includes/' . $class . '.php';
 	}
 }

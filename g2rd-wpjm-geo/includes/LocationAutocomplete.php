@@ -66,20 +66,7 @@ class LocationAutocomplete {
 		if ( $this->has_location_field && ( Settings::PROVIDER_OSM === $this->settings->get_provider() || GoogleAssets::has_key( $this->settings ) ) ) {
 			$fields['job']['job_location']['autocomplete'] = false;
 		}
-		if ( $this->has_location_field && Settings::PROVIDER_OSM === $this->settings->get_provider() ) {
-			$fields['job']['job_location']['description'] = self::with_help( isset( $fields['job']['job_location']['description'] ) ? $fields['job']['job_location']['description'] : '' );
-		}
 		return $fields;
-	}
-
-	/**
-	 * Description du champ complétée par l'aide de saisie de plusieurs lieux (utile sans JavaScript).
-	 *
-	 * @param mixed $description Description existante.
-	 * @return string
-	 */
-	protected static function with_help( $description ) {
-		return trim( ( is_string( $description ) ? $description : '' ) . ' ' . __( 'Séparez plusieurs lieux par « ; ».', 'g2rd-wpjm-geo' ) );
 	}
 
 	/**

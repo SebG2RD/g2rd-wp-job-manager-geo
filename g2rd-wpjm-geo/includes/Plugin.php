@@ -77,6 +77,9 @@ final class Plugin {
 		$google->register();
 		( new OsmAssets( $this->settings ) )->register();
 
+		// Aide « ; » du champ Lieu : indépendante de l'autocomplétion, le serveur découpe toujours les lieux.
+		( new LocationHelp( $this->settings ) )->register();
+
 		if ( $this->settings->get( 'autocomplete_enabled' ) ) {
 			if ( $this->settings->get( 'autocomplete_frontend' ) ) {
 				( new LocationAutocomplete( $this->settings ) )->register();
