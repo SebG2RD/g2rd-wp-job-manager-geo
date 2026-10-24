@@ -262,8 +262,12 @@ class GeocodingIntegration {
 	}
 
 	/**
-	 * Lieu affiché : « Paris ; Lyon » devient « Paris, Lyon ». Le formulaire
-	 * d'édition lit la métadonnée directement et garde les « ; ».
+	 * Lieu affiché. Quand le texte contient au moins deux lieux séparés par « ; », seul le
+	 * nom court de chacun (la partie avant la première virgule) est gardé :
+	 * « Rouen, Normandie, France ; Caen, Normandie, France » devient « Rouen, Caen », et
+	 * « Paris ; Lyon » devient « Paris, Lyon ». Un lieu seul reste inchangé, comme dans WP Job
+	 * Manager. Les « ; » qui terminent une entité HTML ne séparent rien. Le formulaire
+	 * d'édition lit la métadonnée directement et garde les « ; » et les libellés complets.
 	 *
 	 * @param mixed $location Lieu (filtre the_job_location).
 	 * @return mixed
@@ -272,14 +276,26 @@ class GeocodingIntegration {
 		if ( ! is_string( $location ) || false === strpos( $location, ';' ) ) {
 			return $location;
 		}
-		// Les « ; » qui terminent une entité HTML (« &amp; », « &#039; ») restent en place.
-		$out = preg_replace_callback(
-			'/&(?:#[0-9]+|#x[0-9a-f]+|[a-z][a-z0-9]*);|[\s\x{00A0}\x{202F}]*(?:;[\s\x{00A0}\x{202F}]*)+/iu',
+		// Les séparateurs deviennent un repère sûr ; les « ; » qui terminent une entité HTML (« &amp; », « &#039; ») restent en place.
+		$marked = preg_replace_callback(
+			'/&(?:#[0-9]+|#x[0-9a-f]+|[a-z][a-z0-9]*);|(?:;[\s\x{00A0}\x{202F}]*)+/iu',
 			function ( $found ) {
-				return '&' === $found[0][0] ? $found[0] : ', ';
+				return '&' === $found[0][0] ? $found[0] : chr( 1 );
 			},
-			$location
+			str_replace( chr( 1 ), '', $location )
 		);
-		return null === $out ? $location : trim( $out, " ,\t\n\r" );
+		if ( null === $marked ) {
+			return $location;
+		}
+		$names = array();
+		foreach ( explode( chr( 1 ), $marked ) as $place ) {
+			$comma = strpos( $place, ',' );
+			$name  = false === $comma ? $place : substr( $place, 0, $comma );
+			$name  = (string) preg_replace( '/^[\s\x{00A0}\x{202F}]+|[\s\x{00A0}\x{202F}]+$/u', '', $name );
+			if ( '' !== $name ) {
+				$names[] = $name;
+			}
+		}
+		return $names ? implode( ', ', $names ) : $location;
 	}
 }
