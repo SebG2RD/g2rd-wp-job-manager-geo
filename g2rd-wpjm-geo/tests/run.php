@@ -1474,6 +1474,17 @@ check( 'simulation : lieux trouvés et introuvables listés, aucune écriture', 
 $run = $tool->handle( 'run', 0, $mrows );
 check( 'exécution : liste de lieux écrite', 'done' === $run['rows'][0]['status'] && 2 === count( G2RD_Test_State::$meta[600][ GeocodingIntegration::META_PLACES ] ) && '49.4432' === G2RD_Test_State::$meta[600]['geolocation_lat'] );
 
+G2RD_Test_State::$post_types[603] = 'job_listing';
+G2RD_Test_State::$meta[603]       = array( '_job_location' => 'London', 'geolocated' => 1, 'geolocation_lat' => '1.5', $src => 'osm' );
+$world_prev                      = G2RD_Test_State::$http_responder;
+G2RD_Test_State::$http_responder = function () {
+	G2RD_Test_State::$meta[603]['_job_location'] = 'Brest'; // L'employeur enregistre pendant le lot.
+	return photon_reply( array( g2rd_world_feature( 'London' ) ) );
+};
+$race = ( new RegeocodeTool( $s, new PhotonGeocoder( $s ), '__return_false' ) )->handle( 'run', 0, array( array( 'id' => '603', 'location' => 'London', 'source' => 'osm', 'geolocated' => '1', 'places' => null ) ) );
+check( 'exécution : lieu modifié pendant le lot, rien n’est écrit, offre ignorée', 'skipped' === $race['rows'][0]['status'] && '1.5' === G2RD_Test_State::$meta[603]['geolocation_lat'] && ! isset( G2RD_Test_State::$meta[603][ GeocodingIntegration::META_PLACES ] ) && true === $race['done'] );
+G2RD_Test_State::$http_responder = $world_prev;
+
 G2RD_Test_State::$post_types[602] = 'job_listing';
 G2RD_Test_State::$meta[602]       = array( '_job_location' => 'Atlantide', 'geolocated' => 1, $src => 'google' );
 $nf = $tool->handle( 'simulate', 0, array( array( 'id' => '602', 'location' => 'Atlantide', 'source' => 'google', 'geolocated' => '1' ) ) );

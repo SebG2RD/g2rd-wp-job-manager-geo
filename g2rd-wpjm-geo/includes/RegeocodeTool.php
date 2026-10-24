@@ -296,7 +296,7 @@ class RegeocodeTool {
 	 * @param bool   $write    Écrire le résultat.
 	 * @param string $provider Fournisseur actif.
 	 * @param int    $budget   Textes absents du cache que l'on peut envoyer à Photon.
-	 * @return array{id:int,location:string,result:string,status:string,edit:string}|null Statut : ok|done|not_found|error|pending ; null : offre reportée au lot suivant (temps épuisé).
+	 * @return array{id:int,location:string,result:string,status:string,edit:string}|null Statut : ok|done|not_found|error|pending|skipped ; null : offre reportée au lot suivant (temps épuisé).
 	 */
 	private function process( $job_id, $write, $provider, $budget = PlaceLocator::UNLIMITED ) {
 		$location = trim( (string) get_post_meta( $job_id, '_job_location', true ) );
@@ -332,6 +332,9 @@ class RegeocodeTool {
 				return $row;
 			}
 			$row['result'] = self::describe( $located );
+			if ( $write && self::changed( $job_id, $location ) ) {
+				return self::skipped( $row );
+			}
 			if ( $write ) {
 				GeocodingIntegration::write_places( $job_id, $located );
 				$row['status'] = 'done';
@@ -365,10 +368,39 @@ class RegeocodeTool {
 			$row['result'] = __( 'Géocodage Google indisponible (quota atteint ou géocodage désactivé).', 'g2rd-wpjm-geo' );
 			return $row;
 		}
+		if ( self::changed( $job_id, $location ) ) {
+			return self::skipped( $row );
+		}
 		$label         = implode( ', ', array_filter( array( isset( $data['city'] ) ? $data['city'] : '', isset( $data['country_long'] ) ? $data['country_long'] : '' ) ) );
 		$row['result'] = '' !== $label ? $label : (string) ( isset( $data['formatted_address'] ) ? $data['formatted_address'] : '' );
 		GeocodingIntegration::write( $job_id, $data, $provider );
 		$row['status'] = 'done';
+		return $row;
+	}
+
+	/**
+	 * Le lieu de l'offre a-t-il changé depuis sa lecture (même contrôle que GeocodeQueue) ? Le cache de
+	 * métadonnées est vidé pour lire la valeur enregistrée : une écriture partirait sinon avec des lieux périmés.
+	 *
+	 * @param int    $job_id   ID de l'offre.
+	 * @param string $location Texte lu au début du traitement.
+	 * @return bool
+	 */
+	private static function changed( $job_id, $location ) {
+		wp_cache_delete( $job_id, 'post_meta' );
+		return trim( (string) get_post_meta( $job_id, '_job_location', true ) ) !== $location;
+	}
+
+	/**
+	 * Ligne d'une offre modifiée pendant le lot : rien n'est écrit. Son enregistrement l'a déjà replacée
+	 * ou remise dans la file de géocodage ; la relancer plus tard n'est pas une erreur.
+	 *
+	 * @param array<string,mixed> $row Ligne en cours.
+	 * @return array<string,mixed>
+	 */
+	private static function skipped( array $row ) {
+		$row['status'] = 'skipped';
+		$row['result'] = __( 'Lieu modifié pendant le traitement : non écrasé.', 'g2rd-wpjm-geo' );
 		return $row;
 	}
 
@@ -440,6 +472,7 @@ class RegeocodeTool {
 				'not_found' => __( 'Non trouvée', 'g2rd-wpjm-geo' ),
 				'error'     => __( 'Erreur', 'g2rd-wpjm-geo' ),
 				'pending'   => __( 'À l’exécution', 'g2rd-wpjm-geo' ),
+				'skipped'   => __( 'Ignorée', 'g2rd-wpjm-geo' ),
 			),
 		);
 		?>

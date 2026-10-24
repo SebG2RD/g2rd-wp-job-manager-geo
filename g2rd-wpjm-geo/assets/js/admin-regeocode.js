@@ -5,7 +5,7 @@
 ( function () {
 	'use strict';
 
-	var TONES = { ok: 'info', done: 'success', not_found: 'warning', error: 'danger', pending: 'neutral' };
+	var TONES = { ok: 'info', done: 'success', not_found: 'warning', error: 'danger', pending: 'neutral', skipped: 'neutral' };
 
 	function init( root ) {
 		var i18n = {};
@@ -31,6 +31,10 @@
 			var list = document.createElement( 'ul' );
 			list.className = 'g2rd-stack';
 			[ 'total', 'google', 'osm', 'update', 'none', 'todo' ].forEach( function ( key ) {
+				// Offres libres a mettre a jour : ligne utile en mode libre seulement (toujours 0 en mode Google).
+				if ( 'update' === key && ! summary.update ) {
+					return;
+				}
 				var item = document.createElement( 'li' );
 				item.textContent = ( i18n[ key ] || key ) + ' : ' + ( summary[ key ] || 0 );
 				list.appendChild( item );

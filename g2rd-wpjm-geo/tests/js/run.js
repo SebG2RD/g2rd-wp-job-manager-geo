@@ -937,6 +937,23 @@ const regionNoBox = { id: 15, title: 'Sans boite', permalink: 'https://x.test/jo
   o = await osmMap({ data: multiJobs, clustering: false });
   check('sans regroupement : zones, etiquettes et legende dessinees', !!o.st.sources['g2rd-regions'] && !!o.st.sources['g2rd-region-labels'] && 1 === o.st.controlNodes.filter(n => n.pos === 'top-left').length);
 
+  console.log('\nM. Outil de re-geocodage (admin-regeocode.js)');
+  const regeo = async summary => {
+    const dom = new JSDOM('<div class="g2rd-wpjm-geo-regeocode" data-action="a" data-nonce="n" data-ajax-url="https://x.test/ajax" data-i18n="' + JSON.stringify({ total: 'Offres', osm: 'OSM', update: 'A mettre a jour', todo: 'A re-geocoder', done: 'Termine.' }).replace(/"/g, '&quot;') + '"><button data-g2rd-regeo="analyze">Analyser</button><p data-g2rd-regeo-status></p><div data-g2rd-regeo-summary></div><div data-g2rd-regeo-rows></div></div>', { runScripts: 'outside-only', pretendToBeVisual: true });
+    const w = dom.window;
+    w.fetch = () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ success: true, data: { summary, rows: [{ id: 5, location: 'Rouen', result: 'Lieu modifie', status: 'skipped' }], cursor: 0, done: true, stopped: false } }) });
+    w.eval(src('js/admin-regeocode.js'));
+    await wait(10);
+    w.document.querySelector('[data-g2rd-regeo]').click();
+    await wait(20);
+    return { items: [...w.document.querySelectorAll('[data-g2rd-regeo-summary] li')].map(li => li.textContent), tag: w.document.querySelector('.g2rd-tag') };
+  };
+  let rg = await regeo({ total: 4, osm: 0, update: 0, todo: 1 });
+  check('mode Google (aucune offre libre a mettre a jour) : la ligne « a mettre a jour » n est pas affichee', !rg.items.some(t => /mettre/.test(t)) && rg.items.includes('Offres : 4') && rg.items.includes('A re-geocoder : 1'));
+  rg = await regeo({ total: 4, osm: 4, update: 2, todo: 2 });
+  check('mode libre : la ligne « a mettre a jour » est affichee avec sa valeur', rg.items.includes('A mettre a jour : 2'));
+  check('offre ignoree : etiquette neutre', !!rg.tag && rg.tag.classList.contains('g2rd-tag--neutral'));
+
   console.log('\nResultat JS : ' + pass + ' reussis, ' + fail + ' echoues');
   process.exit(fail ? 1 : 0);
 })().catch(e => { console.error('ERREUR BANC DE TEST:', e); process.exit(2); });
