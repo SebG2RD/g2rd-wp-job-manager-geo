@@ -76,12 +76,12 @@ async function map({ mapId, clustering, data, restFail, nonce }) {
 const HOSTILE_ATTRIBUTION = '<a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> <a href="https://www.openmaptiles.org/" target="_blank">&copy; OpenMapTiles</a> Data from <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>'
   + '<img src="x" onerror="window.pwned=1"><iframe srcdoc="<b>cadre</b>"></iframe><a href="javascript:window.pwned=2">piege</a><b data-poc="1" onmouseover="window.pwned=3">gras</b>';
 
-async function osmMap({ data, clustering = true, noWebgl = false, styleFail = false, restFail = false, preload = true, admin = '', narrow = false, regionsFail = false, throwRender = false }) {
+async function osmMap({ data, clustering = true, noWebgl = false, styleFail = false, restFail = false, preload = true, admin = '', narrow = false, regionsFail = false, throwRender = false, badShape = false }) {
   const i18n = JSON.stringify({ loading: 'Chargement', error: 'ERREUR', empty: 'VIDE', view: 'Voir offre', manyJobs: '%d offres ici', regeocode: 'Re-geocoder', places: 'Liste', alsoAt: 'Aussi à :', regionTitle: '%s (toute la région)', oneJob: '1 offre', manyJobsShort: '%d offres', legendCity: 'Offre dans une ville', legendRegion: 'Offre sur toute une région' }).replace(/"/g, '&quot;');
   const html = '<div class="g2rd-wpjm-geo-map" data-rest-url="https://x.test/wp-json/g2rd-wpjm-geo/v1/jobs" data-per-page="4" data-clustering="' + (clustering ? 1 : 0) + '" data-admin-url="' + admin + '" data-nonce="" data-i18n="' + i18n + '"><div class="g2rd-wpjm-geo-map__canvas"></div><p class="g2rd-wpjm-geo-map__status">Chargement</p></div>';
   const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://x.test/' });
   const w = dom.window;
-  const st = { map: null, mapOpts: null, sources: {}, layers: [], layout: [], popups: [], fit: null, jump: null, ease: null, controls: [], noRotate: false, before: {}, states: [], markers: [], rendered: [], regionFetches: 0 };
+  const st = { map: null, mapOpts: null, sources: {}, layers: [], layout: [], popups: [], fit: null, jump: null, ease: null, controls: [], noRotate: false, before: {}, states: [], markers: [], rendered: [], regionFetches: 0, controlNodes: [], queryLayers: null, canvas: null };
   class FakeMap {
     constructor(o) {
       st.mapOpts = o; st.map = this; this.events = {};
@@ -90,8 +90,8 @@ async function osmMap({ data, clustering = true, noWebgl = false, styleFail = fa
       this.touchPitch = { disable: () => {} };
     }
     addControl(c, pos) {
-      st.controls.push(c.kind || (typeof c.onAdd === 'function' ? 'attrib' : '?'));
-      if (typeof c.onAdd === 'function') { st.attribNode = c.onAdd(this); st.attribPos = pos; }
+      st.controls.push(c.kind || (typeof c.render === 'function' ? 'attrib' : (typeof c.onAdd === 'function' ? 'legend' : '?')));
+      if (typeof c.onAdd === 'function') { const node = c.onAdd(this); st.controlNodes.push({ node, pos, ctrl: c }); if (typeof c.render === 'function') { st.attribNode = node; st.attribPos = pos; } }
       return this;
     }
     on(ev, a, b) { const k = b ? ev + ':' + a : ev; (this.events[k] = this.events[k] || []).push(b || a); }
@@ -106,19 +106,18 @@ async function osmMap({ data, clustering = true, noWebgl = false, styleFail = fa
     addLayer(l, before) { st.layers.push(l); if (before) st.before[l.id] = before; }
     getLayer(id) { return st.layers.find(l => l.id === id); }
     setFeatureState(f, s) { st.states.push({ f, s }); }
-    queryRenderedFeatures() { return st.rendered; }
+    queryRenderedFeatures(p, o) { st.queryLayers = o && o.layers; return st.rendered; }
     getSource(id) { if (throwRender && 'g2rd-regions' === id) throw new Error('render'); return id === 'openmaptiles' ? { attribution: HOSTILE_ATTRIBUTION } : { getClusterExpansionZoom: () => Promise.resolve(7) }; }
     easeTo(o) { st.ease = o; }
     fitBounds(b, o) { st.fit = { b, o }; }
     jumpTo(o) { st.jump = o; }
-    getCanvas() { return { style: {} }; }
+    getCanvas() { return st.canvas || (st.canvas = { style: {} }); }
   }
-  class Popup { constructor(o) { this.o = o; st.popups.push(this); } setLngLat(c) { this.c = c; return this; } setDOMContent(n) { this.node = n; return this; } addTo() { return this; } }
+  class Popup { constructor(o) { this.o = o; st.popups.push(this); } setLngLat(c) { this.c = c; return this; } setDOMContent(n) { this.node = n; return this; } addTo() { return this; } remove() { this.removed = true; return this; } }
   class LngLatBounds { constructor() { this.pts = []; } extend(p) { this.pts.push(p); return this; } }
   class NavigationControl { constructor(o) { this.kind = 'nav'; this.o = o; } }
   class FullscreenControl { constructor() { this.kind = 'full'; } }
-  class Marker { constructor(o) { this.o = o; st.markers.push(this); } setLngLat(c) { this.c = c; return this; } addTo() { return this; } }
-  const fake = { Map: FakeMap, Popup, LngLatBounds, NavigationControl, FullscreenControl, Marker };
+  const fake = { Map: FakeMap, Popup, LngLatBounds, NavigationControl, FullscreenControl };
   if (preload) w.maplibregl = fake;
   w.WebGL2RenderingContext = noWebgl ? undefined : function () {};
   w.HTMLCanvasElement.prototype.getContext = function () { return noWebgl ? null : {}; };
@@ -131,7 +130,7 @@ async function osmMap({ data, clustering = true, noWebgl = false, styleFail = fa
       if (regionsFail) return Promise.resolve({ ok: false, status: 404, json: () => Promise.reject(new Error('404')) });
       const square = (x, y) => ({ type: 'Polygon', coordinates: [[[x, y], [x + 1, y], [x + 1, y + 1], [x, y]]] });
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ type: 'FeatureCollection', features: [
-        { type: 'Feature', properties: { code: '28', nom: 'Normandie' }, geometry: square(0, 49) },
+        { type: 'Feature', properties: { code: '28', nom: 'Normandie' }, geometry: badShape ? { type: 'Point', coordinates: [0, 49] } : square(0, 49) },
         { type: 'Feature', properties: { code: '53', nom: 'Bretagne' }, geometry: square(-3, 48) },
         { type: 'Feature', properties: { code: '11', nom: 'Île-de-France' }, geometry: square(2, 48) }
       ] }) });
@@ -830,38 +829,59 @@ const multiJobs = [
   const zone = o.st.sources['g2rd-regions'];
   check('zones : source GeoJSON des seules regions affichees, identifiant code, credit ODbL', !!zone && 2 === zone.data.features.length && 'code' === zone.promoteId && /ODbL/.test(zone.attribution));
   const fill = o.st.layers.find(l => l.id === 'g2rd-region-fill'), line = o.st.layers.find(l => l.id === 'g2rd-region-line');
-  check('zones : remplissage et contour, dessines sous les points', !!fill && 'fill' === fill.type && !!line && 'line' === line.type && 'g2rd-clusters' === o.st.before['g2rd-region-fill'] && 'g2rd-clusters' === o.st.before['g2rd-region-line']);
-  const badges = o.st.markers.map(m => m.o.element);
-  check('pastilles : une par region, nombre d offres, bouton nomme', 2 === badges.length && '2 offres' === badges[0].textContent && '1 offre' === badges[1].textContent && 'button' === badges[0].type && /Normandie \(toute la région\) — 2 offres/.test(badges[0].getAttribute('aria-label')) && 0.1128 === o.st.markers[0].c[0]);
-  badges[0].click();
+  check('zones : remplissage et contour, sous les libelles du fond de carte (premier calque symbol du style)', !!fill && 'fill' === fill.type && !!line && 'line' === line.type && 'place-label' === o.st.before['g2rd-region-fill'] && 'place-label' === o.st.before['g2rd-region-line']);
+  check('zones : contour #d35400 (contraste), remplissage #ef6c00', '#d35400' === line.paint['line-color'] && '#ef6c00' === fill.paint['fill-color']);
+  const lsrc = o.st.sources['g2rd-region-labels'], llay = o.st.layers.find(l => l.id === 'g2rd-region-label');
+  check('etiquettes dans le canevas : source (code, texte), calque symbol sous les regroupements, aucun marqueur DOM', !!lsrc && 2 === lsrc.data.features.length && 'Normandie · 2 offres' === lsrc.data.features[0].properties.text && '28' === lsrc.data.features[0].properties.code && 0.1128 === lsrc.data.features[0].geometry.coordinates[0] && !!llay && 'symbol' === llay.type && 'g2rd-clusters' === o.st.before['g2rd-region-label'] && 0 === o.st.markers.length);
+  check('etiquettes : style (taille 13, ancrage haut, chevauchement permis, halo blanc)', 13 === llay.layout['text-size'] && 'top' === llay.layout['text-anchor'] && true === llay.layout['text-allow-overlap'] && true === llay.layout['text-ignore-placement'] && '#9a3412' === llay.paint['text-color'] && '#fff' === llay.paint['text-halo-color'] && 2 === llay.paint['text-halo-width']);
+  check('pas de point de secours quand les zones sont dessinees', !o.st.layers.some(l => l.id === 'g2rd-region-dot'));
+  const label28 = { properties: { code: '28' }, geometry: { coordinates: [0.1128, 49.1202] } }, label53 = { properties: { code: '53' }, geometry: { coordinates: [-2.8331, 48.1794] } };
+  o.st.map.fire('click:g2rd-region-label', { point: {}, features: [label28] });
   const rp = o.st.popups[o.st.popups.length - 1];
-  check('clic sur la pastille : fenetre des offres de la region, titre malveillant en texte', 2 === rp.node.querySelectorAll('li').length && 0 === rp.node.querySelectorAll('img').length && /toute la région/.test(rp.node.textContent));
+  check('clic sur l etiquette : fenetre des offres de la region, titre malveillant en texte', 2 === rp.node.querySelectorAll('li').length && 0 === rp.node.querySelectorAll('img').length && /toute la région/.test(rp.node.textContent) && 0.1128 === rp.c[0]);
+  o.st.map.fire('click:g2rd-region-label', { point: {}, features: [label53] });
+  o.st.map.fire('click:g2rd-points', { features: [{ properties: { gid: 0, count: 1 }, geometry: { coordinates: [2.352222, 48.856614] } }] });
+  check('une seule fenetre ouverte : deux regions puis un point', 1 === o.st.popups.filter(p => !p.removed).length && !o.st.popups[o.st.popups.length - 1].removed);
   const before = o.st.popups.length;
   o.st.rendered = [{ layer: { id: 'g2rd-points' } }];
+  o.st.map.fire('click:g2rd-region-label', { point: {}, features: [label28] });
   o.st.map.fire('click:g2rd-region-fill', { point: {}, lngLat: [0.5, 49.5], features: [{ properties: { code: '28' } }] });
-  check('clic sur un point dans une zone : la fenetre de la zone ne s ouvre pas', before === o.st.popups.length);
+  check('clic sur un point sous une etiquette ou dans une zone : aucune fenetre de region', before === o.st.popups.length);
+  o.st.rendered = [{ layer: { id: 'g2rd-region-label' } }];
+  o.st.map.fire('click:g2rd-region-fill', { point: {}, lngLat: [0.5, 49.5], features: [{ properties: { code: '28' } }] });
+  check('clic sur une etiquette dans une zone : la zone ne double pas la fenetre, calque d etiquettes teste', before === o.st.popups.length && o.st.queryLayers.indexOf('g2rd-region-label') !== -1);
   o.st.rendered = [];
   o.st.map.fire('click:g2rd-region-fill', { point: {}, lngLat: [0.5, 49.5], features: [{ properties: { code: '28' } }] });
-  check('clic dans la zone : fenetre de la region', before + 1 === o.st.popups.length);
+  check('clic dans la zone : fenetre de la region', before + 1 === o.st.popups.length && 1 === o.st.popups.filter(p => !p.removed).length);
   o.st.map.fire('mousemove:g2rd-region-fill', { features: [{ properties: { code: '53' } }] });
   check('survol : contour renforce (etat hover)', o.st.states.some(x => '53' === x.f.id && true === x.s.hover));
+  const cur = [];
+  [ 'g2rd-region-fill', 'g2rd-region-label' ].forEach(id => { o.st.map.fire('mouseenter:' + id, {}); cur.push(o.st.canvas.style.cursor); o.st.map.fire('mouseleave:' + id, {}); cur.push(o.st.canvas.style.cursor); });
+  check('curseur : main au survol des zones et des etiquettes, rendu en sortie', 'pointer,,pointer,' === cur.join());
   check('cadrage : villes et centres des regions', 4 === o.st.fit.b.pts.length);
-  const legend = o.el.querySelector('.g2rd-wpjm-geo-map__legend');
+  const lg = o.st.controlNodes.filter(n => n.node.classList.contains('g2rd-wpjm-geo-map__legend'));
+  const legend = lg[0] && lg[0].node;
+  check('legende : controle MapLibre en haut a gauche, ajoute une seule fois', 1 === lg.length && 'top-left' === lg[0].pos && legend.classList.contains('maplibregl-ctrl') && 'legend' === o.st.controls[o.st.controls.length - 1] && 'bottom-right' === o.st.attribPos);
   check('legende : deux entrees, pastilles visuelles masquees aux lecteurs d ecran, texte sans couleur', !!legend && 2 === legend.querySelectorAll('li').length && 2 === legend.querySelectorAll('.g2rd-wpjm-geo-map__swatch[aria-hidden="true"]').length && /Offre dans une ville/.test(legend.textContent) && /Offre sur toute une région/.test(legend.textContent));
   const mlist = o.w.document.querySelector('.g2rd-wpjm-geo-map__places');
   check('liste sous la carte : regions comprises', /Normandie \(toute la région\) — 2 offres/.test(mlist.textContent) && /Bretagne \(toute la région\) — 1 offre/.test(mlist.textContent));
   check('credit des contours dans l attribution, lien https', /ODbL/.test(o.st.attribNode.textContent) && [...o.st.attribNode.querySelectorAll('a')].some(a => 0 === a.href.indexOf('https://www.data.gouv.fr/')));
   o = await osmMap({ data: multiJobs, regionsFail: true });
-  const fb = o.st.markers.map(m => m.o.element);
-  check('contours injoignables : reperes etiquettes a leur centre, sans zone', !o.st.sources['g2rd-regions'] && 2 === fb.length && 'Normandie · 2 offres' === fb[0].textContent && fb[0].classList.contains('g2rd-wpjm-geo-region-badge--marker') && !o.el.classList.contains('has-error'));
+  const fsrc = o.st.sources['g2rd-region-labels'], dot = o.st.layers.find(l => l.id === 'g2rd-region-dot');
+  check('contours injoignables : memes etiquettes, sans zone', !o.st.sources['g2rd-regions'] && !!fsrc && 'Normandie · 2 offres' === fsrc.data.features[0].properties.text && 1 === o.st.layers.filter(l => l.id === 'g2rd-region-label').length && !o.el.classList.contains('has-error'));
+  check('contours injoignables : point de secours sous l etiquette, pas de legende', !!dot && 'circle' === dot.type && 5 === dot.paint['circle-radius'] && 'g2rd-region-label' === o.st.before['g2rd-region-dot'] && 0 === o.st.controlNodes.filter(n => n.pos === 'top-left').length);
+  o.st.map.fire('click:g2rd-region-dot', { point: {}, features: [label28] });
+  check('point de secours : clic ouvre la fenetre de la region', /toute la région/.test(o.st.popups[o.st.popups.length - 1].node.textContent) && 1 === o.st.popups.filter(p => !p.removed).length);
+  o = await osmMap({ data: multiJobs, badShape: true });
+  check('geometrie invalide (Point) : zone ecartee, etiquette conservee', 1 === o.st.sources['g2rd-regions'].data.features.length && '53' === o.st.sources['g2rd-regions'].data.features[0].properties.code && 2 === o.st.sources['g2rd-region-labels'].data.features.length);
   o = await osmMap({ data: jobs });
-  check('aucune region : contours non charges, ni pastille ni legende', 0 === o.st.regionFetches && 0 === o.st.markers.length && !o.el.querySelector('.g2rd-wpjm-geo-map__legend'));
+  check('aucune region : contours non charges, ni etiquette ni legende', 0 === o.st.regionFetches && !o.st.sources['g2rd-region-labels'] && 0 === o.st.controlNodes.filter(n => n.pos === 'top-left').length);
   o = await osmMap({ data: [multiJobs[2]] });
   check('une seule region : centrage sur la region (zoom 6)', !!o.st.jump && 6 === o.st.jump.zoom && !o.st.fit);
   o = await osmMap({ data: multiJobs, throwRender: true });
-  check('attribution.render() qui leve apres les zones : pas de pastille de secours en double', 2 === o.st.markers.length);
+  check('attribution.render() qui leve apres les zones : pas de point de secours, une seule couche d etiquettes', 1 === o.st.layers.filter(l => l.id === 'g2rd-region-label').length && !o.st.layers.some(l => l.id === 'g2rd-region-dot'));
   o = await osmMap({ data: multiJobs, clustering: false });
-  check('sans regroupement : zones, pastilles et legende dessinees', !!o.st.sources['g2rd-regions'] && 2 === o.st.markers.length && !!o.el.querySelector('.g2rd-wpjm-geo-map__legend'));
+  check('sans regroupement : zones, etiquettes et legende dessinees', !!o.st.sources['g2rd-regions'] && !!o.st.sources['g2rd-region-labels'] && 1 === o.st.controlNodes.filter(n => n.pos === 'top-left').length);
 
   console.log('\nResultat JS : ' + pass + ' reussis, ' + fail + ' echoues');
   process.exit(fail ? 1 : 0);
