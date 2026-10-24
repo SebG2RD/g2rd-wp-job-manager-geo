@@ -1161,6 +1161,15 @@ check( 'geocode() inchangé : adresse seule', is_array( $address ) && '1.0999' =
 check( 'introuvable : null, mis en cache', null === $geo->geocode_detailed( 'Atlantide' ) && $geo->is_cached( 'Atlantide' ) );
 check( 'texte sans lieu (vague, vide) : rien à demander à Photon', $geo->is_cached( 'Télétravail' ) && $geo->is_cached( ' (75) ' ) );
 check( 'version du cache : 4', '4' === PhotonGeocoder::CACHE_VERSION );
+check( 'écriture non latine : rien à demander à Photon', $geo->is_cached( '東京' ) && 2 === count( $urls ) );
+G2RD_Test_State::$http_responder = function ( $method, $url ) use ( &$urls ) {
+	$urls[] = $url;
+	return array( 'response' => array( 'code' => 503 ), 'body' => '' );
+};
+$down = $geo->geocode_detailed( 'Caen' );
+check( 'panne de Photon : erreur non mise en cache, l’appel suivant interroge Photon', is_wp_error( $down ) && false === $geo->is_cached( 'Caen' ) && is_wp_error( $geo->geocode_detailed( 'Caen' ) ) && 4 === count( $urls ) );
+G2RD_Test_State::$transients[ array_keys( G2RD_Test_State::$transients )[0] ] = array( 'r' => array( 'foo' => 'bar' ) );
+check( 'entrée de cache mal formée (sans coordonnées) : ignorée', null === $geo->geocode_detailed( 'Rouen, Seine-Maritime' ) );
 G2RD_Test_State::$http_responder = null;
 
 $results = $GLOBALS['g2rd_results'];

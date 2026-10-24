@@ -161,7 +161,7 @@ class PhotonGeocoder {
 	}
 
 	/**
-	 * Le dernier appel à geocode() s'est-il passé de Photon (cache, ou texte
+	 * Le dernier appel à geocode() ou geocode_detailed() (is_cached() ne le modifie pas) s'est-il passé de Photon (cache, ou texte
 	 * qui ne désigne aucun lieu) ? Sert à ne marquer une pause qu'après un vrai appel.
 	 *
 	 * @return bool
@@ -265,8 +265,8 @@ class PhotonGeocoder {
 	 * @return array{address:array<string,string>,county:string,name:string}|null
 	 */
 	private static function detailed( array $entry ) {
-		if ( empty( $entry['r'] ) || ! is_array( $entry['r'] ) ) {
-			return null;
+		if ( empty( $entry['r'] ) || ! is_array( $entry['r'] ) || ! isset( $entry['r']['lat'], $entry['r']['long'] ) || ! is_numeric( $entry['r']['lat'] ) || ! is_numeric( $entry['r']['long'] ) ) {
+			return null; // Entrée absente, « introuvable » ou mal formée.
 		}
 		return array(
 			'address' => $entry['r'],
