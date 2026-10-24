@@ -524,6 +524,12 @@ function tagField({ value = '', required = false, max = 3 } = {}) {
   f.field.commit();
   check('passage sans modification : texte enregistre non reecrit, aucun evenement', 'Paris;Lyon' === f.native.value && 0 === f.changes());
   f = tagField({ max: 10 });
+  f.field.add('Rouen'); f.field.add('Caen');
+  f.input.value = 'xyz';
+  f.tags()[1].querySelector('button').click();
+  f.input.value = ''; f.field.commit();
+  check('texte non valide puis efface apres un retrait : absent du champ natif', 'Rouen' === f.native.value);
+  f = tagField({ max: 10 });
   f.field.add('IDF');
   check('meme region sous deux ecritures : une seule etiquette', false === f.field.add('Île-de-France', '11') && false === f.field.add("Région l'Île-de-France") && 1 === f.tags().length);
   f.field.add("Saint-Martin $' test");

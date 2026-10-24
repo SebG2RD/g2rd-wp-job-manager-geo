@@ -203,6 +203,7 @@
 
 		function sync() {
 			native.value = joined();
+			settled = input.value;
 			native.dispatchEvent( new Event( 'input', { bubbles: true } ) );
 			native.dispatchEvent( new Event( 'change', { bubbles: true } ) );
 			validate();
