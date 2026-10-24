@@ -11,9 +11,10 @@
 	var C = window.g2rdWpjmGeoMapCommon;
 	var loader = window.g2rdWpjmGeoLoader;
 	var COLOR = '#c0392b';
-	// Mêmes réglages que la carte libre ; le zoom Google (tuiles de 256 px) vaut le zoom MapLibre + 1.
-	var CLUSTER_RADIUS = 25;
-	var CLUSTER_MAX_ZOOM = 11;
+	// Supercluster mesure le rayon sur une grille de 512 pour des tuiles de 256 : le double de MapLibre (40 ici = 20 la-bas).
+	// Le zoom Google vaut le zoom MapLibre + 1 (14 devient 15).
+	var CLUSTER_RADIUS = 40;
+	var CLUSTER_MAX_ZOOM = 15;
 
 	function circleSvg( count, size ) {
 		var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + size + '" height="' + size + '" viewBox="0 0 ' + size + ' ' + size + '">' +

@@ -965,9 +965,9 @@ const regionNoBox = { id: 15, title: 'Sans boite', permalink: 'https://x.test/jo
 
   console.log('\nP. Regroupement des points');
   o = await osmMap({ data: jobs });
-  check('carte libre : regroupement sur 25 px, jusqu au zoom 10', 25 === o.st.sources['g2rd-jobs'].clusterRadius && 10 === o.st.sources['g2rd-jobs'].clusterMaxZoom);
+  check('carte libre : regroupement sur 20 px, jusqu au zoom 14', 20 === o.st.sources['g2rd-jobs'].clusterRadius && 14 === o.st.sources['g2rd-jobs'].clusterMaxZoom);
   let gm = await map({ clustering: true, data: jobs });
-  check('carte Google : algorithme SuperCluster sur 25 px, jusqu au zoom 11', !!gm.st.cluster && !!gm.st.cluster.algorithm && 25 === gm.st.cluster.algorithm.options.radius && 11 === gm.st.cluster.algorithm.options.maxZoom);
+  check('carte Google : algorithme SuperCluster sur 40 px (grille 512), jusqu au zoom 15', !!gm.st.cluster && !!gm.st.cluster.algorithm && 40 === gm.st.cluster.algorithm.options.radius && 15 === gm.st.cluster.algorithm.options.maxZoom);
   gm = await map({ clustering: true, data: jobs, noAlgorithm: true });
   check('carte Google sans SuperClusterAlgorithm : regroupement par defaut', !!gm.st.cluster && undefined === gm.st.cluster.algorithm);
 

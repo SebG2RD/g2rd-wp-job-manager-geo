@@ -18,9 +18,9 @@
 	var cfg = window.g2rdWpjmGeoOsm || {};
 	var COLOR = '#c0392b';
 	var SOURCE = 'g2rd-jobs';
-	// Regroupement des points : assez serré pour que Paris, Évreux, le Nord ou Lyon restent distincts en vue France.
-	var CLUSTER_RADIUS = 25;
-	var CLUSTER_MAX_ZOOM = 10;
+	// Rayon mesure : Paris, Evreux, Amiens, Blois, Lyon restent distincts en vue France ; regroupement maintenu jusqu au zoom 14 pour les quartiers denses.
+	var CLUSTER_RADIUS = 20;
+	var CLUSTER_MAX_ZOOM = 14;
 	var maplibrePromise = null;
 	var REGION_COLOR = '#ef6c00';
 	var REGION_LINE_COLOR = '#d35400';
