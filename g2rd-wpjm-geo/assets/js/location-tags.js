@@ -10,17 +10,17 @@
 
 	var SEPARATORS = /[;|\/\r\n]|\s+et\s+/i;
 	var LIVE = /[;|\/\r\n]/;
-	var EDGES = /^[\s,.:\-–—]+|[\s,.:\-–—]+$/g;
+	var EDGES = /^[\s,.:\-\u2013\u2014]+|[\s,.:\-\u2013\u2014]+$/g;
 	var VAGUE = [ 'remote', 'full remote', 'teletravail', 'a distance', 'hybride' ];
 	var MAX_PIECES = 30;
-	var ICON_CITY = '📍';
-	var ICON_REGION = '🗺️';
+	var ICON_CITY = '\uD83D\uDCCD';
+	var ICON_REGION = '\uD83D\uDDFA\uFE0F';
 
 	// Forme de comparaison de PhotonGeocoder::normalize() : sans accents, minuscules, ponctuation en espace.
 	function normalize( text ) {
 		var value = String( text || '' );
 		if ( value.normalize ) {
-			value = value.normalize( 'NFD' ).replace( /[̀-ͯ]/g, '' );
+			value = value.normalize( 'NFD' ).replace( /[\u0300-\u036F]/g, '' );
 		}
 		value = value.toLowerCase().replace( /[^a-z0-9]+/g, ' ' ).trim();
 		return value.replace( /\bst\b/g, 'saint' ).replace( /\bste\b/g, 'sainte' );
@@ -213,7 +213,7 @@
 				remove.type = 'button';
 				remove.className = 'g2rd-wpjm-geo-tags__remove';
 				remove.setAttribute( 'aria-label', format( i18n.remove, tag.short ) );
-				remove.textContent = '✕';
+				remove.textContent = '\u2715';
 				remove.addEventListener( 'click', function () {
 					removeAt( position );
 					input.focus();
