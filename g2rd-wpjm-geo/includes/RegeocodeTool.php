@@ -33,11 +33,11 @@ class RegeocodeTool {
 	private $settings;
 
 	/**
-	 * Géocodeur libre.
+	 * Placement des lieux (mode libre).
 	 *
-	 * @var PhotonGeocoder
+	 * @var PlaceLocator
 	 */
-	private $geocoder;
+	private $locator;
 
 	/**
 	 * Pause entre deux appels réels à Photon.
@@ -55,8 +55,8 @@ class RegeocodeTool {
 	 */
 	public function __construct( Settings $settings, PhotonGeocoder $geocoder, $sleeper = null ) {
 		$this->settings = $settings;
-		$this->geocoder = $geocoder;
 		$this->sleeper  = is_callable( $sleeper ) ? $sleeper : 'sleep';
+		$this->locator  = new PlaceLocator( $geocoder, $this->sleeper );
 	}
 
 	/**
@@ -73,23 +73,25 @@ class RegeocodeTool {
 	/**
 	 * Offres à localisation renseignée (hors corbeille et brouillons automatiques).
 	 *
-	 * @return array<int,array<string,string|null>> Lignes id, status, location, source, geolocated.
+	 * @return array<int,array<string,string|null>> Lignes id, status, location, source, geolocated, places.
 	 */
 	public static function rows() {
 		global $wpdb;
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery -- agrégat en lecture seule sur trois métadonnées, sans équivalent WP_Query.
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT p.ID AS id, p.post_status AS status, loc.meta_value AS location, src.meta_value AS source, geo.meta_value AS geolocated
+				"SELECT p.ID AS id, p.post_status AS status, loc.meta_value AS location, src.meta_value AS source, geo.meta_value AS geolocated, pl.meta_value AS places
 				FROM {$wpdb->posts} p
 				INNER JOIN {$wpdb->postmeta} loc ON loc.post_id = p.ID AND loc.meta_key = %s
 				LEFT JOIN {$wpdb->postmeta} src ON src.post_id = p.ID AND src.meta_key = %s
 				LEFT JOIN {$wpdb->postmeta} geo ON geo.post_id = p.ID AND geo.meta_key = %s
+				LEFT JOIN {$wpdb->postmeta} pl ON pl.post_id = p.ID AND pl.meta_key = %s
 				WHERE p.post_type = %s AND p.post_status NOT IN ( 'trash', 'auto-draft' ) AND loc.meta_value <> ''
 				ORDER BY p.ID ASC",
 				'_job_location',
 				GeocodingIntegration::META_SOURCE,
 				'geolocated',
+				GeocodingIntegration::META_PLACES,
 				'job_listing'
 			),
 			ARRAY_A
@@ -102,7 +104,7 @@ class RegeocodeTool {
 	 *
 	 * @param array<int,array<string,string|null>> $rows     Lignes de rows().
 	 * @param string                               $provider Fournisseur actif.
-	 * @return array{total:int,google:int,osm:int,none:int,shown:int,todo:int,todo_ids:list<int>,todo_keys:list<int>}
+	 * @return array{total:int,google:int,osm:int,none:int,shown:int,update:int,todo:int,todo_ids:list<int>,todo_keys:list<int>}
 	 */
 	public static function summarize( array $rows, $provider ) {
 		$summary = array(
@@ -111,6 +113,7 @@ class RegeocodeTool {
 			'osm'       => 0,
 			'none'      => 0,
 			'shown'     => 0,
+			'update'    => 0,
 			'todo'      => 0,
 			'todo_ids'  => array(),
 			'todo_keys' => array(),
@@ -132,7 +135,11 @@ class RegeocodeTool {
 				++$summary[ $source ];
 				if ( $source === $provider ) {
 					++$summary['shown'];
-					continue;
+					if ( Settings::PROVIDER_OSM !== $provider || ! empty( $row['places'] ) ) {
+						continue;
+					}
+					// Offre libre antérieure à la 1.2.0 (un seul point) : reprise pour placer tous ses lieux.
+					++$summary['update'];
 				}
 			}
 			++$summary['todo'];
@@ -161,7 +168,7 @@ class RegeocodeTool {
 	 * Résumé pour le fournisseur actif (bandeau de la page).
 	 *
 	 * @param string $provider Fournisseur actif.
-	 * @return array{total:int,google:int,osm:int,none:int,shown:int,todo:int,todo_ids:list<int>,todo_keys:list<int>}
+	 * @return array{total:int,google:int,osm:int,none:int,shown:int,update:int,todo:int,todo_ids:list<int>,todo_keys:list<int>}
 	 */
 	public static function stats( $provider ) {
 		return self::summarize( self::rows(), $provider );
@@ -287,50 +294,78 @@ class RegeocodeTool {
 		}
 
 		if ( Settings::PROVIDER_OSM === $provider ) {
-			$result = $this->geocoder->geocode( $location );
-			if ( ! $this->geocoder->last_was_cached() ) {
-				call_user_func( $this->sleeper, 1 );
+			$located = $this->locator->locate( $location );
+			if ( is_wp_error( $located ) ) {
+				$row['status'] = 'error';
+				$row['result'] = $located->get_error_message();
+				return $row;
 			}
-		} elseif ( ! $write ) {
+			if ( ! $located['places'] ) {
+				$row['status'] = 'not_found';
+				return $row;
+			}
+			$row['result'] = self::describe( $located );
+			if ( $write ) {
+				GeocodingIntegration::write_places( $job_id, $located );
+				$row['status'] = 'done';
+			} else {
+				$row['status'] = 'ok';
+			}
+			return $row;
+		}
+
+		if ( ! $write ) {
 			$row['status'] = 'pending';
 			$row['result'] = __( 'Géocodage par WP Job Manager (Google) à l’exécution', 'g2rd-wpjm-geo' );
 			return $row;
-		} else {
-			$data = class_exists( 'WP_Job_Manager_Geocode' ) ? \WP_Job_Manager_Geocode::get_location_data( $location ) : false;
-			// Message exact de WP Job Manager pour ZERO_RESULTS (même domaine, même traduction) ; tout autre
-			// WP_Error vient d'une clé refusée, d'un quota ou du réseau.
-			$zero = __( 'No results found', 'wp-job-manager' ); // phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
-			if ( is_array( $data ) && $data ) {
-				$result = $data;
-			} elseif ( is_wp_error( $data ) && $zero === $data->get_error_message() ) {
-				$result = null; // Aucun résultat chez Google : offre listée « Non trouvée ».
-			} elseif ( is_wp_error( $data ) ) {
-				/* translators: %s: WP Job Manager error message. */
-				$result = new \WP_Error( 'g2rd_geocode_unavailable', sprintf( __( 'Géocodage Google en échec (clé refusée, quota ou réseau) : %s', 'g2rd-wpjm-geo' ), $data->get_error_message() ) );
-			} else {
-				$result = new \WP_Error( 'g2rd_geocode_unavailable', __( 'Géocodage Google indisponible (quota atteint ou géocodage désactivé).', 'g2rd-wpjm-geo' ) );
-			}
 		}
-
-		if ( is_wp_error( $result ) ) {
+		$data = class_exists( 'WP_Job_Manager_Geocode' ) ? \WP_Job_Manager_Geocode::get_location_data( $location ) : false;
+		// Message exact de WP Job Manager pour ZERO_RESULTS (même domaine, même traduction) ; tout autre
+		// WP_Error vient d'une clé refusée, d'un quota ou du réseau.
+		$zero = __( 'No results found', 'wp-job-manager' ); // phpcs:ignore WordPress.WP.I18n.TextDomainMismatch
+		if ( is_wp_error( $data ) && $zero !== $data->get_error_message() ) {
 			$row['status'] = 'error';
-			$row['result'] = $result->get_error_message();
+			/* translators: %s: WP Job Manager error message. */
+			$row['result'] = sprintf( __( 'Géocodage Google en échec (clé refusée, quota ou réseau) : %s', 'g2rd-wpjm-geo' ), $data->get_error_message() );
 			return $row;
 		}
-		if ( null === $result ) {
-			$row['status'] = 'not_found';
+		if ( is_wp_error( $data ) ) {
+			$row['status'] = 'not_found'; // Aucun résultat chez Google : offre listée « Non trouvée ».
 			return $row;
 		}
-
-		$label         = implode( ', ', array_filter( array( isset( $result['city'] ) ? $result['city'] : '', isset( $result['country_long'] ) ? $result['country_long'] : '' ) ) );
-		$row['result'] = '' !== $label ? $label : (string) ( isset( $result['formatted_address'] ) ? $result['formatted_address'] : '' );
-		if ( $write ) {
-			GeocodingIntegration::write( $job_id, $result, $provider );
-			$row['status'] = 'done';
-		} else {
-			$row['status'] = 'ok';
+		if ( ! is_array( $data ) || ! $data ) {
+			$row['status'] = 'error';
+			$row['result'] = __( 'Géocodage Google indisponible (quota atteint ou géocodage désactivé).', 'g2rd-wpjm-geo' );
+			return $row;
 		}
+		$label         = implode( ', ', array_filter( array( isset( $data['city'] ) ? $data['city'] : '', isset( $data['country_long'] ) ? $data['country_long'] : '' ) ) );
+		$row['result'] = '' !== $label ? $label : (string) ( isset( $data['formatted_address'] ) ? $data['formatted_address'] : '' );
+		GeocodingIntegration::write( $job_id, $data, $provider );
+		$row['status'] = 'done';
 		return $row;
+	}
+
+	/**
+	 * Résultat lisible : « Rouen, France » pour une ville seule, sinon la liste des
+	 * lieux ; puis les lieux introuvables.
+	 *
+	 * @param array<string,mixed> $located Résultat de PlaceLocator::locate().
+	 * @return string
+	 */
+	private static function describe( array $located ) {
+		$address = (array) $located['address'];
+		$places  = (array) $located['places'];
+		if ( 1 === count( $places ) && 'city' === $places[0]['type'] ) {
+			$text = implode( ', ', array_filter( array( (string) $address['city'], (string) $address['country_long'] ) ) );
+			$text = '' !== $text ? $text : (string) $address['formatted_address'];
+		} else {
+			$text = implode( ', ', array_column( $places, 'label' ) );
+		}
+		if ( ! empty( $located['missing'] ) ) {
+			/* translators: %s: comma-separated locations that were not found. */
+			$text .= ' — ' . sprintf( __( 'introuvable : %s', 'g2rd-wpjm-geo' ), implode( ', ', (array) $located['missing'] ) );
+		}
+		return $text;
 	}
 
 	/**
@@ -365,6 +400,7 @@ class RegeocodeTool {
 			'total'        => __( 'Offres avec une localisation', 'g2rd-wpjm-geo' ),
 			'google'       => __( 'Géocodées par Google', 'g2rd-wpjm-geo' ),
 			'osm'          => __( 'Géocodées par OpenStreetMap', 'g2rd-wpjm-geo' ),
+			'update'       => __( 'Libres, à mettre à jour (plusieurs lieux)', 'g2rd-wpjm-geo' ),
 			'none'         => __( 'Sans coordonnées', 'g2rd-wpjm-geo' ),
 			'todo'         => __( 'À re-géocoder', 'g2rd-wpjm-geo' ),
 			'job'          => __( 'Offre', 'g2rd-wpjm-geo' ),
@@ -386,7 +422,7 @@ class RegeocodeTool {
 				<?php
 				echo esc_html(
 					$is_osm
-						? __( 'Recalcule avec Photon (OpenStreetMap) les coordonnées des offres qui ne viennent pas de la source libre. Les offres introuvables ne sont jamais effacées : elles sont listées pour correction.', 'g2rd-wpjm-geo' )
+						? __( 'Recalcule avec Photon (OpenStreetMap) les coordonnées des offres qui ne viennent pas de la source libre, et place tous les lieux (villes et régions) des offres antérieures à la version 1.2.0. Les offres introuvables ne sont jamais effacées : elles sont listées pour correction.', 'g2rd-wpjm-geo' )
 						: __( 'Recalcule avec Google, via WP Job Manager et sa clé serveur, les coordonnées des offres géocodées par OpenStreetMap. Les offres introuvables ne sont jamais effacées.', 'g2rd-wpjm-geo' )
 				);
 				?>

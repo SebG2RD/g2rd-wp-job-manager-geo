@@ -30,7 +30,7 @@
 		function renderSummary( summary ) {
 			var list = document.createElement( 'ul' );
 			list.className = 'g2rd-stack';
-			[ 'total', 'google', 'osm', 'none', 'todo' ].forEach( function ( key ) {
+			[ 'total', 'google', 'osm', 'update', 'none', 'todo' ].forEach( function ( key ) {
 				var item = document.createElement( 'li' );
 				item.textContent = ( i18n[ key ] || key ) + ' : ' + ( summary[ key ] || 0 );
 				list.appendChild( item );

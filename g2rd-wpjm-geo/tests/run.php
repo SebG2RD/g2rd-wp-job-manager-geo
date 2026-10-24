@@ -771,8 +771,8 @@ AdminMenu::reset();
 echo PHP_EOL . '20. Re-géocodage des offres' . PHP_EOL;
 $rows = array(
 	array( 'id' => '300', 'location' => 'Rouen', 'source' => null, 'geolocated' => '1' ),
-	array( 'id' => '301', 'location' => 'Montréal', 'source' => 'osm', 'geolocated' => '1' ),
-	array( 'id' => '302', 'location' => 'IDF', 'source' => null, 'geolocated' => null ),
+	array( 'id' => '301', 'location' => 'Montréal', 'source' => 'osm', 'geolocated' => '1', 'places' => 'a:1:{i:0;a:0:{}}' ),
+	array( 'id' => '302', 'location' => 'Atlantide', 'source' => null, 'geolocated' => null ),
 	array( 'id' => '303', 'location' => 'Brest', 'source' => null, 'geolocated' => '1' ),
 	array( 'id' => '303', 'location' => 'Brest', 'source' => null, 'geolocated' => '1' ),
 );
@@ -800,7 +800,7 @@ $a = $tool->handle( 'analyze', 0, $rows );
 check( 'analyse : terminée sans appel réseau', true === $a['done'] && array() === $a['rows'] && 3 === $a['summary']['todo'] && 0 === count( G2RD_Test_State::$http_calls ) && ! isset( $a['summary']['todo_ids'] ) );
 $sim = $tool->handle( 'simulate', 0, $rows );
 $st  = array_column( $sim['rows'], 'status', 'id' );
-check( 'simulation : Rouen prévu, IDF non trouvée, Brest en erreur', 'ok' === $st[300] && 'not_found' === $st[302] && 'error' === $st[303] && 'Rouen, France' === $sim['rows'][0]['result'] );
+check( 'simulation : Rouen prévu, Atlantide non trouvée, Brest en erreur', 'ok' === $st[300] && 'not_found' === $st[302] && 'error' === $st[303] && 'Rouen, France' === $sim['rows'][0]['result'] );
 check( 'simulation : arrêt sur panne, aucune écriture', true === $sim['done'] && true === $sim['stopped'] && '1.5' === G2RD_Test_State::$meta[300]['geolocation_lat'] && ! isset( G2RD_Test_State::$meta[300][ $src ] ) );
 check( 'simulation : lien de modification fourni', 'https://example.test/wp-admin/post.php?post=300&action=edit' === $sim['rows'][0]['edit'] );
 G2RD_Test_State::$http_responder = function ( $method, $url ) {
@@ -815,8 +815,8 @@ G2RD_Test_State::$http_responder = function ( $method, $url ) {
 $before = $sleeps;
 $run    = $tool->handle( 'run', 0, $rows );
 $st     = array_column( $run['rows'], 'status', 'id' );
-check( 'exécution : Rouen et Brest écrits, IDF non trouvée', 'done' === $st[300] && 'done' === $st[303] && 'not_found' === $st[302] && true === $run['done'] );
-check( 'exécution : pause seulement après un vrai appel (Brest), pas sur le cache (Rouen, IDF)', 1 === $sleeps - $before );
+check( 'exécution : Rouen et Brest écrits, Atlantide non trouvée', 'done' === $st[300] && 'done' === $st[303] && 'not_found' === $st[302] && true === $run['done'] );
+check( 'exécution : pause seulement après un vrai appel (Brest), pas sur le cache (Rouen, Atlantide)', 1 === $sleeps - $before );
 check( 'exécution : coordonnées libres et source osm', '49.4432' === G2RD_Test_State::$meta[300]['geolocation_lat'] && 'osm' === G2RD_Test_State::$meta[300][ $src ] && 'osm' === G2RD_Test_State::$meta[303][ $src ] );
 check( 'exécution : offre non trouvée laissée intacte', '1.5' === G2RD_Test_State::$meta[302]['geolocation_lat'] );
 check( 'exécution : curseur sur la dernière offre traitée', 303 === $run['cursor'] );
@@ -1406,6 +1406,25 @@ $race->push( 513 );
 $race->flush();
 $race->process();
 check( 'file : lieu modifié pendant le calcul, rien n’est écrit', ! isset( G2RD_Test_State::$meta[513]['geolocated'] ) );
+G2RD_Test_State::$http_responder = null;
+
+echo PHP_EOL . '37. Re-géocodage : plusieurs lieux' . PHP_EOL;
+$mrows = array(
+	array( 'id' => '600', 'location' => 'Rouen ; Normandie ; Atlantide', 'source' => 'osm', 'geolocated' => '1', 'places' => null ),
+	array( 'id' => '601', 'location' => 'Brest', 'source' => 'osm', 'geolocated' => '1', 'places' => 'a:1:{i:0;a:0:{}}' ),
+);
+$sum = RegeocodeTool::summarize( $mrows, 'osm' );
+check( 'offre libre sans liste de lieux (1.1.x) : affichée, à mettre à jour', 2 === $sum['osm'] && 2 === $sum['shown'] && 1 === $sum['update'] && 1 === $sum['todo'] && array( 600 ) === $sum['todo_ids'] );
+check( 'mode Google : aucune mise à jour d’offre libre', 0 === RegeocodeTool::summarize( $mrows, 'google' )['update'] );
+list( $s ) = geo_boot();
+g2rd_world( array() );
+G2RD_Test_State::$post_types[600] = 'job_listing';
+G2RD_Test_State::$meta[600]       = array( '_job_location' => 'Rouen ; Normandie ; Atlantide', 'geolocated' => 1, 'geolocation_lat' => '49.4432', $src => 'osm' );
+$tool = new RegeocodeTool( $s, new PhotonGeocoder( $s ), '__return_false' );
+$sim  = $tool->handle( 'simulate', 0, $mrows );
+check( 'simulation : lieux trouvés et introuvables listés, aucune écriture', 'ok' === $sim['rows'][0]['status'] && 'Rouen, Normandie — introuvable : Atlantide' === $sim['rows'][0]['result'] && ! isset( G2RD_Test_State::$meta[600][ GeocodingIntegration::META_PLACES ] ) );
+$run = $tool->handle( 'run', 0, $mrows );
+check( 'exécution : liste de lieux écrite', 'done' === $run['rows'][0]['status'] && 2 === count( G2RD_Test_State::$meta[600][ GeocodingIntegration::META_PLACES ] ) );
 G2RD_Test_State::$http_responder = null;
 
 $results = $GLOBALS['g2rd_results'];
