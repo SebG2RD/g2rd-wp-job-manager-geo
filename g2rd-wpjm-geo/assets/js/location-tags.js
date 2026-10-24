@@ -130,7 +130,9 @@
 	/**
 	 * Remplace à l'écran le champ natif par une zone à étiquettes.
 	 *
-	 * @return {{root: Element, input: HTMLInputElement, add: Function, commit: Function, values: Function}}
+	 * has( text, region ) indique si un lieu est déjà présent (même texte, ou même région sous une autre écriture).
+	 *
+	 * @return {{root: Element, input: HTMLInputElement, add: Function, commit: Function, has: Function, values: Function}}
 	 */
 	function create( native, options ) {
 		var opts = options || {};
@@ -148,8 +150,8 @@
 		list.hidden = true;
 		var input = document.createElement( 'input' );
 		input.type = 'text';
-		// Classes du champ natif reprises (« input-text » de WP Job Manager, styles du thème).
-		input.className = 'g2rd-wpjm-geo-tags__input' + ( native.className ? ' ' + native.className : '' );
+		// Seule la classe « input-text » de WP Job Manager est reprise (styles du thème) : une classe d'état posée par un autre script ne l'est pas.
+		input.className = 'g2rd-wpjm-geo-tags__input' + ( native.classList.contains( 'input-text' ) ? ' input-text' : '' );
 		input.id = ( native.id || 'g2rd-wpjm-geo-location' ) + '-g2rd-tags';
 		input.setAttribute( 'autocomplete', 'off' );
 		if ( native.placeholder ) {

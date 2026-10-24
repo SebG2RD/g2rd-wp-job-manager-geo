@@ -387,8 +387,12 @@
 				close();
 				return;
 			}
-			if ( local.length && document.activeElement === input ) {
-				render( local ); // Les régions n'attendent pas la réponse de Photon.
+			// Les régions dont le nom commence par la saisie n'attendent pas Photon ; les autres viennent après les villes.
+			var early = local.filter( function ( item ) {
+				return item.start;
+			} );
+			if ( early.length && document.activeElement === input ) {
+				render( early );
 			}
 			var current = ++requestId;
 			var pending;
@@ -442,6 +446,10 @@
 			window.clearTimeout( timer );
 			if ( field && input.value.trim().length < MIN_LENGTH ) {
 				close();
+			} else if ( field ) {
+				// Le texte change : l'option surlignée ne correspond plus à ce qui est tapé.
+				byKeyboard = false;
+				setActive( -1 );
 			}
 			timer = window.setTimeout( search, DEBOUNCE );
 		} );
