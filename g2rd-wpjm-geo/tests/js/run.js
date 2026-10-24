@@ -347,7 +347,7 @@ async function tagsAc({ features = null, max = 10, required = false, regions = R
     cw.fetch = () => Promise.reject(new Error('unused'));
     cw.eval(src('js/map-common.js'));
     const C = cw.g2rdWpjmGeoMapCommon;
-    check('API exposee : un seul objet global, 10 fonctions', 'parseJson,sprintf,safeUrl,placeLabel,buildInfoContent,groupByCoordinates,createFetcher,observe,status,places' === Object.keys(C).join(','));
+    check('API exposee : un seul objet global, 14 fonctions', 'parseJson,sprintf,safeUrl,placeLabel,buildInfoContent,buildRegionContent,regionTitle,jobCount,groupByCoordinates,splitPlaces,createFetcher,observe,status,places' === Object.keys(C).join(','));
     check('safeUrl : http(s) absolu seulement (relatif, //hote, javascript:, espace initial, non-chaine refuses)',
       C.safeUrl('HTTPS://a.test/x') === 'HTTPS://a.test/x' && ['/job/1', '//evil.test', 'javascript:alert(1)', ' javascript:alert(1)', 'https:evil', 'data:text/html,x', null, 42].every(u => C.safeUrl(u) === ''));
     const g = C.groupByCoordinates([{ latitude: '48.856614', longitude: '2.352222' }, { latitude: 48.8566141, longitude: 2.3522224 }, { latitude: 48.85662, longitude: 2.352222 }, { latitude: 90, longitude: 180 }, { latitude: 90.0001, longitude: 0 }, { latitude: '', longitude: '' }]);
@@ -755,6 +755,33 @@ async function tagsAc({ features = null, max = 10, required = false, regions = R
   g.d.hasFocus = () => true;
   g.input.focus(); await wait(10); g.input.blur(); await wait(10);
   check('retour dans la page : le texte laisse devient une etiquette', 'Rou' === g.native.value && 1 === g.tags().length);
+
+  console.log('\nM. Lieux multiples (map-common.js)');
+  {
+    const lw = new JSDOM('<p></p>', { runScripts: 'outside-only', url: 'https://x.test/' }).window;
+    lw.eval(src('js/map-common.js'));
+    const C = lw.g2rdWpjmGeoMapCommon;
+    const mi = { view: 'Voir', alsoAt: 'Aussi à :', regionTitle: '%s (toute la région)', oneJob: '1 offre', manyJobsShort: '%d offres' };
+    const sp = C.splitPlaces([
+      { id: 1, title: 'A', city: 'Paris', country: 'France', latitude: 48.85, longitude: 2.35, places: [{ type: 'city', label: 'Paris', lat: 48.85, lng: 2.35 }, { type: 'city', label: 'Lyon', lat: 45.76, lng: 4.83 }, { type: 'region', label: 'Normandie', lat: 49.12, lng: 0.11, region: '28' }] },
+      { id: 2, title: '<img src=x onerror=alert(1)>', city: '', country: 'France', latitude: 49.12, longitude: 0.11, places: [{ type: 'region', label: 'Normandie', lat: 49.12, lng: 0.11, region: '28' }] },
+      { id: 3, title: 'C', city: 'Rouen', country: 'France', latitude: 49.44, longitude: 1.09 },
+      { id: 4, title: 'D', places: [{ type: 'region', label: 'Bretagne', lat: 'x', lng: 0, region: '53' }, { type: 'pays', label: 'France', lat: 46, lng: 2 }] }
+    ]);
+    check('un point par ville, une entree par region, offre sans liste gardee, lieux invalides ignores', 3 === sp.points.length && 1 === sp.regions.length && 2 === sp.regions[0].jobs.length && '28' === sp.regions[0].code && 49.12 === sp.regions[0].position.lat);
+    check('point de Lyon : coordonnees et libelle du lieu, autres lieux de l offre', 45.76 === sp.points[1].latitude && 'Lyon' === sp.points[1].city && 'Paris, Normandie' === sp.points[1]._also.join(', '));
+    check('offre sans liste : point d origine, aucun autre lieu', 49.44 === sp.points[2].latitude && 0 === sp.points[2]._also.length);
+    const node = C.buildInfoContent([sp.points[1]], mi);
+    check('fenetre : ligne « Aussi a » en texte', /Aussi à : Paris, Normandie/.test(node.textContent) && !!node.querySelector('.g2rd-wpjm-geo-iw__also'));
+    const rnode = C.buildRegionContent(sp.regions[0], mi);
+    check('fenetre de region : titre, nombre d offres, liste, titre malveillant en texte', /Normandie \(toute la région\) — 2 offres/.test(rnode.textContent) && 2 === rnode.querySelectorAll('li').length && 0 === rnode.querySelectorAll('img').length);
+    check('nombre d offres : singulier et pluriel', '1 offre' === C.jobCount(1, mi) && '3 offres' === C.jobCount(3, mi));
+    check('titre de region : motifs $ du libelle laisses tels quels', 'A$&B (toute la région) — 1 offre' === C.regionTitle({ label: 'A$&B', jobs: [{}] }, mi));
+    const box = lw.document.createElement('div');
+    lw.document.body.appendChild(box);
+    C.places(box, C.groupByCoordinates(sp.points), { places: 'Liste', alsoAt: 'Aussi à :', regionTitle: '%s (toute la région)', oneJob: '1 offre', manyJobsShort: '%d offres' }, sp.regions);
+    check('liste sous la carte : regions comprises', /Normandie \(toute la région\) — 2 offres/.test(box.nextElementSibling.textContent));
+  }
 
   console.log('\nResultat JS : ' + pass + ' reussis, ' + fail + ' echoues');
   process.exit(fail ? 1 : 0);

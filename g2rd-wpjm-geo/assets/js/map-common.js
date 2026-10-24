@@ -1,8 +1,9 @@
 /**
  * Fonctions partagées par les moteurs de carte (Google et MapLibre) :
- * lecture paginée de l'endpoint REST, regroupement des offres aux coordonnées
- * identiques, contenu des fenêtres (DOM + textContent, jamais de HTML) et
- * démarrage paresseux à l'approche de la zone visible.
+ * lecture paginée de l'endpoint REST, lieux multiples (un point par ville, une
+ * entrée par région), regroupement des offres aux coordonnées identiques,
+ * contenu des fenêtres (DOM + textContent, jamais de HTML) et démarrage
+ * paresseux à l'approche de la zone visible.
  */
 ( function ( window, document ) {
 	'use strict';
@@ -63,6 +64,9 @@
 		if ( ! compact ) {
 			addLine( wrapper, 'g2rd-wpjm-geo-iw__place', placeLabel( job ) );
 		}
+		if ( Array.isArray( job._also ) && job._also.length ) {
+			addLine( wrapper, 'g2rd-wpjm-geo-iw__also', ( i18n.alsoAt || '' ) + ' ' + job._also.join( ', ' ) );
+		}
 		addLine( wrapper, 'g2rd-wpjm-geo-iw__type', job.job_type );
 
 		if ( ! compact && url ) {
@@ -94,6 +98,90 @@
 		} );
 		root.appendChild( list );
 		return root;
+	}
+
+	function jobCount( count, i18n ) {
+		return 1 === count ? String( i18n.oneJob || '1' ) : sprintf( i18n.manyJobsShort, count );
+	}
+
+	function regionTitle( region, i18n ) {
+		var label = region.label || '';
+		return String( i18n.regionTitle || '%s' ).replace( '%s', function () {
+			return label;
+		} ) + ' \u2014 ' + jobCount( region.jobs.length, i18n );
+	}
+
+	function buildRegionContent( region, i18n ) {
+		var root = document.createElement( 'div' );
+		root.className = 'g2rd-wpjm-geo-iw g2rd-wpjm-geo-iw--region';
+		addLine( root, 'g2rd-wpjm-geo-iw__heading', regionTitle( region, i18n ) );
+		var list = document.createElement( 'ul' );
+		list.className = 'g2rd-wpjm-geo-iw__list';
+		region.jobs.forEach( function ( job ) {
+			list.appendChild( buildJobNode( job, i18n, true ) );
+		} );
+		root.appendChild( list );
+		return root;
+	}
+
+	// Lieux d'une offre (champ places de l'API) ; sans liste, l'offre garde son point unique.
+	function placesOf( job ) {
+		var list = Array.isArray( job.places ) ? job.places.filter( function ( place ) {
+			return place && ( 'city' === place.type || ( 'region' === place.type && 'string' === typeof place.region && place.region ) );
+		} ) : [];
+		return list.length ? list : [ { type: 'city', label: '', lat: job.latitude, lng: job.longitude } ];
+	}
+
+	/**
+	 * Une copie de l'offre par ville (coordonnées de la ville) et une entrée par
+	 * région. Chaque copie porte `_also` : les autres lieux de l'offre.
+	 */
+	function splitPlaces( jobs ) {
+		var points = [];
+		var regions = {};
+		var order = [];
+		jobs.forEach( function ( job ) {
+			var places = placesOf( job );
+			places.forEach( function ( place, index ) {
+				var copy = {};
+				Object.keys( job ).forEach( function ( name ) {
+					copy[ name ] = job[ name ];
+				} );
+				copy._also = places.filter( function ( other, i ) {
+					return i !== index && other.label;
+				} ).map( function ( other ) {
+					return other.label;
+				} );
+				if ( 'region' === place.type ) {
+					var lat = parseFloat( place.lat );
+					var lng = parseFloat( place.lng );
+					if ( ! isFinite( lat ) || ! isFinite( lng ) ) {
+						return;
+					}
+					if ( ! regions[ place.region ] ) {
+						regions[ place.region ] = { code: place.region, label: place.label || '', position: { lat: lat, lng: lng }, jobs: [] };
+						order.push( place.region );
+					}
+					regions[ place.region ].jobs.push( copy );
+					return;
+				}
+				copy.latitude = place.lat;
+				copy.longitude = place.lng;
+				if ( index > 0 ) {
+					copy.city = place.label || '';
+					copy.country = '';
+				} else if ( ! copy.city && place.label ) {
+					copy.city = place.label;
+				}
+				points.push( copy );
+			} );
+		} );
+		return {
+			points: points,
+			regions: order.map( function ( code ) {
+				return regions[ code ];
+			} )
+		};
 	}
 
 	function groupByCoordinates( jobs ) {
@@ -235,8 +323,9 @@
 	/**
 	 * Liste repliable des offres de la carte, juste après elle : accès au clavier et aux
 	 * lecteurs d'écran quand les points sont dessinés dans un canevas (MapLibre).
+	 * `groups` : groupes de villes ; `regions` (facultatif) : entrées de région de splitPlaces().
 	 */
-	function placesList( container, groups, i18n ) {
+	function placesList( container, groups, i18n, regions ) {
 		var previous = container.nextElementSibling;
 		if ( previous && previous.classList.contains( 'g2rd-wpjm-geo-map__places' ) ) {
 			previous.parentNode.removeChild( previous );
@@ -249,6 +338,9 @@
 		groups.forEach( function ( group ) {
 			details.appendChild( buildInfoContent( group.jobs, i18n ) );
 		} );
+		( regions || [] ).forEach( function ( region ) {
+			details.appendChild( buildRegionContent( region, i18n ) );
+		} );
 		container.parentNode.insertBefore( details, container.nextSibling );
 		return details;
 	}
@@ -259,7 +351,11 @@
 		safeUrl: safeUrl,
 		placeLabel: placeLabel,
 		buildInfoContent: buildInfoContent,
+		buildRegionContent: buildRegionContent,
+		regionTitle: regionTitle,
+		jobCount: jobCount,
 		groupByCoordinates: groupByCoordinates,
+		splitPlaces: splitPlaces,
 		createFetcher: createFetcher,
 		observe: observe,
 		status: statusController,
