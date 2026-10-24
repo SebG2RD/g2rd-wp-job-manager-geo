@@ -163,6 +163,25 @@ async function photonAc({ status400 = false, fail = false, slowFirst = false, re
   return { w, d, input, calls, panel: d.querySelector('.g2rd-wpjm-geo-ac') };
 }
 
+const REGIONS = [
+  { code: '11', name: 'Île-de-France', aliases: ['IDF', 'Région parisienne'] },
+  { code: '28', name: 'Normandie', aliases: ['Haute-Normandie', 'Basse-Normandie'] },
+  { code: '84', name: 'Auvergne-Rhône-Alpes', aliases: ['AURA', 'Auvergne', 'Rhône-Alpes'] },
+  { code: '93', name: "Provence-Alpes-Côte d'Azur", aliases: ['PACA', 'Région Sud'] }
+];
+const TAGS_I18N = { remove: 'Retirer %s', added: 'Lieu ajouté : %s', removed: 'Lieu retiré : %s', duplicate: '%s figure déjà dans la liste.', limit: '3 lieux au plus.', required: 'Indiquez au moins un lieu.' };
+
+// Champ à étiquettes seul (sans l'autocomplétion), plafond de 3 lieux.
+function tagField({ value = '', required = false, max = 3 } = {}) {
+  const dom = new JSDOM('<form><label for="job_location">Lieu</label><input type="text" id="job_location" name="job_location" placeholder="ex. Paris"' + (required ? ' required' : '') + ' value="' + value + '"></form>', { runScripts: 'outside-only' });
+  const w = dom.window;
+  w.eval(src('js/location-tags.js'));
+  const d = w.document, native = d.getElementById('job_location');
+  let changes = 0; native.addEventListener('change', () => changes++);
+  const field = w.g2rdWpjmGeoTags.create(native, { regions: REGIONS, max, i18n: TAGS_I18N });
+  return { w, d, native, field, input: field.input, tags: () => [...d.querySelectorAll('.g2rd-wpjm-geo-tags__tag')], live: () => d.querySelector('.g2rd-wpjm-geo-tags__live').textContent, changes: () => changes };
+}
+
 (async () => {
   console.log('\nA. Autocompletion - cas nominal');
   let t = await autocomplete({});
@@ -442,6 +461,48 @@ async function photonAc({ status400 = false, fail = false, slowFirst = false, re
   check('Photon injoignable : pas de liste, champ utilisable', p.panel.hidden && p.input.value === 'Lond');
   await type(p, 'Londr');
   check('apres une panne : plus aucune requete', p.calls.length === 1);
+
+  console.log('\nK. Champ Lieu a etiquettes (location-tags.js)');
+  {
+    const tw = new JSDOM('<p></p>', { runScripts: 'outside-only' }).window;
+    tw.eval(src('js/location-tags.js'));
+    const T = tw.g2rdWpjmGeoTags;
+    check('decoupage : separateurs forts et « et », mentions vagues et doublons retires', 'Paris|Lyon|Caen' === T.split('Paris et Lyon / Télétravail ; paris ; Caen').join('|'));
+    check('decoupage comme le serveur : <br> separe, 30 morceaux au plus', 'Paris|Lyon' === T.split('Paris<br />Lyon').join('|') && 30 === T.split(Array.from({ length: 50 }, (_, i) => 'Lieu' + i).join(';')).length);
+    const idx = T.regionIndex(REGIONS);
+    check('region exacte : nom, sigle, article, prefixe « Region » ; ville refusee', '11' === T.findRegion("l'Île-de-France", idx).code && '93' === T.findRegion('paca', idx).code && '28' === T.findRegion('Région Normandie', idx).code && null === T.findRegion('Rouen', idx));
+    check('recherche : debut d un nom (variante « Region Sud » comprise), puis debut d un mot (3 lettres)', 'Normandie' === T.searchRegions('norm', idx, 6)[0].region.name && '93' === T.searchRegions('Région Sud', idx, 6)[0].region.code && 2 === T.searchRegions('alpes', idx, 6).length && 0 === T.searchRegions('al', idx, 6).length);
+  }
+  let f = tagField({});
+  check('champ natif masque (attribut et style) mais envoye, saisie visible juste apres', f.native.hidden && 'none' === f.native.style.display && 'job_location' === f.native.name && f.native.nextElementSibling.classList.contains('g2rd-wpjm-geo-tags') && f.native.nextElementSibling.contains(f.input));
+  check('libelle redirige vers la saisie, exemple repris, un seul champ nomme', f.d.querySelector('label').htmlFor === f.input.id && 'ex. Paris' === f.input.placeholder && 1 === f.d.querySelectorAll('input[name]').length);
+  f.field.add('Île-de-France', true);
+  check('ajout d une region : etiquette coloree, champ natif et evenement, annonce', 1 === f.tags().length && f.tags()[0].classList.contains('g2rd-wpjm-geo-tags__tag--region') && 'Île-de-France' === f.native.value && 1 === f.changes() && 'Lieu ajouté : Île-de-France' === f.live());
+  f.field.add('Rouen, Normandie, France');
+  const rouen = f.tags()[1];
+  check('ajout d une ville : libelle complet garde, nom seul affiche', 'Île-de-France ; Rouen, Normandie, France' === f.native.value && 'Rouen' === rouen.querySelector('.g2rd-wpjm-geo-tags__text').textContent && 'Rouen, Normandie, France' === rouen.title && !rouen.classList.contains('g2rd-wpjm-geo-tags__tag--region'));
+  check('doublon refuse (accents, casse) et annonce', false === f.field.add('rouen, normandie, france') && 2 === f.tags().length && 'rouen, normandie, france figure déjà dans la liste.' === f.live());
+  const remove = f.tags()[0].querySelector('button');
+  check('bouton de retrait nomme', 'Retirer Île-de-France' === remove.getAttribute('aria-label') && 'button' === remove.type);
+  remove.click();
+  check('retrait par le bouton : champ natif mis a jour, annonce', 'Rouen, Normandie, France' === f.native.value && 'Lieu retiré : Île-de-France' === f.live());
+  key(f.w, f.input, 'Backspace');
+  check('Retour arriere dans une saisie vide : derniere etiquette retiree', 0 === f.tags().length && '' === f.native.value);
+  f.input.value = 'Normandie ; Lille / normandie'; f.input.dispatchEvent(new f.w.Event('input', { bubbles: true }));
+  check('collage avec separateurs : plusieurs etiquettes, doublon ignore, region reconnue', 'Normandie ; Lille' === f.native.value && f.tags()[0].classList.contains('g2rd-wpjm-geo-tags__tag--region') && !f.tags()[1].classList.contains('g2rd-wpjm-geo-tags__tag--region') && '' === f.input.value);
+  f.input.value = 'Brest'; f.field.commit();
+  check('texte en cours valide : etiquette ajoutee, saisie videe', 'Normandie ; Lille ; Brest' === f.native.value && '' === f.input.value);
+  f.input.value = 'Caen'; f.field.commit();
+  const notice = f.d.querySelector('.g2rd-wpjm-geo-tags__notice');
+  check('plafond : lieu refuse, message visible et annonce, texte garde', 3 === f.tags().length && !notice.hidden && '3 lieux au plus.' === notice.textContent && '3 lieux au plus.' === f.live() && 'Caen' === f.input.value);
+  f.tags()[2].querySelector('button').click();
+  check('retrait sous le plafond : message masque', notice.hidden);
+  f = tagField({ value: '&lt;img src=x onerror=alert(1)&gt; ; Normandie ; Paris, Lyon' });
+  check('reouverture : texte decoupe en etiquettes, region coloree, texte insere comme texte, aucun evenement', 3 === f.tags().length && 0 === f.d.querySelectorAll('.g2rd-wpjm-geo-tags img').length && f.tags()[1].classList.contains('g2rd-wpjm-geo-tags__tag--region') && 'Paris' === f.tags()[2].querySelector('.g2rd-wpjm-geo-tags__text').textContent && 0 === f.changes());
+  f = tagField({ required: true });
+  check('champ obligatoire : verifie sur la saisie des etiquettes', !f.native.required && !f.input.checkValidity() && 'Indiquez au moins un lieu.' === f.input.validationMessage);
+  f.field.add('Brest');
+  check('champ obligatoire : une etiquette suffit', f.input.checkValidity());
 
   console.log('\nResultat JS : ' + pass + ' reussis, ' + fail + ' echoues');
   process.exit(fail ? 1 : 0);
