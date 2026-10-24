@@ -796,7 +796,7 @@ async function tagsAc({ features = null, max = 10, required = false, regions = R
     const noI18n = C.buildInfoContent([{ title: 't', _also: ['Lyon'] }], {});
     check('« Aussi a » sans texte i18n : pas d espace initial', 'Lyon' === noI18n.querySelector('.g2rd-wpjm-geo-iw__also').textContent);
     const again = C.splitPlaces(sp.points);
-    check('splitPlaces idempotent : meme nombre de points, aucune copie ne porte places', again.points.length === sp.points.length && again.points.every(function (p) { return !('places' in p); }) && sp.points.every(function (p) { return !('places' in p); }));
+    check('second passage : pas de points en plus, aucune copie ne porte places', again.points.length === sp.points.length && again.points.every(function (p) { return !('places' in p); }) && sp.points.every(function (p) { return !('places' in p); }));
     const homo = C.splitPlaces([{ id: 1, places: [{ type: 'city', label: 'Saint-Denis', lat: 48.93, lng: 2.35 }, { type: 'city', label: 'Saint-Denis', lat: -20.88, lng: 55.45 }, { type: 'city', label: 'Rouen', lat: 49.44, lng: 1.09 }] }]);
     check('homonymes : « Aussi a » sans doublon de libelle', 'Saint-Denis' === homo.points[2]._also.join(', '));
   }

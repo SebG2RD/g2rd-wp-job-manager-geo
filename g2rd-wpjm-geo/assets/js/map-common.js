@@ -191,8 +191,9 @@
 				copy.latitude = place.lat;
 				copy.longitude = place.lng;
 				// La copie d'indice 0 garde city/country de WP Job Manager : le serveur garantit que le
-				// premier lieu correspond aux coordonnées de l'offre (sinon `places` vaut null).
-				// Les autres copies prennent le libellé de leur lieu.
+				// premier lieu correspond aux coordonnées de l'offre (sinon la liste est remplacée par
+				// ce seul point) ; un premier lieu écarté par clean_place() peut toutefois décaler les
+				// indices. Les autres copies prennent le libellé de leur lieu.
 				if ( index > 0 ) {
 					copy.city = place.label || '';
 					copy.country = '';
