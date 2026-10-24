@@ -41,6 +41,7 @@ P=$(admin 'admin.php?page=g2rd-wpjm-geo')
 ok 'menu autonome' "$(has "$P" 'toplevel_page_g2rd-wpjm-geo')"
 ok 'gabarit de la console' "$(has "$P" 'g2rd-app g2rd-app--php')"
 ok 'feuille de repli du plugin' "$(has "$P" 'g2rd-wpjm-geo/assets/css/console.css')"
+ok 'feuille du sommaire du plugin' "$(has "$P" 'g2rd-wpjm-geo/assets/css/admin-geo.css')"
 ok 'cartes de réglages et outils' "$(has "$P" 'id="g2rd-geo-cartographie"')$(has "$P" 'id="g2rd-geo-outils"')"
 ok 'aucune erreur fatale' "$(hasnt "$P" 'critical error')"
 
@@ -50,6 +51,7 @@ if wp theme activate g2rd-theme >/dev/null 2>&1; then
   ok 'sous-menu du menu G2RD' "$(has "$P" 'g2rd_page_g2rd-wpjm-geo')"
   ok 'feuille de la console du thème' "$(has "$P" "id='g2rd-console-css'")"
   ok 'pas de feuille de repli' "$(hasnt "$P" 'assets/css/console.css')"
+  ok 'feuille du sommaire du plugin, aussi avec le thème' "$(has "$P" 'assets/css/admin-geo.css')"
   wp theme activate twentytwentyfive >/dev/null
 else
   echo "  [SKIP] thème G2RD absent (variable G2RD_THEME_DIR)"

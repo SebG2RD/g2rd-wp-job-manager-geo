@@ -1,0 +1,50 @@
+/**
+ * G2RD WP Job Manager Geo : styles propres au plugin dans la console G2RD.
+ * Chargés sur les écrans du plugin avec ou sans le thème G2RD.
+ */
+
+/* Sommaire des réglages : pastilles blanches, lisibles sur le bandeau sombre comme
+   sur le fond clair (sur écran étroit, le sommaire passe sous le bandeau). */
+.g2rd-app .g2rd-geo-toc {
+	gap: 8px;
+	margin-bottom: 22px;
+}
+
+.g2rd-app .g2rd-geo-toc__link {
+	display: inline-flex;
+	align-items: center;
+	padding: 6px 14px;
+	color: #0b1b2b;
+	font-weight: 600;
+	font-size: 13px;
+	line-height: 1.4;
+	white-space: nowrap;
+	text-decoration: none;
+	background: #fff;
+	border: 1px solid rgba(11, 27, 43, 0.15);
+	border-radius: 999px;
+	box-shadow: 0 1px 3px rgba(11, 27, 43, 0.25);
+	transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.g2rd-app .g2rd-geo-toc__link:hover,
+.g2rd-app .g2rd-geo-toc__link:focus {
+	color: #0b1b2b;
+	background: #e6eef6;
+	box-shadow: 0 2px 6px rgba(11, 27, 43, 0.3);
+}
+
+.g2rd-app .g2rd-geo-toc__link:focus {
+	outline: none;
+}
+
+.g2rd-app .g2rd-geo-toc__link:focus-visible {
+	outline: 2px solid #2dd4bf;
+	outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.g2rd-app .g2rd-geo-toc__link {
+		transition: none;
+	}
+}
