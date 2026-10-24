@@ -1,0 +1,17 @@
+Contours des régions françaises — assets/data/regions-fr.geojson
+
+Source : « Contours administratifs », millésime 2025, publié par Etalab sur data.gouv.fr
+https://www.data.gouv.fr/fr/datasets/contours-administratifs/
+Fichier d'origine : 2025/geojson/regions-1000m.geojson
+SHA-256 du fichier d'origine : 7f44a5c4deaeb710c9dc2b043ed4debcf50068a1b0740619a5873f9e878f9786
+
+Extrait : les 18 régions (codes INSEE 01, 02, 03, 04, 06, 11, 24, 27, 28, 32,
+44, 52, 53, 75, 76, 84, 93, 94) ; les 8 collectivités d'outre-mer (codes 975
+à 989) sont retirées. Géométries recopiées sans modification ; seules les
+propriétés « code » et « nom » sont gardées. Extraction reproductible :
+tools/regions/extract-regions.js (dépôt du plugin).
+
+Ce fichier de données est mis à disposition sous la licence Open Database
+License (ODbL) 1.0 : https://opendatacommons.org/licenses/odbl/1-0/
+Toute base de données dérivée de ce fichier doit rester sous ODbL et citer la
+source. Le code du plugin reste distribué sous GPL v2 ou ultérieure.

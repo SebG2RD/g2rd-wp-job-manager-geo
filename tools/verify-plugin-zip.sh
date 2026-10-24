@@ -67,8 +67,21 @@ require "assets/vendor/maplibre-gl/maplibre-gl.js"
 require "assets/vendor/maplibre-gl/LICENSE.txt"
 require "assets/vendor/markerclusterer.min.js"
 require "assets/vendor/markerclusterer.LICENSE.txt"
+require "assets/js/location-tags.js"
+require "assets/data/regions-fr.geojson"
+require "assets/data/LICENSE-regions.txt"
 require "blocks/jobs-map/block.json"
 require "languages/index.php"
+
+echo "Contours des régions (empreinte)"
+EXPECTED_SUM="$(awk '$2 == "g2rd-wpjm-geo/assets/data/regions-fr.geojson" { print $1 }' tools/regions/SHA256SUMS)"
+ACTUAL_SUM="$( (unzip -p "$ZIP" "$SLUG/assets/data/regions-fr.geojson" 2>/dev/null || true) | sha256sum | awk '{ print $1 }')"
+if [ -n "$EXPECTED_SUM" ] && [ "$EXPECTED_SUM" = "$ACTUAL_SUM" ]; then
+  echo "OK   : regions-fr.geojson conforme à tools/regions/SHA256SUMS"
+else
+  echo "ERREUR: empreinte de regions-fr.geojson inattendue"
+  fail=1
+fi
 
 echo "Fichiers de dev interdits"
 forbid "tests/"

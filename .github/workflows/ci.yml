@@ -59,7 +59,7 @@ jobs:
           else
             echo "php=false" >> "$GITHUB_OUTPUT"
           fi
-          if echo "$CHANGED" | grep -qE '^(g2rd-wpjm-geo/(assets/js/|tests/js/)|tools/jsdom/package(-lock)?\.json$|\.github/workflows/ci\.yml$)'; then
+          if echo "$CHANGED" | grep -qE '^(g2rd-wpjm-geo/(assets/js/|assets/data/|tests/js/)|tools/jsdom/package(-lock)?\.json$|tools/regions/|\.github/workflows/ci\.yml$)'; then
             echo "js=true" >> "$GITHUB_OUTPUT"
           else
             echo "js=false" >> "$GITHUB_OUTPUT"
@@ -133,3 +133,6 @@ jobs:
         env:
           NODE_PATH: tools/jsdom/node_modules
         run: node g2rd-wpjm-geo/tests/js/run.js
+
+      - name: Empreinte des contours des régions (données ODbL embarquées)
+        run: grep ' g2rd-wpjm-geo/assets/data/regions-fr.geojson$' tools/regions/SHA256SUMS | sha256sum -c -
