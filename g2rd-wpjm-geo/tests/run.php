@@ -28,6 +28,7 @@ use G2RD\WPJMGeo\LocationAutocomplete;
 use G2RD\WPJMGeo\Logger;
 use G2RD\WPJMGeo\MigrationTool;
 use G2RD\WPJMGeo\PhotonGeocoder;
+use G2RD\WPJMGeo\PlaceParser;
 use G2RD\WPJMGeo\PrivacyPolicy;
 use G2RD\WPJMGeo\Regions;
 use G2RD\WPJMGeo\RegeocodeTool;
@@ -1122,6 +1123,16 @@ foreach ( $shapes['features'] as $feature ) {
 }
 check( 'noms identiques à ceux des contours', 18 === $names );
 check( 'chaque centre est à l’intérieur du contour de sa région', 18 === $inside );
+
+echo PHP_EOL . '33. Découpage du champ « Lieu »' . PHP_EOL;
+check( 'séparateurs forts : ; | / retour à la ligne', array( 'Paris', 'Lyon', 'Lille', 'Nantes', 'Brest' ) === PlaceParser::split( "Paris ; Lyon|Lille / Nantes\nBrest" ) );
+check( '« et » entouré d’espaces, casse ignorée', array( 'Paris', 'Lyon', 'Caen' ) === PlaceParser::split( 'Paris et Lyon ET Caen' ) );
+check( 'tirets et virgules ne séparent pas', array( 'Ille-et-Vilaine', 'Rouen, Normandie' ) === PlaceParser::split( 'Ille-et-Vilaine ; Rouen, Normandie' ) );
+check( 'ponctuation de bord et morceaux vides retirés, parenthèses gardées', array( 'Laval (53)', 'Rouen' ) === PlaceParser::split( ' ; - Laval (53). ;; , Rouen, ' ) );
+check( 'mentions vagues écartées', array( 'Paris' ) === PlaceParser::split( 'Télétravail / Paris ; Remote' ) );
+check( 'doublons fusionnés (accents, casse)', array( 'Évreux', 'Lyon' ) === PlaceParser::split( 'Évreux ; EVREUX ; Lyon ; lyon' ) );
+check( 'texte vide ou UTF-8 invalide : aucun morceau, sans avertissement', array() === PlaceParser::split( '' ) && array() === PlaceParser::split( "Lyon \xC3\x28" ) );
+check( 'au plus 30 morceaux', 30 === count( PlaceParser::split( implode( ';', range( 1, 50 ) ) ) ) );
 
 $results = $GLOBALS['g2rd_results'];
 echo PHP_EOL . sprintf( 'Résultat : %d réussis, %d échoués', $results['pass'], $results['fail'] ) . PHP_EOL;
