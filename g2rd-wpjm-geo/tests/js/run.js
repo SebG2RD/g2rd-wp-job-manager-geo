@@ -220,10 +220,12 @@ async function tagsAc({ features = null, max = 10, required = false, regions = R
 }
 
 const multiJobs = [
-  { id: 11, title: 'Multi', permalink: 'https://x.test/job/11', company: 'M', city: 'Paris', country: 'France', latitude: 48.856614, longitude: 2.352222, job_type: '', places: [{ type: 'city', label: 'Paris', lat: 48.856614, lng: 2.352222 }, { type: 'city', label: 'Lyon', lat: 45.764, lng: 4.8357 }, { type: 'region', label: 'Normandie', lat: 49.1202, lng: 0.1128, region: '28' }] },
-  { id: 12, title: '<img src=x onerror=alert(1)>Region', permalink: 'https://x.test/job/12', company: 'R', city: '', country: 'France', latitude: 49.1202, longitude: 0.1128, job_type: '', places: [{ type: 'region', label: 'Normandie', lat: 49.1202, lng: 0.1128, region: '28' }] },
-  { id: 13, title: 'Bretagne seule', permalink: 'https://x.test/job/13', company: 'B', city: '', country: 'France', latitude: 48.1794, longitude: -2.8331, job_type: '', places: [{ type: 'region', label: 'Bretagne', lat: 48.1794, lng: -2.8331, region: '53' }] }
+  { id: 11, title: 'Multi', permalink: 'https://x.test/job/11', company: 'M', city: 'Paris', country: 'France', latitude: 48.856614, longitude: 2.352222, job_type: '', places: [{ type: 'city', label: 'Paris', lat: 48.856614, lng: 2.352222 }, { type: 'city', label: 'Lyon', lat: 45.764, lng: 4.8357 }, { type: 'region', label: 'Normandie', lat: 49.1202, lng: 0.1128, region: '28', bbox: [-1.946, 48.182, 1.802, 50.069] }] },
+  { id: 12, title: '<img src=x onerror=alert(1)>Region', permalink: 'https://x.test/job/12', company: 'R', city: '', country: 'France', latitude: 49.1202, longitude: 0.1128, job_type: '', places: [{ type: 'region', label: 'Normandie', lat: 49.1202, lng: 0.1128, region: '28', bbox: [-1.946, 48.182, 1.802, 50.069] }] },
+  { id: 13, title: 'Bretagne seule', permalink: 'https://x.test/job/13', company: 'B', city: '', country: 'France', latitude: 48.1794, longitude: -2.8331, job_type: '', places: [{ type: 'region', label: 'Bretagne', lat: 48.1794, lng: -2.8331, region: '53', bbox: [-5.141, 47.2879, -1.0209, 48.867] }] }
 ];
+const cityAndRegion = { id: 14, title: 'Lyon et Normandie', permalink: 'https://x.test/job/14', company: 'L', city: 'Lyon', country: 'France', latitude: 45.764, longitude: 4.8357, job_type: '', places: [{ type: 'city', label: 'Lyon', lat: 45.764, lng: 4.8357 }, { type: 'region', label: 'Normandie', lat: 49.1202, lng: 0.1128, region: '28', bbox: [-1.946, 48.182, 1.802, 50.069] }] };
+const regionNoBox = { id: 15, title: 'Sans boite', permalink: 'https://x.test/job/15', company: 'S', city: '', country: 'France', latitude: 48.1794, longitude: -2.8331, job_type: '', places: [{ type: 'region', label: 'Bretagne', lat: 48.1794, lng: -2.8331, region: '53' }] };
 
 (async () => {
   console.log('\nA. Autocompletion - cas nominal');
@@ -814,6 +816,16 @@ const multiJobs = [
     check('ville d indice > 0 sans libelle : le champ Lieu brut n est pas affiche', !/Rouen ; X/.test(C.buildInfoContent([noLbl.points[1]], mi).textContent));
     const noI18n = C.buildInfoContent([{ title: 't', _also: ['Lyon'] }], {});
     check('« Aussi a » sans texte i18n : pas d espace initial', 'Lyon' === noI18n.querySelector('.g2rd-wpjm-geo-iw__also').textContent);
+    const bb = C.splitPlaces([{ id: 1, places: [
+      { type: 'region', label: 'N', lat: 49, lng: 0, region: '28', bbox: [-1.946, 48.182, 1.802, 50.069] },
+      { type: 'region', label: 'B', lat: 48, lng: -2, region: '53', bbox: [-5, 48, -1, 'x'] },
+      { type: 'region', label: 'C', lat: 47, lng: 2, region: '24', bbox: [3, 46, 1, 48] },
+      { type: 'region', label: 'D', lat: 47, lng: 2, region: '11', bbox: [0, 46, 1, 100] },
+      { type: 'region', label: 'E', lat: 47, lng: 2, region: '27' },
+      { type: 'region', label: 'F', lat: 47, lng: 2, region: '44', bbox: [0, 46, 1] },
+      { type: 'region', label: 'G', lat: 47, lng: 2, region: '32', bbox: ['0', '46', '1', '47'] }
+    ] }]).regions;
+    check('boite de region : recopiee quand valide, null sinon (non numerique, ouest >= est, hors bornes, absente, incomplete)', '-1.946,48.182,1.802,50.069' === bb[0].bounds.join() && bb.slice(1).every(function (r) { return null === r.bounds; }) && 6 === bb.length - 1);
     const again = C.splitPlaces(sp.points);
     check('second passage : pas de points en plus, aucune copie ne porte places', again.points.length === sp.points.length && again.points.every(function (p) { return !('places' in p); }) && sp.points.every(function (p) { return !('places' in p); }));
     const homo = C.splitPlaces([{ id: 1, places: [{ type: 'city', label: 'Saint-Denis', lat: 48.93, lng: 2.35 }, { type: 'city', label: 'Saint-Denis', lat: -20.88, lng: 55.45 }, { type: 'city', label: 'Rouen', lat: 49.44, lng: 1.09 }] }]);
@@ -858,7 +870,8 @@ const multiJobs = [
   const cur = [];
   [ 'g2rd-region-fill', 'g2rd-region-label' ].forEach(id => { o.st.map.fire('mouseenter:' + id, {}); cur.push(o.st.canvas.style.cursor); o.st.map.fire('mouseleave:' + id, {}); cur.push(o.st.canvas.style.cursor); });
   check('curseur : main au survol des zones et des etiquettes, rendu en sortie', 'pointer,,pointer,' === cur.join());
-  check('cadrage : villes et centres des regions', 4 === o.st.fit.b.pts.length);
+  const fp = o.st.fit.b.pts.map(p => p.join());
+  check('cadrage : villes et angles de la boite de chaque region, avec marge, sans zoom excessif', 6 === fp.length && fp.indexOf('-1.946,48.182') !== -1 && fp.indexOf('1.802,50.069') !== -1 && fp.indexOf('-5.141,47.2879') !== -1 && fp.indexOf('-1.0209,48.867') !== -1 && 48 === o.st.fit.o.padding && 12 === o.st.fit.o.maxZoom && 0 === o.st.fit.o.duration);
   const lg = o.st.controlNodes.filter(n => n.node.classList.contains('g2rd-wpjm-geo-map__legend'));
   const legend = lg[0] && lg[0].node;
   check('legende : controle MapLibre en haut a gauche, ajoute une seule fois', 1 === lg.length && 'top-left' === lg[0].pos && legend.classList.contains('maplibregl-ctrl') && 'legend' === o.st.controls[o.st.controls.length - 1] && 'bottom-right' === o.st.attribPos);
@@ -877,7 +890,14 @@ const multiJobs = [
   o = await osmMap({ data: jobs });
   check('aucune region : contours non charges, ni etiquette ni legende', 0 === o.st.regionFetches && !o.st.sources['g2rd-region-labels'] && 0 === o.st.controlNodes.filter(n => n.pos === 'top-left').length);
   o = await osmMap({ data: [multiJobs[2]] });
-  check('une seule region : centrage sur la region (zoom 6)', !!o.st.jump && 6 === o.st.jump.zoom && !o.st.fit);
+  check('une seule region : cadrage sur sa boite entiere, pas de saut de zoom', !o.st.jump && !!o.st.fit && '-5.141,47.2879|-1.0209,48.867' === o.st.fit.b.pts.map(p => p.join()).join('|') && 12 === o.st.fit.o.maxZoom);
+  o = await osmMap({ data: [regionNoBox] });
+  check('region sans boite : cadrage sur son centre', !o.st.jump && !!o.st.fit && '-2.8331,48.1794' === o.st.fit.b.pts.map(p => p.join()).join('|'));
+  o = await osmMap({ data: [cityAndRegion] });
+  const cb = o.st.fit.b.pts;
+  check('une ville plus une region : la boite contient la region entiere et la ville', !o.st.jump && Math.min(...cb.map(p => p[0])) === -1.946 && Math.max(...cb.map(p => p[0])) === 4.8357 && Math.min(...cb.map(p => p[1])) === 45.764 && Math.max(...cb.map(p => p[1])) === 50.069);
+  o = await osmMap({ data: [jobs[0]] });
+  check('une seule ville sans region : saut au zoom 10', !!o.st.jump && 10 === o.st.jump.zoom && !o.st.fit);
   o = await osmMap({ data: multiJobs, throwRender: true });
   check('attribution.render() qui leve apres les zones : pas de point de secours, une seule couche d etiquettes', 1 === o.st.layers.filter(l => l.id === 'g2rd-region-label').length && !o.st.layers.some(l => l.id === 'g2rd-region-dot'));
   o = await osmMap({ data: multiJobs, clustering: false });

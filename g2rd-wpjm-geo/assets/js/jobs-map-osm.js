@@ -594,19 +594,25 @@
 					} ).catch( function () {} );
 				}
 
+				// Villes, puis pour chaque région les deux coins de sa boîte (son centre si elle n'en a pas).
 				var coords = features.map( function ( feature ) {
 					return feature.geometry.coordinates;
-				} ).concat( regions.map( function ( region ) {
-					return [ region.position.lng, region.position.lat ];
-				} ) );
+				} );
+				regions.forEach( function ( region ) {
+					if ( region.bounds ) {
+						coords.push( [ region.bounds[ 0 ], region.bounds[ 1 ] ], [ region.bounds[ 2 ], region.bounds[ 3 ] ] );
+					} else {
+						coords.push( [ region.position.lng, region.position.lat ] );
+					}
+				} );
 				if ( ! coords.length ) {
 					ui.empty();
 				} else {
 					ui.set( '' );
 					// Les points du canevas ne prennent pas le focus : liste des offres sous la carte pour le clavier et les lecteurs d'écran.
 					C.places( container, groups, i18n, regions );
-					if ( 1 === coords.length ) {
-						map.jumpTo( { center: coords[ 0 ], zoom: features.length ? 10 : 6 } );
+					if ( 1 === coords.length && ! regions.length ) {
+						map.jumpTo( { center: coords[ 0 ], zoom: 10 } );
 					} else {
 						var bounds = new ml.LngLatBounds();
 						coords.forEach( function ( coord ) {

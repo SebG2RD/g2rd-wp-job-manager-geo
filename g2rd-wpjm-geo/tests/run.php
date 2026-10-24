@@ -1126,6 +1126,32 @@ foreach ( $shapes['features'] as $feature ) {
 }
 check( 'noms identiques à ceux des contours', 18 === $names );
 check( 'chaque centre est à l’intérieur du contour de sa région', 18 === $inside );
+function g2rd_extent( array $coordinates, array $box = array() ) {
+	if ( isset( $coordinates[0] ) && is_numeric( $coordinates[0] ) ) {
+		return array(
+			isset( $box[0] ) ? min( $box[0], $coordinates[0] ) : $coordinates[0],
+			isset( $box[1] ) ? min( $box[1], $coordinates[1] ) : $coordinates[1],
+			isset( $box[2] ) ? max( $box[2], $coordinates[0] ) : $coordinates[0],
+			isset( $box[3] ) ? max( $box[3], $coordinates[1] ) : $coordinates[1],
+		);
+	}
+	foreach ( $coordinates as $child ) {
+		$box = g2rd_extent( $child, $box );
+	}
+	return $box;
+}
+$boxes = 0;
+foreach ( $shapes['features'] as $feature ) {
+	$region = Regions::get( $feature['properties']['code'] );
+	$real   = g2rd_extent( $feature['geometry']['coordinates'] );
+	$box    = $region ? $region['bbox'] : array();
+	if ( 4 === count( $box ) && $box[0] <= $real[0] && $box[1] <= $real[1] && $box[2] >= $real[2] && $box[3] >= $real[3]
+		&& $real[0] - $box[0] <= 0.0001 + 1e-9 && $real[1] - $box[1] <= 0.0001 + 1e-9 && $box[2] - $real[2] <= 0.0001 + 1e-9 && $box[3] - $real[3] <= 0.0001 + 1e-9 ) {
+		++$boxes;
+	}
+}
+check( 'boîte englobante de chaque région : contient celle du contour, marge de 0,0001 au plus', 18 === $boxes );
+check( 'Normandie : boîte [ouest, sud, est, nord] en nombres, absente de la liste de l’autocomplétion', array( -1.946, 48.182, 1.802, 50.069 ) === Regions::get( '28' )['bbox'] && ! array_key_exists( 'bbox', Regions::all()[8] ) && false === strpos( wp_json_encode( Regions::all() ), 'bbox' ) );
 
 echo PHP_EOL . '33. Découpage du champ « Lieu »' . PHP_EOL;
 check( 'séparateurs forts : ; | / retour à la ligne', array( 'Paris', 'Lyon', 'Lille', 'Nantes', 'Brest' ) === PlaceParser::split( "Paris ; Lyon|Lille / Nantes\nBrest" ) );
@@ -1484,7 +1510,7 @@ echo PHP_EOL . '38. Carte : lieux de chaque offre (REST)' . PHP_EOL;
 boot();
 G2RD_Test_State::$meta[700][ GeocodingIntegration::META_PLACES ] = array(
 	array( 'type' => 'city', 'label' => 'Rouen', 'lat' => '49.4432', 'lng' => '1.0999' ),
-	array( 'type' => 'region', 'label' => '<b>Normandie</b>', 'lat' => '49.1202', 'lng' => '0.1128', 'region' => '28' ),
+	array( 'type' => 'region', 'label' => '<b>Normandie</b>', 'lat' => '49.1202', 'lng' => '0.1128', 'region' => '28', 'bbox' => array( 1, 2, 3, 4 ) ),
 	array( 'type' => 'region', 'label' => 'Inconnue', 'lat' => '1', 'lng' => '1', 'region' => '99' ),
 	array( 'type' => 'city', 'label' => 'Hors bornes', 'lat' => '120', 'lng' => '1' ),
 	array( 'type' => 'city', 'label' => '<img src=x onerror=alert(1)>Lyon', 'lat' => '45.764', 'lng' => '4.8357' ),
@@ -1492,6 +1518,7 @@ G2RD_Test_State::$meta[700][ GeocodingIntegration::META_PLACES ] = array(
 );
 $p = RestController::places( 700, 49.4432, 1.0999, 'Rouen', true );
 check( 'liste du plugin : villes et régions, coordonnées revérifiées, région inconnue écartée', 3 === count( $p ) && 'city' === $p[0]['type'] && 49.4432 === $p[0]['lat'] && 'region' === $p[1]['type'] && '28' === $p[1]['region'] && 0.1128 === $p[1]['lng'] && 'Lyon' === $p[2]['label'] );
+check( 'région : boîte englobante tirée de la table, jamais des données enregistrées ; ville sans boîte', array( -1.946, 48.182, 1.802, 50.069 ) === $p[1]['bbox'] && ! array_key_exists( 'bbox', $p[0] ) );
 check( 'libellés en texte brut ; région sous son nom officiel', 'Normandie' === $p[1]['label'] && false === strpos( wp_json_encode( $p ), '<' ) );
 $p = RestController::places( 701, 48.8566, 2.3522, 'Paris', true );
 check( 'offre sans liste (ancienne offre) : un lieu construit depuis les coordonnées', array( array( 'type' => 'city', 'label' => 'Paris', 'lat' => 48.8566, 'lng' => 2.3522 ) ) === $p );

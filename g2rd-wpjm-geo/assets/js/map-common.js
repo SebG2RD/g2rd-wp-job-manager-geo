@@ -136,6 +136,22 @@
 	 * Une copie de l'offre par ville (coordonnées de la ville) et une entrée par
 	 * région. Chaque copie porte `_also` : les autres lieux de l'offre.
 	 */
+	// Boîte [ouest, sud, est, nord] d'une région : 4 nombres finis, dans les bornes, ouest < est et sud < nord ; sinon null.
+	function validBounds( box ) {
+		if ( ! Array.isArray( box ) || 4 !== box.length ) {
+			return null;
+		}
+		for ( var i = 0; i < 4; i++ ) {
+			if ( 'number' !== typeof box[ i ] || ! isFinite( box[ i ] ) ) {
+				return null;
+			}
+		}
+		if ( box[ 0 ] < -180 || box[ 2 ] > 180 || box[ 0 ] >= box[ 2 ] || box[ 1 ] < -90 || box[ 3 ] > 90 || box[ 1 ] >= box[ 3 ] ) {
+			return null;
+		}
+		return box.slice();
+	}
+
 	function splitPlaces( jobs ) {
 		var points = [];
 		var regions = Object.create( null );
@@ -182,7 +198,7 @@
 						return;
 					}
 					if ( ! regions[ place.region ] ) {
-						regions[ place.region ] = { code: place.region, label: place.label || '', position: { lat: lat, lng: lng }, jobs: [] };
+						regions[ place.region ] = { code: place.region, label: place.label || '', position: { lat: lat, lng: lng }, bounds: validBounds( place.bbox ), jobs: [] };
 						order.push( place.region );
 					}
 					regions[ place.region ].jobs.push( copy );

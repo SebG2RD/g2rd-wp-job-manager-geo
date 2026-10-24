@@ -388,6 +388,8 @@ class RestController {
 			$clean['region'] = $region['code'];
 			$clean['lat']    = (float) $region['lat'];
 			$clean['lng']    = (float) $region['lng'];
+			// Boîte du contour, tirée de la table du plugin et non des données enregistrées.
+			$clean['bbox'] = $region['bbox'];
 		}
 		return $clean;
 	}

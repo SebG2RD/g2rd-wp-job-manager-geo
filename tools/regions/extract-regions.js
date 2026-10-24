@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /*
  * Extrait les 18 régions françaises du fichier « Contours administratifs »
- * (data.gouv.fr, millésime 2025, licence ODbL) et affiche leurs centres pour
- * g2rd-wpjm-geo/includes/Regions.php. Les géométries sont recopiées telles quelles.
+ * (data.gouv.fr, millésime 2025, licence ODbL) et affiche leurs centres et leurs
+ * boîtes englobantes pour g2rd-wpjm-geo/includes/Regions.php. Les géométries sont recopiées telles quelles.
  *
  * Usage : node tools/regions/extract-regions.js <regions-1000m.geojson> <sortie.geojson>
  * Source : https://etalab-datasets.geo.data.gouv.fr/contours-administratifs/2025/geojson/regions-1000m.geojson
@@ -78,6 +78,20 @@ function centre(geometry) {
   return best;
 }
 
+// Boîte englobante [ouest, sud, est, nord] de toutes les coordonnées, arrondie vers l'extérieur à 4 décimales.
+function bbox(geometry) {
+  let w = Infinity, s = Infinity, e = -Infinity, n = -Infinity;
+  (function walk(c) {
+    if ('number' === typeof c[0]) {
+      w = Math.min(w, c[0]); e = Math.max(e, c[0]); s = Math.min(s, c[1]); n = Math.max(n, c[1]);
+    } else {
+      c.forEach(walk);
+    }
+  })(geometry.coordinates);
+  const floor = v => (Math.floor(v * 1e4) / 1e4).toFixed(4), ceil = v => (Math.ceil(v * 1e4) / 1e4).toFixed(4);
+  return [floor(w), floor(s), ceil(e), ceil(n)];
+}
+
 const [source, target] = process.argv.slice(2);
 if (!source || !target) {
   console.error('Usage : node tools/regions/extract-regions.js <regions-1000m.geojson> <sortie.geojson>');
@@ -100,5 +114,5 @@ if (features.length !== CODES.length) {
 fs.writeFileSync(target, JSON.stringify({ type: 'FeatureCollection', features }) + '\n');
 features.forEach(f => {
   const [lng, lat] = centre(f.geometry);
-  console.log("'" + f.properties.code + "' => array( '" + lat.toFixed(4) + "', '" + lng.toFixed(4) + "' ), // " + f.properties.nom);
+  console.log("'" + f.properties.code + "' => array( '" + f.properties.nom + "', '" + lat.toFixed(4) + "', '" + lng.toFixed(4) + "', array( '" + bbox(f.geometry).join("', '") + "' ) ),");
 });
