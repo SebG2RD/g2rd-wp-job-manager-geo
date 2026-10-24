@@ -1076,6 +1076,15 @@ check( 'accents, casse, tirets et article ignorés', '11' === Regions::find( 'il
 check( 'sigles et variantes', '11' === Regions::find( 'IDF' )['code'] && '11' === Regions::find( 'Région parisienne' )['code'] && '93' === Regions::find( 'paca' )['code'] && '93' === Regions::find( 'Région Sud' )['code'] && '84' === Regions::find( 'AURA' )['code'] && '32' === Regions::find( 'HDF' )['code'] && '27' === Regions::find( 'BFC' )['code'] && '24' === Regions::find( 'Région Centre' )['code'] && '04' === Regions::find( 'Réunion' )['code'] && '03' === Regions::find( 'Guyane française' )['code'] );
 check( 'anciennes régions rattachées à l’actuelle', '44' === Regions::find( 'Alsace' )['code'] && '75' === Regions::find( 'Poitou-Charentes' )['code'] && '84' === Regions::find( 'Rhône-Alpes' )['code'] && '27' === Regions::find( 'Franche-Comté' )['code'] && '76' === Regions::find( 'Midi-Pyrénées' )['code'] && '32' === Regions::find( 'Picardie' )['code'] && '28' === Regions::find( 'Haute-Normandie' )['code'] );
 check( 'préfixe « Région » accepté', '53' === Regions::find( 'Région Bretagne' )['code'] );
+$every = 0;
+foreach ( Regions::DATA as $code => $row ) {
+	$every += ( (string) $code === Regions::find( $row[0] )['code'] ) ? 1 : 0;
+}
+foreach ( Regions::ALIASES as $alias => $code ) {
+	$every += ( $code === Regions::find( (string) $alias )['code'] ) ? 1 : 0;
+}
+check( 'chaque nom officiel et chaque variante retrouve sa région (44 entrées)', 44 === $every );
+check( 'apostrophe typographique, « Région » seul, nom complet malgré la variante « Région Centre »', '11' === Regions::find( 'l’Île-de-France' )['code'] && null === Regions::find( 'Région' ) && '24' === Regions::find( 'Région Centre-Val de Loire' )['code'] );
 check( 'texte qui n’est pas une région : null', null === Regions::find( 'Rouen' ) && null === Regions::find( 'Centre' ) && null === Regions::find( 'Bretagne (90)' ) && null === Regions::find( '' ) && null === Regions::get( '99' ) );
 $all = Regions::all();
 check( 'liste pour l’autocomplétion : 18 entrées, codes en chaîne, autres noms', 18 === count( $all ) && '11' === $all[5]['code'] && 'Île-de-France' === $all[5]['name'] && in_array( 'IDF', $all[5]['aliases'], true ) && in_array( 'Alsace', $all[10]['aliases'], true ) && array() === $all[0]['aliases'] );
