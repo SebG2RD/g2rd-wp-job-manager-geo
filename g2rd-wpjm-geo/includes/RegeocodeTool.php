@@ -254,6 +254,10 @@ class RegeocodeTool {
 			// Appels à Photon bornés par le temps restant (environ 2 s chacun, pause comprise).
 			$budget = max( 1, (int) floor( ( self::TIME_BUDGET - $elapsed ) / 2 ) );
 			$row    = $this->process( $key % self::KEY_OFFSET, 'run' === $task, $provider, $budget );
+			if ( null === $row && ! $results ) {
+				// Première offre du lot : jamais reportée, pour que le traitement avance toujours (plafond d'appels de PlaceLocator).
+				$row = $this->process( $key % self::KEY_OFFSET, 'run' === $task, $provider, PlaceLocator::UNLIMITED );
+			}
 			if ( null === $row ) {
 				// Offre trop longue pour ce lot : reprise au lot suivant, avec le cache déjà rempli.
 				break;

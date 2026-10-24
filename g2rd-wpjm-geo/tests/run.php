@@ -1431,19 +1431,34 @@ G2RD_Test_State::$meta[602]       = array( '_job_location' => 'Atlantide', 'geol
 $nf = $tool->handle( 'simulate', 0, array( array( 'id' => '602', 'location' => 'Atlantide', 'source' => 'google', 'geolocated' => '1' ) ) );
 check( 'introuvable : le texte en cause est affiché', 'not_found' === $nf['rows'][0]['status'] && 'introuvable : Atlantide' === $nf['rows'][0]['result'] );
 
-G2RD_Test_State::$post_types[610] = 'job_listing';
-G2RD_Test_State::$meta[610]       = array( '_job_location' => 'Caen ; Le Havre', 'geolocated' => 1, $src => 'google' );
-$rows610 = array( array( 'id' => '610', 'location' => 'Caen ; Le Havre', 'source' => 'google', 'geolocated' => '1', 'places' => null ) );
-$late    = new class( $s, new PhotonGeocoder( $s ), '__return_false' ) extends RegeocodeTool {
-	public $times = array( 0, 19 );
+foreach ( array( 609 => 'Rouen', 610 => 'Caen ; Le Havre' ) as $id => $loc ) {
+	G2RD_Test_State::$post_types[ $id ] = 'job_listing';
+	G2RD_Test_State::$meta[ $id ]       = array( '_job_location' => $loc, 'geolocated' => 1, $src => 'google' );
+}
+$rows610 = array(
+	array( 'id' => '609', 'location' => 'Rouen', 'source' => 'google', 'geolocated' => '1', 'places' => null ),
+	array( 'id' => '610', 'location' => 'Caen ; Le Havre', 'source' => 'google', 'geolocated' => '1', 'places' => null ),
+);
+$late = new class( $s, new PhotonGeocoder( $s ), '__return_false' ) extends RegeocodeTool {
+	public $times = array( 0, 0, 19 );
 	protected function now() {
 		return count( $this->times ) > 1 ? array_shift( $this->times ) : $this->times[0];
 	}
 };
 $first = $late->handle( 'run', 0, $rows610 );
-check( 'temps presque écoulé : offre reportée au lot suivant, curseur inchangé', array() === $first['rows'] && 0 === $first['cursor'] && false === $first['done'] );
+check( 'temps presque écoulé : offre suivante reportée au lot suivant, curseur sur la précédente', 1 === count( $first['rows'] ) && 609 === $first['rows'][0]['id'] && RegeocodeTool::order_key( 609, null ) === $first['cursor'] && false === $first['done'] );
 $second = $late->handle( 'run', $first['cursor'], $rows610 );
 check( 'lot suivant : offre placée grâce au cache déjà rempli', 'done' === $second['rows'][0]['status'] && 2 === count( G2RD_Test_State::$meta[610][ GeocodingIntegration::META_PLACES ] ) );
+$alone = new class( $s, new PhotonGeocoder( $s ), '__return_false' ) extends RegeocodeTool {
+	protected function now() {
+		static $calls = 0;
+		return 0 === $calls++ ? 0 : 19;
+	}
+};
+G2RD_Test_State::$post_types[611] = 'job_listing';
+G2RD_Test_State::$meta[611]       = array( '_job_location' => 'Brest ; Bretagne (90)', 'geolocated' => 1, $src => 'google' );
+$solo = $alone->handle( 'run', 0, array( array( 'id' => '611', 'location' => 'Brest ; Bretagne (90)', 'source' => 'google', 'geolocated' => '1', 'places' => null ) ) );
+check( 'première offre du lot jamais reportée : placée malgré le temps écoulé', 1 === count( $solo['rows'] ) && 'done' === $solo['rows'][0]['status'] );
 
 $GLOBALS['wpdb'] = new class() extends G2RD_Test_Wpdb {
 	public function get_results( $query, $output = null ) {
