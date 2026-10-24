@@ -88,7 +88,7 @@ S'applique, en mode OpenStreetMap seulement, au formulaire de dépôt et à l'é
 - Chaque ✕ porte l'intitulé « Retirer Paris ».
 - Une zone d'annonce signale les ajouts, les retraits et le plafond.
 
-**Sans JavaScript**, le champ texte natif reste utilisable, avec l'aide « Séparez plusieurs lieux par ; ».
+**Sans JavaScript**, le champ texte natif reste utilisable, avec l'aide « Séparez plusieurs lieux par ; ». Cette aide (`LocationHelp`) s'ajoute à la description du champ, en public et dans l'administration, en mode libre, même sans autocomplétion.
 
 ## 2. Découpage et régions (sans réseau)
 
@@ -244,16 +244,17 @@ Dans `GET /wp-json/g2rd-wpjm-geo/v1/jobs`, chaque offre gagne un champ `places`,
 - `assets/data/regions-fr.geojson` n'est chargé, depuis le plugin et une seule fois, que si au moins une offre affichée a une région.
 - Chaque région concernée prend la forme :
   - d'une **zone** : couche MapLibre `fill` orange translucide, plus une couche `line` orange ;
-  - d'une **pastille** à son centre : « 1 offre » ou « N offres ».
-- Un clic ou un appui sur la zone ou sur la pastille ouvre une fenêtre qui liste les offres de la région, présentées comme pour les villes.
+  - d'une **étiquette** « Normandie · 2 offres » (« 1 offre » au singulier), dessinée dans la carte, sous les points et les regroupements. Il n'y a plus de pastille bouton ; les options de collision de l'étiquette évitent les chevauchements.
+- Un clic sur l'étiquette ou sur la zone ouvre la fenêtre de la région, qui liste ses offres comme pour les villes, sauf si un point se trouve dessous.
+- **Une seule fenêtre** est ouverte à la fois.
 - Les couches de régions sont dessinées **sous** les points et les regroupements : les villes restent cliquables dans une zone. Le survol renforce le contour.
-- **Secours** : si le fichier ne se charge pas, chaque région s'affiche comme un repère en étiquette orange à son centre (maquette A).
+- **Secours** : si le fichier ne se charge pas, chaque région s'affiche comme un point et son étiquette au centre de la région, sans légende.
 
 ### Autour de la carte
 
-- Le cadrage automatique englobe les villes et les centres des régions.
-- La liste des offres sous la carte compte aussi les régions : « Normandie (toute la région) — 2 offres ».
-- Une légende courte s'affiche quand au moins une zone est visible : « 📍 offre dans une ville · zone orange : offre sur toute une région ».
+- Le cadrage automatique englobe les villes et les boîtes englobantes des régions (`bbox` de `Regions::DATA`, vérifiée par un test contre le GeoJSON). Un point seul donne le zoom 10 pour une ville, 6 pour une région sans boîte.
+- La liste des offres sous la carte compte aussi les régions : « Normandie (toute la région) — 2 offres ». C'est l'accès au clavier aux offres de la carte et des régions.
+- Une légende, contrôle MapLibre en haut à gauche, s'affiche quand au moins une zone est visible : deux entrées, chacune avec une pastille visuelle (rond : offre dans une ville ; carré : offre sur toute une région) et un texte, sans nom de couleur.
 - Le contrôle d'attribution du plugin (1.1.1) ajoute « Contours des régions : data.gouv.fr (ODbL) » quand des zones sont affichées.
 
 ### Fiche publique et administration
@@ -367,3 +368,19 @@ Dans `GET /wp-json/g2rd-wpjm-geo/v1/jobs`, chaque offre gagne un champ `places`,
 - **Anciennes régions** : « Alsace » s'affiche comme toute la zone Grand Est.
 - **ODbL** : l'attribution sur la carte et `LICENSE-regions.txt` remplissent l'obligation de citer la source et de garder ce fichier sous ODbL.
 - **Retour au mode Google** : la liste de lieux est ignorée, et WP Job Manager géocode `Paris ; Lyon` comme une seule adresse. C'est une limite documentée.
+
+## Limites connues
+
+- Texte libre et imports, règle de la virgule : « Lyon, Rhône » donne deux lieux, Lyon et « Rhône » (Photon rattache Lyon à la « Métropole de Lyon », pas au département du Rhône) ; « Vienne, Poitiers » ne donne que Poitiers (la Vienne est le département de Poitiers) ; « Normandie, Rouen, Caen » donne la zone Normandie plus Rouen et Caen, alors que « Rouen, Caen, Normandie » donne Rouen et Caen seulement. Pour lever le doute, séparer les lieux par « ; ».
+- Les noms de régions, leurs variantes et les mentions vagues (« Télétravail », « Remote », « Hybride »…) sont reconnus en français.
+- Une ancienne région (Alsace, Lorraine…) s'affiche comme la zone actuelle (Grand Est) ; deux anciennes régions de la même zone n'en font qu'une.
+- L'option de WP Job Manager « Display Location Address » affiche l'adresse du premier lieu seulement ; le lien Google Maps de la fiche et les données structurées de WP Job Manager portent aussi sur le premier lieu.
+- L'affichage public remplace « ; » par « , » (« Paris, Lyon, Normandie »), y compris en mode Google.
+- Sur la carte, le nombre d'un regroupement compte les lieux et non les offres distinctes ; à petite échelle, certaines étiquettes de région sont masquées pour éviter les chevauchements (la zone reste cliquable et la région figure dans la liste sous la carte).
+- Retour au mode Google : la liste des lieux est ignorée et WP Job Manager géocode « Paris ; Lyon » comme une seule adresse.
+- Homonymes dans « Aussi à » : une offre à deux Saint-Denis n'affiche pas l'autre Saint-Denis sur le point d'un Saint-Denis.
+- « et » dans un libellé Photon choisi n'est pas neutralisé (contrairement à « / », « | » et « ; »).
+- « Lorraine » après « Grand Est » est refusé comme doublon (même région).
+- À 360 px, une étiquette de région peut dépasser légèrement le bord de la carte.
+- Le serveur peut ne pas compresser un fichier `.geojson` (119 ko au lieu de 34 ko) : vérifier les en-têtes sur le site.
+- Licence : les contours sont sous ODbL. Le plugin est distribué par GitHub ; une publication sur WordPress.org demanderait de vérifier que ces données sont admises par les règles du répertoire.

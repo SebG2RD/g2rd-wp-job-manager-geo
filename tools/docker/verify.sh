@@ -102,13 +102,31 @@ ok 'formulaire : autocomplétion Photon' "$(has "$F" 'location-autocomplete.js')
 ok 'formulaire : aucun script Google' "$(hasnt "$F" 'google-loader.js')"
 ok 'formulaire : un seul champ de localisation' "$(is "$(echo "$F" | grep -o 'name="job_location"' | wc -l | tr -d ' ')" 1)"
 
-echo "10. Retour vers Google"
+echo "10. Plusieurs lieux et régions (mode libre)"
+JOBM=$(wp post create --post_type=job_listing --post_status=publish --post_title='Poste multi-lieux' --porcelain)
+curl -s -b cookies.txt -H "X-WP-Nonce: $NONCE" -H 'Content-Type: application/json' -X POST -d '{"meta":{"_job_location":"Paris ; Lyon ; Normandie"}}' "$B/wp-json/wp/v2/job-listings/$JOBM" >/dev/null
+wp cron event run g2rd_wpjm_geo_geocode >/dev/null
+ok 'trois lieux enregistrés' "$(is "$(wp eval "echo count( (array) get_post_meta( $JOBM, '_g2rd_wpjm_geo_places', true ) );")" 3)"
+ok 'premier lieu dans WP Job Manager' "$(is "$(wp post meta get "$JOBM" geolocation_city 2>/dev/null)" Paris)"
+ok 'texte saisi conservé' "$(is "$(wp post meta get "$JOBM" _job_location 2>/dev/null)" 'Paris ; Lyon ; Normandie')"
+R=$(curl -s "$B/wp-json/g2rd-wpjm-geo/v1/jobs")
+ok 'API REST : champ places avec la région et son étendue' "$(has "$R" '"type":"region"')$(has "$R" '"region":"28"')$(has "$R" '"bbox"')"
+ok 'contours embarqués servis' "$(is "$(curl -s -o /dev/null -w '%{http_code}' "$B/wp-content/plugins/g2rd-wpjm-geo/assets/data/regions-fr.geojson")" 200)"
+ok 'fiche publique : « Paris, Lyon, Normandie »' "$(has "$(curl -sL "$B/?p=$JOBM")" 'Paris, Lyon, Normandie')"
+wp eval '$items = array( array( "title" => "Import multi " . wp_generate_password( 6, false ), "description" => "Offre importee sur plusieurs villes, pour le test de bout en bout.", "link" => "https://source.example/job/2", "date" => gmdate( "Y-m-d" ), "jobkey" => md5( microtime() ), "jobfeed" => "test", "provider_id" => "custom" ) ); GoFetch_Importer::import( $items, array( "rss_feed_import" => "https://source.example/feed.xml", "post_author" => 1, "meta" => array( "_job_location" => "Rouen / Caen" ), "source" => array( "name" => "Test" ) ) );' >/dev/null
+JOB4=$(wp post list --post_type=job_listing --meta_key=_goft_wpjm_is_external --field=ID --posts_per_page=1 --orderby=ID --order=DESC)
+wp cron event run g2rd_wpjm_geo_geocode >/dev/null
+ok 'import Go Fetch : deux villes placées' "$(is "$(wp eval "echo count( (array) get_post_meta( $JOB4, '_g2rd_wpjm_geo_places', true ) );")" 2)"
+F=$(curl -sL "$B/?page_id=$FORM")
+ok 'formulaire : script des étiquettes, régions et aide « ; »' "$(has "$F" 'location-tags.js')$(has "$F" '"tags":true')$(has "$F" '"code":"28"')$(has "$F" 'Séparez plusieurs lieux')"
+
+echo "11. Retour vers Google"
 wp option update g2rd_wpjm_geo_settings '{"provider":"google"}' --format=json >/dev/null
 R=$(curl -s "$B/wp-json/g2rd-wpjm-geo/v1/jobs")
 ok 'carte Google : offres libres exclues' "$(hasnt "$R" "\"id\":$JOB,")"
 ok 'géocodage de WP Job Manager réactivé' "$(is "$(wp eval 'echo apply_filters( "job_manager_geolocation_enabled", true ) ? "on" : "off";')" on)"
 
-echo "11. Journal PHP"
+echo "12. Journal PHP"
 L=$(docker compose exec -T wp sh -c 'grep -E "PHP (Fatal error|Parse error|Warning|Notice|Deprecated)" /var/www/html/wp-content/debug.log 2>/dev/null | grep "plugins/g2rd-wpjm-geo" || true')
 ok 'aucune erreur liée au plugin' "$(is "$L" '')"
 

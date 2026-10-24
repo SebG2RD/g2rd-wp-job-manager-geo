@@ -3,7 +3,7 @@ Contributors: g2rd
 Requires at least: 6.4
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.1.1
+Stable tag: 1.2.0
 License: GPLv2 or later
 
 Complète WP Job Manager : autocomplétion mondiale des villes, carte des offres, candidatures Go Fetch Jobs.
@@ -14,6 +14,7 @@ Complète WP Job Manager : autocomplétion mondiale des villes, carte des offres
 * Administration à la charte de la console G2RD : sous-menu du menu « G2RD » si le thème G2RD (console v2) est actif, menu « G2RD Geo » sinon.
 * Autocomplétion des villes du monde entier (Google Places, ou Photon en mode libre) sur le champ de localisation NATIF de WP Job Manager : formulaire public (`job_location`) et wp-admin (`_job_location`). Aucun second champ.
 * Carte interactive des offres publiées et géocodées par le fournisseur actif (`geolocation_lat` / `geolocation_long` de WP Job Manager), avec clustering et liste des offres partageant les mêmes coordonnées. Shortcode `[wpjm_jobs_map]` (attribut facultatif `height`) et bloc « Carte des offres d’emploi ».
+* Mode libre : plusieurs lieux par offre (10 au plus), villes et régions françaises, saisis en étiquettes dans le champ « Lieu » natif (enregistrés séparés par « ; »). Le texte libre et les imports sont reconnus aussi : « Paris, Lyon » donne deux villes, « Rouen, Normandie » une seule. Sur la carte, un point par ville et une zone colorée par région.
 * Go Fetch Jobs (facultatif) : remplacement des URL de candidature des offres importées par une adresse email générique, outil d'analyse / simulation / correction par lots, journal avec rétention.
 
 Le plugin ne modifie ni WP Job Manager, ni Go Fetch Jobs, ni le thème. En mode Google, le géocodage reste celui de WP Job Manager ; en mode libre, le plugin géocode les offres avec Photon et écrit les coordonnées par les méthodes publiques de WP Job Manager.
@@ -32,6 +33,7 @@ Le plugin ne modifie ni WP Job Manager, ni Go Fetch Jobs, ni le thème. En mode 
 * `g2rd_wpjm_geo_fallback_email` : adresse email générique de candidature.
 * Table `{prefix}g2rd_wpjm_geo_log` : journal des remplacements.
 * Métadonnée `_g2rd_wpjm_geo_source` (google | osm) sur chaque offre géocodée par le plugin.
+* Métadonnée `_g2rd_wpjm_geo_places` : lieux de l'offre en mode libre (villes et régions) ; le premier est aussi écrit dans les champs `geolocation_*` de WP Job Manager.
 * `g2rd_wpjm_geo_geocode_queue` : file des géocodages différés.
 * `g2rd_wpjm_geo_db_version` : version du schéma du journal.
 * `g2rd_wpjm_geo_url_queue` : file des vérifications d'URL différées.
@@ -46,6 +48,10 @@ Le plugin ne modifie ni WP Job Manager, ni Go Fetch Jobs, ni le thème. En mode 
 * `g2rd_wpjm_geo_photon_allow_private_host` : autorise un serveur Photon auto-hébergé à une adresse privée (seul son hôte).
 * `g2rd_wpjm_geo_photon_preferred_country` : pays (code ISO à deux lettres) favorisé entre deux lieux du même nom ; défaut : région de la langue du site (FR pour fr_FR).
 * `g2rd_wpjm_geo_defer_geocoding` : force (true) ou empêche (false) le géocodage différé par WP-Cron ; défaut : imports, WP-Cron et WP-CLI.
+
+== Données tierces ==
+
+* `assets/data/regions-fr.geojson` : contours des 18 régions françaises, extraits du jeu « Contours administratifs » (millésime 2025) publié par Etalab sur data.gouv.fr, sous licence ODbL 1.0 (voir `assets/data/LICENSE-regions.txt`). La source est citée sur la carte quand des régions sont affichées.
 
 == Tests ==
 
@@ -65,10 +71,31 @@ Photon écoute par défaut en HTTP sur le port 2322 ; le plugin n'accepte qu'une
 = Une offre n'apparaît pas sur la carte libre =
 Le géocodage refuse un homonyme lointain plutôt que de mal placer l'offre ; « Télétravail » ou « Remote » ne sont jamais placés. Corriger la localisation de l'offre (de préférence via l'autocomplétion), puis lancer Outils → Re-géocoder les offres.
 
+= Une offre concerne plusieurs villes ou une région =
+En mode libre, saisir chaque lieu dans le champ « Lieu » (étiquettes) ; sans JavaScript, les séparer par « ; » (une aide le rappelle sous le champ). Les régions françaises (noms actuels, anciens noms, sigles comme IDF ou PACA) s'affichent en zone colorée, avec une étiquette « Normandie · 2 offres ». Au clavier, les offres de la carte et des régions sont accessibles par la liste placée sous la carte. Les offres créées avant la 1.2.0 gardent un seul point jusqu'au passage de l'outil Re-géocoder les offres (compteur « Libres, à mettre à jour »). En mode Google, une offre garde un seul point.
+
+= Limites connues des lieux multiples =
+* Texte libre et imports, règle de la virgule : « Lyon, Rhône » donne deux lieux, Lyon et « Rhône » (Photon rattache Lyon à la « Métropole de Lyon », pas au département du Rhône) ; « Vienne, Poitiers » ne donne que Poitiers (la Vienne est le département de Poitiers) ; « Normandie, Rouen, Caen » donne la zone Normandie plus Rouen et Caen, alors que « Rouen, Caen, Normandie » donne Rouen et Caen seulement. Pour lever le doute, séparer les lieux par « ; ».
+* Les noms de régions, leurs variantes et les mentions vagues (« Télétravail », « Remote », « Hybride »…) sont reconnus en français.
+* Une ancienne région (Alsace, Lorraine…) s'affiche comme la zone actuelle (Grand Est) ; deux anciennes régions de la même zone n'en font qu'une.
+* L'option de WP Job Manager « Display Location Address » affiche l'adresse du premier lieu seulement ; le lien Google Maps de la fiche et les données structurées de WP Job Manager portent aussi sur le premier lieu.
+* L'affichage public remplace « ; » par « , » (« Paris, Lyon, Normandie »), y compris en mode Google.
+* Sur la carte, le nombre d'un regroupement compte les lieux et non les offres distinctes ; à petite échelle, certaines étiquettes de région sont masquées pour éviter les chevauchements (la zone reste cliquable et la région figure dans la liste sous la carte).
+* Retour au mode Google : la liste des lieux est ignorée et WP Job Manager géocode « Paris ; Lyon » comme une seule adresse.
+
 = Multisite =
 Le plugin est prévu pour un site seul : en multisite, la désinstallation ne nettoie que le site courant.
 
 == Changelog ==
+
+= 1.2.0 =
+* Mode libre : plusieurs lieux par offre (10 au plus), villes et régions françaises, avec une autocomplétion à étiquettes sur le champ « Lieu » natif et une aide « ; » sous le champ, même sans autocomplétion.
+* Reconnaissance côté serveur des saisies libres et des imports : séparateurs « ; », « / », « | », « et », règle de la virgule.
+* Carte libre : un point par ville, ligne « Aussi à », régions en zones colorées avec une étiquette (nom et nombre d'offres), une seule fenêtre ouverte à la fois, légende, cadrage sur l'étendue des régions, liste des régions sous la carte.
+* Contours des régions embarqués (data.gouv.fr, ODbL), chargés seulement si une offre régionale est affichée ; repères de secours s'ils manquent.
+* Saisie : au plus un appel à Photon pendant l'enregistrement ; au-delà, les lieux sont placés par la file d'attente.
+* Outil de re-géocodage : reprise des offres libres antérieures pour placer tous leurs lieux.
+* Cache du géocodage Photon renouvelé (version 4).
 
 = 1.1.1 =
 * Sécurité : toute valeur de candidature d'une offre Go Fetch Jobs qui n'est pas une adresse email est désormais remplacée (ou vérifiée), y compris les formes « //site/… », « /site/… » ou le texte libre, que WP Job Manager affichait comme lien de candidature.
