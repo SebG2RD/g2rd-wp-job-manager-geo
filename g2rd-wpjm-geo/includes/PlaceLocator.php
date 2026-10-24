@@ -147,7 +147,7 @@ class PlaceLocator {
 		$first = $segments[0];
 		$rest  = array_slice( $segments, 1 );
 
-		$region = '' === PhotonGeocoder::hint( $piece ) ? Regions::find( $first ) : null;
+		$region = self::hinted( $first, $rest ) ? null : Regions::find( $first );
 		if ( $region ) {
 			$more = array();
 			foreach ( $rest as $segment ) {
@@ -284,6 +284,27 @@ class PlaceLocator {
 	private static function in_context( $key, array $items, $skip ) {
 		foreach ( $items as $index => $item ) {
 			if ( $index !== $skip && in_array( $key, $item['context'], true ) ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Le morceau porte-t-il un indice de département ou de code postal pour son premier
+	 * segment (« Bretagne (90) », « Bretagne, 90300 ») ? Un indice placé dans un autre
+	 * lieu (« Bretagne, Rennes (35) ») ne compte pas.
+	 *
+	 * @param string       $first Premier segment.
+	 * @param list<string> $rest  Segments suivants.
+	 * @return bool
+	 */
+	private static function hinted( $first, array $rest ) {
+		if ( '' !== PhotonGeocoder::hint( $first ) ) {
+			return true;
+		}
+		foreach ( $rest as $segment ) {
+			if ( '' === self::segment_key( $segment ) && '' !== PhotonGeocoder::hint( $segment ) ) {
 				return true;
 			}
 		}

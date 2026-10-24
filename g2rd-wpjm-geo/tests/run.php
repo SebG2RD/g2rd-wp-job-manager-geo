@@ -1185,6 +1185,7 @@ function g2rd_world_feature( $name ) {
 		'Lyon'     => array( 4.8357, 45.764, 'Métropole de Lyon', 'Auvergne-Rhône-Alpes', 'France', 'FR', '69001' ),
 		'Brest'    => array( -4.4861, 48.3904, 'Finistère', 'Bretagne', 'France', 'FR', '29200' ),
 		'Bretagne' => array( 6.9917, 47.5986, 'Territoire de Belfort', 'Bourgogne-Franche-Comté', 'France', 'FR', '90130' ),
+		'Rennes'   => array( -1.6779, 48.1173, 'Ille-et-Vilaine', 'Bretagne', 'France', 'FR', '35000' ),
 		'London'   => array( -81.2497, 42.9837, 'Middlesex County', 'Ontario', 'Canada', 'CA', 'N6A' ),
 	);
 	list( $lng, $lat, $county, $state, $country, $code, $postcode ) = $cities[ $name ];
@@ -1200,7 +1201,7 @@ function g2rd_world( array $replies ) {
 		parse_str( (string) parse_url( $url, PHP_URL_QUERY ), $query );
 		$q                                 = isset( $query['q'] ) ? (string) $query['q'] : '';
 		$GLOBALS['g2rd_world_queries'][] = $q;
-		$known                             = array( 'Rouen', 'Caen', 'Le Havre', 'Paris', 'Lyon', 'Brest', 'Bretagne', 'London' );
+		$known                             = array( 'Rouen', 'Caen', 'Le Havre', 'Paris', 'Lyon', 'Brest', 'Bretagne', 'London', 'Rennes' );
 		$names                             = isset( $replies[ $q ] ) ? $replies[ $q ] : ( in_array( $q, $known, true ) ? array( $q ) : array() );
 		return photon_reply( array_map( 'g2rd_world_feature', $names ) );
 	};
@@ -1279,6 +1280,7 @@ check( 'précision avec indice : « Rouen, Seine-Maritime (76) » donne Rouen se
 $r = $locator->locate( 'Rouen, 76000' );
 check( 'code postal après une virgule : indice, ni lieu ni introuvable', 'city:Rouen' === g2rd_labels( $r ) && array() === $r['missing'] );
 check( 'indice sur le morceau : « Bretagne, 90300 » est la commune', 'city:Bretagne' === g2rd_labels( $locator->locate( 'Bretagne, 90300' ) ) );
+check( 'indice dans un autre segment : « Bretagne, Rennes (35) » garde la zone et ajoute Rennes', 'region:Bretagne | city:Rennes' === g2rd_labels( $locator->locate( 'Bretagne, Rennes (35)' ) ) );
 $r = $locator->locate( 'Atlantide, Atlantide' );
 check( 'introuvables sans doublon', array() === $r['places'] && array( 'Atlantide' ) === $r['missing'] );
 $pieces = array();
