@@ -23,6 +23,10 @@
 	];
 	// Photon : villes, bourgs, villages et communes du monde entier.
 	var PHOTON_TAGS = [ 'place:city', 'place:town', 'place:village', 'place:municipality' ];
+	// Mode étiquettes (configuration du plugin en mode libre) : plusieurs lieux, régions proposées sans réseau.
+	var T = 'photon' === source && settings.tags ? window.g2rdWpjmGeoTags : null;
+	var regionIndex = T ? T.regionIndex( settings.regions ) : [];
+	var MAX_SUGGESTIONS = 6;
 	var uid = 0;
 
 	function findInput() {
@@ -34,7 +38,7 @@
 			} catch ( e ) {
 				node = null;
 			}
-			if ( node && 'INPUT' === node.tagName && ! node.hasAttribute( 'data-g2rd-wpjm-geo-ac' ) ) {
+			if ( node && 'INPUT' === node.tagName && ! node.hasAttribute( 'data-g2rd-wpjm-geo-ac' ) && ! node.hasAttribute( 'data-g2rd-wpjm-geo-tags' ) ) {
 				return node;
 			}
 		}
@@ -99,7 +103,19 @@
 		return out;
 	}
 
-	function attach( input ) {
+	function fromRegions( value ) {
+		return T.searchRegions( value, regionIndex, MAX_SUGGESTIONS ).map( function ( hit ) {
+			var kind = i18n.region || '';
+			return {
+				label: hit.region.name,
+				main: hit.region.name,
+				secondary: hit.matched !== hit.region.name ? kind + ' (' + hit.matched + ')' : kind,
+				region: hit.region.code
+			};
+		} );
+	}
+
+	function attach( input, field ) {
 		var listId = 'g2rd-wpjm-geo-ac-list-' + ( ++uid );
 		var places = null; // Bibliothèque Places, chargée au premier focus (Google).
 		var token = null;
@@ -177,6 +193,13 @@
 			if ( ! item ) {
 				return;
 			}
+			if ( field ) {
+				// Mode étiquettes : la saisie est vidée d'abord (son texte serait sinon enregistré avec l'étiquette).
+				input.value = '';
+				field.add( item.label, item.region || '' );
+				close();
+				return;
+			}
 			// La valeur est écrite dans le champ natif : c'est elle que WP Job Manager enregistre puis géocode.
 			input.value = item.label;
 			// Prévient les autres scripts du formulaire, sans relancer notre propre recherche.
@@ -202,6 +225,13 @@
 				option.setAttribute( 'role', 'option' );
 				option.setAttribute( 'aria-selected', 'false' );
 
+				if ( field ) {
+					var icon = document.createElement( 'span' );
+					icon.className = 'g2rd-wpjm-geo-ac__icon';
+					icon.setAttribute( 'aria-hidden', 'true' );
+					icon.textContent = suggestion.region ? T.icons.region : T.icons.city;
+					option.appendChild( icon );
+				}
 				if ( suggestion.main ) {
 					var strong = document.createElement( 'span' );
 					strong.className = 'g2rd-wpjm-geo-ac__main';
@@ -226,7 +256,7 @@
 					setActive( index );
 				} );
 
-				items.push( { label: suggestion.label } );
+				items.push( { label: suggestion.label, region: suggestion.region || '' } );
 				list.appendChild( option );
 			} );
 
@@ -320,31 +350,40 @@
 
 		function search() {
 			var value = input.value.trim();
-			if ( disabled || value.length < MIN_LENGTH ) {
+			// Régions françaises (mode étiquettes) : liste locale, sans appel réseau.
+			var local = field ? fromRegions( value ) : [];
+			if ( value.length < MIN_LENGTH || ( disabled && ! local.length ) ) {
 				close();
 				return;
 			}
 			var current = ++requestId;
-			var pending = 'photon' === source
-				? photonSearch( value )
-				: ensurePlaces().then( function ( library ) {
+			var pending;
+			if ( 'photon' === source ) {
+				pending = disabled ? Promise.resolve( [] ) : photonSearch( value );
+			} else {
+				pending = ensurePlaces().then( function ( library ) {
 					return fetchSuggestions( library, value );
 				} ).then( function ( result ) {
 					return fromGoogle( result && result.suggestions );
 				} );
+			}
 
 			pending.then( function ( suggestions ) {
 				// Ignore les réponses obsolètes (l'utilisateur a continué à taper).
 				if ( current === requestId && document.activeElement === input ) {
-					render( suggestions );
+					render( field ? local.concat( suggestions ).slice( 0, MAX_SUGGESTIONS ) : suggestions );
 				}
 			} ).catch( function ( error ) {
 				if ( error && 'AbortError' === error.name ) {
 					return; // Requête remplacée par une frappe plus récente.
 				}
-				// Service indisponible ou clé refusée : le champ redevient un simple champ texte.
+				// Service indisponible ou clé refusée : le champ redevient un simple champ texte (les régions restent proposées).
 				disabled = true;
-				close();
+				if ( local.length && current === requestId && document.activeElement === input ) {
+					render( local );
+				} else {
+					close();
+				}
 			} );
 		}
 
@@ -367,6 +406,10 @@
 
 		input.addEventListener( 'keydown', function ( event ) {
 			if ( panel.hidden ) {
+				if ( field && 'Enter' === event.key ) {
+					event.preventDefault(); // Entrée valide le texte en cours sans envoyer le formulaire.
+					field.commit();
+				}
 				return;
 			}
 			switch ( event.key ) {
@@ -382,6 +425,10 @@
 					if ( active >= 0 ) {
 						event.preventDefault(); // Ne soumet pas le formulaire pendant le choix d'une ville.
 						choose( active );
+					} else if ( field ) {
+						event.preventDefault();
+						close();
+						field.commit();
 					}
 					break;
 				case 'Escape':
@@ -398,6 +445,9 @@
 			window.clearTimeout( timer );
 			requestId++;
 			close();
+			if ( field ) {
+				field.commit(); // Un texte laissé dans la saisie devient une étiquette.
+			}
 		} );
 
 		window.addEventListener( 'resize', function () {
@@ -430,9 +480,15 @@
 			return;
 		}
 		var input = findInput();
-		if ( input ) {
-			attach( input );
+		if ( ! input ) {
+			return;
 		}
+		if ( T ) {
+			var field = T.create( input, { regions: settings.regions, max: settings.maxPlaces || 10, i18n: settings.tagsI18n || {} } );
+			attach( field.input, field );
+			return;
+		}
+		attach( input, null );
 	}
 
 	if ( 'loading' === document.readyState ) {

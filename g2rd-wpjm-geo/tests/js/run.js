@@ -182,6 +182,29 @@ function tagField({ value = '', required = false, max = 3 } = {}) {
   return { w, d, native, field, input: field.input, tags: () => [...d.querySelectorAll('.g2rd-wpjm-geo-tags__tag')], live: () => d.querySelector('.g2rd-wpjm-geo-tags__live').textContent, changes: () => changes };
 }
 
+// Autocomplétion Photon en mode étiquettes, comme le PHP la configure en mode libre.
+async function tagsAc({ features = null } = {}) {
+  const dom = new JSDOM('<form id="f"><label for="job_location">Lieu</label><input type="text" id="job_location" name="job_location" placeholder="ex. Paris"><button id="go">Envoyer</button></form>', { runScripts: 'outside-only', pretendToBeVisual: true });
+  const w = dom.window, calls = [];
+  w.g2rdWpjmGeoAutocomplete = { source: 'photon', photonUrl: 'https://photon.test/api/', lang: 'fr', selectors: ['#job_location'], minLength: 2, tags: true, maxPlaces: 10, regions: REGIONS, tagsI18n: TAGS_I18N,
+    i18n: { poweredBy: 'Recherche (c) OpenStreetMap contributors', results: 'Suggestions', region: 'Région' } };
+  w.AbortController = class { constructor() { this.signal = { aborted: false }; } abort() { this.signal.aborted = true; } };
+  const feature = (name, county, state) => ({ properties: { name, county, state, country: 'France', osm_key: 'place' } });
+  w.fetch = url => {
+    calls.push(url);
+    const q = new URL(url).searchParams.get('q').toLowerCase();
+    const list = features || (q.indexOf('ro') === 0 ? [feature('Rouen', 'Seine-Maritime', 'Normandie'), feature('Roubaix', 'Nord', 'Hauts-de-France')] : []);
+    return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ features: list }) });
+  };
+  w.eval(src('js/location-tags.js'));
+  w.eval(src('js/location-autocomplete.js'));
+  await wait(10); // jsdom : document encore « loading », l'initialisation attend DOMContentLoaded.
+  const d = w.document, native = d.getElementById('job_location');
+  const input = d.querySelector('.g2rd-wpjm-geo-tags__input');
+  if (input) { input.focus(); await wait(10); }
+  return { w, d, native, input, calls, panel: d.querySelector('.g2rd-wpjm-geo-ac'), tags: () => [...d.querySelectorAll('.g2rd-wpjm-geo-tags__tag')], options: () => [...d.querySelectorAll('.g2rd-wpjm-geo-ac [role=option]')] };
+}
+
 (async () => {
   console.log('\nA. Autocompletion - cas nominal');
   let t = await autocomplete({});
@@ -536,6 +559,34 @@ function tagField({ value = '', required = false, max = 3 } = {}) {
   check('libelle avec « $ » : intitule du bouton intact', "Retirer Saint-Martin $' test" === f.tags()[1].querySelector('button').getAttribute('aria-label'));
   f.input.dispatchEvent(new f.w.KeyboardEvent('keydown', { key: 'Backspace', repeat: true, bubbles: true }));
   check('Retour arriere maintenu (repetition) : aucune etiquette retiree', 2 === f.tags().length);
+
+  console.log('\nL. Autocompletion a etiquettes (mode libre)');
+  let g = await tagsAc({});
+  check('etiquettes creees par l autocompletion, combobox sur la saisie visible', !!g.input && 'combobox' === g.input.getAttribute('role') && !g.native.hasAttribute('role') && g.native.hidden);
+  await type(g, 'idf');
+  check('sigle : region proposee en tete, avec le nom saisi et une icone', /Île-de-France/.test(g.options()[0].textContent) && /Région \(IDF\)/.test(g.options()[0].textContent) && !!g.options()[0].querySelector('.g2rd-wpjm-geo-ac__icon'));
+  key(g.w, g.input, 'ArrowDown'); key(g.w, g.input, 'Enter'); await wait(10);
+  check('choix au clavier : etiquette de region, saisie videe, liste fermee', 1 === g.tags().length && g.tags()[0].classList.contains('g2rd-wpjm-geo-tags__tag--region') && '' === g.input.value && 'Île-de-France' === g.native.value && g.panel.hidden);
+  await type(g, 'Rou');
+  check('villes Photon proposees', 2 === g.options().length && /Rouen/.test(g.options()[0].textContent));
+  g.options()[0].dispatchEvent(new g.w.MouseEvent('mousedown', { bubbles: true, cancelable: true })); await wait(10);
+  check('choix a la souris : ville avec son libelle complet', 'Île-de-France ; Rouen, Normandie, France' === g.native.value && '' === g.input.value);
+  g.input.value = 'Brest';
+  const enterFree = key(g.w, g.input, 'Enter');
+  check('Entree sans proposition : texte libre ajoute, formulaire non envoye', enterFree.defaultPrevented && 'Île-de-France ; Rouen, Normandie, France ; Brest' === g.native.value);
+  g.input.value = 'Le Havre'; g.input.blur(); await wait(10);
+  check('sortie du champ : texte en cours ajoute', / ; Le Havre$/.test(g.native.value));
+  g = await tagsAc({});
+  await type(g, 'paca');
+  check('PACA : Provence-Alpes-Cote d Azur', /Provence-Alpes-Côte d'Azur/.test(g.options()[0].textContent));
+  await type(g, 'Région Sud');
+  check('« Region Sud » : Provence-Alpes-Cote d Azur', /Provence-Alpes-Côte d'Azur/.test(g.options()[0].textContent));
+  await type(g, 'alpes');
+  check('mot du nom (alpes) : deux regions', 2 === g.options().filter(o => /Région/.test(o.textContent)).length);
+  g = await tagsAc({ features: [] });
+  g.w.fetch = () => Promise.reject(new Error('reseau'));
+  await type(g, 'norm');
+  check('Photon injoignable : les regions restent proposees', 1 === g.options().length && /Normandie/.test(g.options()[0].textContent));
 
   console.log('\nResultat JS : ' + pass + ' reussis, ' + fail + ' echoues');
   process.exit(fail ? 1 : 0);

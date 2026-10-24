@@ -25,6 +25,7 @@ class GoogleAssets {
 	const HANDLE_MAP          = 'g2rd-wpjm-geo-map';
 	const HANDLE_STYLE        = 'g2rd-wpjm-geo-frontend';
 	const HANDLE_COMMON       = 'g2rd-wpjm-geo-map-common';
+	const HANDLE_TAGS         = 'g2rd-wpjm-geo-location-tags';
 
 	/**
 	 * Réglages.
@@ -70,8 +71,9 @@ class GoogleAssets {
 			'before'
 		);
 
-		// En mode libre, le chargeur Google (et la clé navigateur) n'est jamais imprimé dans la page.
-		$autocomplete_deps = Settings::PROVIDER_OSM === $this->settings->get_provider() ? array() : array( self::HANDLE_LOADER );
+		wp_register_script( self::HANDLE_TAGS, $base . 'js/location-tags.js', array(), $version, true );
+		// En mode libre, le chargeur Google (et la clé navigateur) n'est jamais imprimé dans la page ; le champ passe en étiquettes.
+		$autocomplete_deps = Settings::PROVIDER_OSM === $this->settings->get_provider() ? array( self::HANDLE_TAGS ) : array( self::HANDLE_LOADER );
 		wp_register_script( self::HANDLE_AUTOCOMPLETE, $base . 'js/location-autocomplete.js', $autocomplete_deps, $version, true );
 		wp_register_script( self::HANDLE_CLUSTERER, $base . 'vendor/markerclusterer.min.js', array(), '2.5.3', true );
 

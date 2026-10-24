@@ -19,6 +19,7 @@ require __DIR__ . '/bootstrap.php';
 
 use G2RD\WPJMGeo\AdminMenu;
 use G2RD\WPJMGeo\AdminScreen;
+use G2RD\WPJMGeo\AdminLocation;
 use G2RD\WPJMGeo\ApplicationNormalizer;
 use G2RD\WPJMGeo\GeocodeQueue;
 use G2RD\WPJMGeo\GeocodingIntegration;
@@ -958,7 +959,7 @@ function g2rd_ac_config() {
 }
 list( $s ) = boot( array( 'provider' => Settings::PROVIDER_OSM, 'browser_api_key' => 'SECRET-KEY' ) );
 ( new GoogleAssets( $s ) )->register_assets();
-check( 'mode libre : autocomplétion sans dépendance au chargeur Google', array() === G2RD_Test_State::$enqueued['register:g2rd-wpjm-geo-autocomplete'] );
+check( 'mode libre : autocomplétion sans dépendance au chargeur Google, avec le script des étiquettes', array( GoogleAssets::HANDLE_TAGS ) === G2RD_Test_State::$enqueued['register:g2rd-wpjm-geo-autocomplete'] );
 ( new LocationAutocomplete( $s ) )->enqueue();
 list( $inline, $c ) = g2rd_ac_config();
 check( 'mode libre : Photon en https, langue du site, attribution OpenStreetMap, aucune clé', 'photon' === $c['source'] && 'https://photon.komoot.io/api/' === $c['photonUrl'] && 'fr' === $c['lang'] && false !== strpos( $c['i18n']['poweredBy'], 'OpenStreetMap' ) && false === strpos( $inline, 'SECRET' ) );
@@ -1504,6 +1505,24 @@ $p = RestController::places( 702, 49.4432, 1.0999, 'Rouen', true );
 check( 'coordonnée NAN écartée, réponse encodable ; région à son centre officiel', 2 === count( $p ) && false !== wp_json_encode( $p ) && 49.1202 === $p[1]['lat'] && 0.1128 === $p[1]['lng'] );
 $p = RestController::places( 702, 48.8566, 2.3522, 'Paris', true );
 check( 'liste périmée (premier lieu différent des coordonnées de WP Job Manager) : point unique', array( array( 'type' => 'city', 'label' => 'Paris', 'lat' => 48.8566, 'lng' => 2.3522 ) ) === $p );
+
+echo PHP_EOL . '39. Autocomplétion à étiquettes : configuration' . PHP_EOL;
+list( $s ) = boot( array( 'provider' => Settings::PROVIDER_OSM ) );
+( new GoogleAssets( $s ) )->register_assets();
+check( 'script des étiquettes enregistré, sans dépendance', array() === G2RD_Test_State::$enqueued[ 'register:' . GoogleAssets::HANDLE_TAGS ] );
+( new LocationAutocomplete( $s ) )->enqueue();
+list( , $c ) = g2rd_ac_config();
+check( 'mode libre : étiquettes, plafond, 18 régions, textes', true === $c['tags'] && 10 === $c['maxPlaces'] && 18 === count( $c['regions'] ) && 'Normandie' === $c['regions'][8]['name'] && 'Région' === $c['i18n']['region'] && false !== strpos( $c['tagsI18n']['remove'], '%s' ) && '10 lieux au plus.' === $c['tagsI18n']['limit'] && '' !== $c['tagsI18n']['required'] );
+$fields = ( new LocationAutocomplete( $s ) )->prepare_field( array( 'job' => array( 'job_location' => array( 'description' => 'Laissez vide si le lieu importe peu.' ) ) ) );
+check( 'sans JavaScript : aide « ; » ajoutée à la description du champ', 0 === strpos( $fields['job']['job_location']['description'], 'Laissez vide' ) && false !== strpos( $fields['job']['job_location']['description'], '« ; »' ) );
+$admin = ( new AdminLocation( $s ) )->admin_help( array( '_job_location' => array( 'label' => 'Lieu', 'description' => '' ) ) );
+check( 'administration : aide « ; » dans l’infobulle du champ', false !== strpos( $admin['_job_location']['description'], '« ; »' ) );
+list( $s ) = boot( array( 'provider' => Settings::PROVIDER_GOOGLE, 'browser_api_key' => 'BROWSER' ) );
+( new LocationAutocomplete( $s ) )->enqueue();
+list( , $c ) = g2rd_ac_config();
+check( 'mode Google : ni étiquettes ni régions', ! isset( $c['tags'] ) && ! isset( $c['regions'] ) && ! isset( $c['tagsI18n'] ) );
+$fields = ( new LocationAutocomplete( $s ) )->prepare_field( array( 'job' => array( 'job_location' => array( 'description' => 'D' ) ) ) );
+check( 'mode Google : description inchangée', 'D' === $fields['job']['job_location']['description'] );
 
 $results = $GLOBALS['g2rd_results'];
 echo PHP_EOL . sprintf( 'Résultat : %d réussis, %d échoués', $results['pass'], $results['fail'] ) . PHP_EOL;

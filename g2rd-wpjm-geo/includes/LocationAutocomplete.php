@@ -66,7 +66,20 @@ class LocationAutocomplete {
 		if ( $this->has_location_field && ( Settings::PROVIDER_OSM === $this->settings->get_provider() || GoogleAssets::has_key( $this->settings ) ) ) {
 			$fields['job']['job_location']['autocomplete'] = false;
 		}
+		if ( $this->has_location_field && Settings::PROVIDER_OSM === $this->settings->get_provider() ) {
+			$fields['job']['job_location']['description'] = self::with_help( isset( $fields['job']['job_location']['description'] ) ? $fields['job']['job_location']['description'] : '' );
+		}
 		return $fields;
+	}
+
+	/**
+	 * Description du champ complétée par l'aide de saisie de plusieurs lieux (utile sans JavaScript).
+	 *
+	 * @param mixed $description Description existante.
+	 * @return string
+	 */
+	protected static function with_help( $description ) {
+		return trim( ( is_string( $description ) ? $description : '' ) . ' ' . __( 'Séparez plusieurs lieux par « ; ».', 'g2rd-wpjm-geo' ) );
 	}
 
 	/**
@@ -115,6 +128,27 @@ class LocationAutocomplete {
 				'results'   => __( 'Suggestions de villes', 'g2rd-wpjm-geo' ),
 			),
 		);
+		if ( $is_osm ) {
+			// Plusieurs lieux (villes et régions françaises) en étiquettes, joints par « ; » dans le champ natif.
+			$config['tags']            = true;
+			$config['maxPlaces']       = PlaceLocator::MAX_PLACES;
+			$config['regions']         = Regions::all();
+			$config['i18n']['results'] = __( 'Suggestions de villes et de régions', 'g2rd-wpjm-geo' );
+			$config['i18n']['region']  = __( 'Région', 'g2rd-wpjm-geo' );
+			$config['tagsI18n']        = array(
+				/* translators: %s: place name. */
+				'remove'    => __( 'Retirer %s', 'g2rd-wpjm-geo' ),
+				/* translators: %s: place name. */
+				'added'     => __( 'Lieu ajouté : %s', 'g2rd-wpjm-geo' ),
+				/* translators: %s: place name. */
+				'removed'   => __( 'Lieu retiré : %s', 'g2rd-wpjm-geo' ),
+				/* translators: %s: place name. */
+				'duplicate' => __( '%s figure déjà dans la liste.', 'g2rd-wpjm-geo' ),
+				/* translators: %d: maximum number of places. */
+				'limit'     => sprintf( __( '%d lieux au plus.', 'g2rd-wpjm-geo' ), PlaceLocator::MAX_PLACES ),
+				'required'  => __( 'Indiquez au moins un lieu.', 'g2rd-wpjm-geo' ),
+			);
+		}
 		$script = 'window.g2rdWpjmGeoAutocomplete = ' . wp_json_encode( $config ) . ';';
 		if ( wp_script_is( GoogleAssets::HANDLE_AUTOCOMPLETE, 'registered' ) ) {
 			wp_add_inline_script( GoogleAssets::HANDLE_AUTOCOMPLETE, $script, 'before' );
