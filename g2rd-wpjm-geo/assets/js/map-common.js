@@ -132,11 +132,7 @@
 		return list.length ? list : [ { type: 'city', label: '', lat: job.latitude, lng: job.longitude } ];
 	}
 
-	/**
-	 * Une copie de l'offre par ville (coordonnées de la ville) et une entrée par
-	 * région. Chaque copie porte `_also` : les autres lieux de l'offre.
-	 */
-	// Boîte [ouest, sud, est, nord] d'une région : 4 nombres finis, dans les bornes, ouest < est et sud < nord ; sinon null.
+	// Boîte d'une région recopiée si valide (4 nombres, bornes, ouest < est, sud < nord), sinon null.
 	function validBounds( box ) {
 		if ( ! Array.isArray( box ) || 4 !== box.length ) {
 			return null;
@@ -152,6 +148,10 @@
 		return box.slice();
 	}
 
+	/**
+	 * Une copie de l'offre par ville (coordonnées de la ville) et une entrée par
+	 * région. Chaque copie porte `_also` : les autres lieux de l'offre.
+	 */
 	function splitPlaces( jobs ) {
 		var points = [];
 		var regions = Object.create( null );

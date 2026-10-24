@@ -76,7 +76,7 @@ async function map({ mapId, clustering, data, restFail, nonce }) {
 const HOSTILE_ATTRIBUTION = '<a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> <a href="https://www.openmaptiles.org/" target="_blank">&copy; OpenMapTiles</a> Data from <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>'
   + '<img src="x" onerror="window.pwned=1"><iframe srcdoc="<b>cadre</b>"></iframe><a href="javascript:window.pwned=2">piege</a><b data-poc="1" onmouseover="window.pwned=3">gras</b>';
 
-async function osmMap({ data, clustering = true, noWebgl = false, styleFail = false, restFail = false, preload = true, admin = '', narrow = false, regionsFail = false, throwRender = false, badShape = false }) {
+async function osmMap({ data, clustering = true, noWebgl = false, styleFail = false, restFail = false, preload = true, admin = '', narrow = false, regionsFail = false, throwRender = false, badShape = false, italicFirst = false }) {
   const i18n = JSON.stringify({ loading: 'Chargement', error: 'ERREUR', empty: 'VIDE', view: 'Voir offre', manyJobs: '%d offres ici', regeocode: 'Re-geocoder', places: 'Liste', alsoAt: 'Aussi à :', regionTitle: '%s (toute la région)', oneJob: '1 offre', manyJobsShort: '%d offres', legendCity: 'Offre dans une ville', legendRegion: 'Offre sur toute une région' }).replace(/"/g, '&quot;');
   const html = '<div class="g2rd-wpjm-geo-map" data-rest-url="https://x.test/wp-json/g2rd-wpjm-geo/v1/jobs" data-per-page="4" data-clustering="' + (clustering ? 1 : 0) + '" data-admin-url="' + admin + '" data-nonce="" data-i18n="' + i18n + '"><div class="g2rd-wpjm-geo-map__canvas"></div><p class="g2rd-wpjm-geo-map__status">Chargement</p></div>';
   const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://x.test/' });
@@ -97,6 +97,7 @@ async function osmMap({ data, clustering = true, noWebgl = false, styleFail = fa
     on(ev, a, b) { const k = b ? ev + ':' + a : ev; (this.events[k] = this.events[k] || []).push(b || a); }
     fire(k, arg) { (this.events[k] || []).forEach(f => f(arg)); }
     getStyle() { return { sources: Object.assign({ openmaptiles: { type: 'vector', url: 'https://tiles.openfreemap.org/planet' } }, st.sources), layers: [
+      ...(italicFirst ? [{ id: 'waterway_line_label', type: 'symbol', layout: { 'text-field': ['get', 'name'], 'text-font': ['Noto Sans Italic'] } }] : []),
       { id: 'place-label', type: 'symbol', layout: { 'text-field': ['get', 'name'], 'text-font': ['Noto Sans Regular'] } },
       { id: 'road-ref', type: 'symbol', layout: { 'text-field': ['get', 'ref'], 'text-font': ['Noto Sans Bold'] } },
       { id: 'water', type: 'fill' }
@@ -415,8 +416,12 @@ const regionNoBox = { id: 15, title: 'Sans boite', permalink: 'https://x.test/jo
   o.st.map.fire('click:g2rd-clusters', { features: [{ properties: { cluster_id: 9 }, geometry: { coordinates: [2, 48] } }] });
   await wait(10);
   check('clic sur un cluster : zoom d expansion', !!o.st.ease && o.st.ease.zoom === 7);
-  check('cadrage automatique sur les 4 lieux', !!o.st.fit && o.st.fit.b.pts.length === 4 && o.st.fit.o.padding === 48);
+  check('cadrage automatique sur les 4 lieux, marge de 48 sans region', !!o.st.fit && o.st.fit.b.pts.length === 4 && o.st.fit.o.padding === 48);
   check('carte prete, message masque', o.status.hidden && o.el.classList.contains('is-ready'));
+  o.st.rendered = [{ layer: { id: 'g2rd-points' } }]; o.st.map.fire('mousemove', { point: {} });
+  const curOn = o.st.canvas.style.cursor;
+  o.st.rendered = []; o.st.map.fire('mousemove', { point: {} });
+  check('curseur sur les points et regroupements : main au-dessus, vide ailleurs, seuls les calques presents interroges', 'pointer' === curOn && '' === o.st.canvas.style.cursor && 'g2rd-points,g2rd-clusters' === o.st.queryLayers.join());
   o = await osmMap({ data: jobs, clustering: false });
   check('clustering desactive', o.st.sources['g2rd-jobs'].cluster === false);
   o = await osmMap({ data: [jobs[0]] });
@@ -845,7 +850,8 @@ const regionNoBox = { id: 15, title: 'Sans boite', permalink: 'https://x.test/jo
   check('zones : contour #d35400 (contraste), remplissage #ef6c00', '#d35400' === line.paint['line-color'] && '#ef6c00' === fill.paint['fill-color']);
   const lsrc = o.st.sources['g2rd-region-labels'], llay = o.st.layers.find(l => l.id === 'g2rd-region-label');
   check('etiquettes dans le canevas : source (code, texte), calque symbol sous les regroupements, aucun marqueur DOM', !!lsrc && 2 === lsrc.data.features.length && 'Normandie · 2 offres' === lsrc.data.features[0].properties.text && '28' === lsrc.data.features[0].properties.code && 0.1128 === lsrc.data.features[0].geometry.coordinates[0] && !!llay && 'symbol' === llay.type && 'g2rd-clusters' === o.st.before['g2rd-region-label'] && 0 === o.st.markers.length);
-  check('etiquettes : style (taille 13, ancrage haut, chevauchement permis, halo blanc)', 13 === llay.layout['text-size'] && 'top' === llay.layout['text-anchor'] && true === llay.layout['text-allow-overlap'] && true === llay.layout['text-ignore-placement'] && '#9a3412' === llay.paint['text-color'] && '#fff' === llay.paint['text-halo-color'] && 2 === llay.paint['text-halo-width']);
+  check('etiquettes : style (taille 13, halo blanc, couleur)', 13 === llay.layout['text-size'] && '#9a3412' === llay.paint['text-color'] && '#fff' === llay.paint['text-halo-color'] && 2 === llay.paint['text-halo-width']);
+  check('etiquettes : sans chevauchement (collision active), ancrage variable, priorite au nombre d offres', false === llay.layout['text-allow-overlap'] && false === llay.layout['text-ignore-placement'] && 'top,bottom,left,right' === llay.layout['text-variable-anchor'].join() && 0.8 === llay.layout['text-radial-offset'] && !('text-anchor' in llay.layout) && !('text-offset' in llay.layout) && JSON.stringify(['-', 0, ['get', 'count']]) === JSON.stringify(llay.layout['symbol-sort-key']) && 2 === lsrc.data.features[0].properties.count && 1 === lsrc.data.features[1].properties.count);
   check('pas de point de secours quand les zones sont dessinees', !o.st.layers.some(l => l.id === 'g2rd-region-dot'));
   const label28 = { properties: { code: '28' }, geometry: { coordinates: [0.1128, 49.1202] } }, label53 = { properties: { code: '53' }, geometry: { coordinates: [-2.8331, 48.1794] } };
   o.st.map.fire('click:g2rd-region-label', { point: {}, features: [label28] });
@@ -868,10 +874,16 @@ const regionNoBox = { id: 15, title: 'Sans boite', permalink: 'https://x.test/jo
   o.st.map.fire('mousemove:g2rd-region-fill', { features: [{ properties: { code: '53' } }] });
   check('survol : contour renforce (etat hover)', o.st.states.some(x => '53' === x.f.id && true === x.s.hover));
   const cur = [];
-  [ 'g2rd-region-fill', 'g2rd-region-label' ].forEach(id => { o.st.map.fire('mouseenter:' + id, {}); cur.push(o.st.canvas.style.cursor); o.st.map.fire('mouseleave:' + id, {}); cur.push(o.st.canvas.style.cursor); });
-  check('curseur : main au survol des zones et des etiquettes, rendu en sortie', 'pointer,,pointer,' === cur.join());
+  o.st.rendered = [{ layer: { id: 'g2rd-region-fill' } }]; o.st.map.fire('mousemove', { point: {} }); cur.push(o.st.canvas.style.cursor);
+  o.st.rendered = []; o.st.map.fire('mousemove', { point: {} }); cur.push(o.st.canvas.style.cursor);
+  o.st.rendered = [{ layer: { id: 'g2rd-points' } }]; o.st.map.fire('mousemove', { point: {} }); cur.push(o.st.canvas.style.cursor);
+  o.st.rendered = [{ layer: { id: 'g2rd-region-fill' } }, { layer: { id: 'g2rd-points' } }]; o.st.map.fire('mousemove', { point: {} }); cur.push(o.st.canvas.style.cursor);
+  o.st.rendered = [{ layer: { id: 'g2rd-region-fill' } }]; o.st.map.fire('mousemove', { point: {} }); cur.push(o.st.canvas.style.cursor);
+  o.st.map.fire('mouseout', {}); cur.push(o.st.canvas.style.cursor);
+  check('curseur : main au-dessus d un calque cliquable, vide ailleurs, y compris du point vers la zone ; vide en quittant la carte', 'pointer,,pointer,pointer,pointer,' === cur.join());
+  check('curseur : un seul ecouteur mousemove de carte, calques existants et cliquables seulement', 1 === o.st.map.events.mousemove.length && 'g2rd-points,g2rd-clusters,g2rd-region-fill,g2rd-region-label' === o.st.queryLayers.join() && !o.st.map.events['mouseenter:g2rd-points'] && !o.st.map.events['mouseenter:g2rd-region-fill'] && !o.st.map.events['mouseenter:g2rd-region-label']);
   const fp = o.st.fit.b.pts.map(p => p.join());
-  check('cadrage : villes et angles de la boite de chaque region, avec marge, sans zoom excessif', 6 === fp.length && fp.indexOf('-1.946,48.182') !== -1 && fp.indexOf('1.802,50.069') !== -1 && fp.indexOf('-5.141,47.2879') !== -1 && fp.indexOf('-1.0209,48.867') !== -1 && 48 === o.st.fit.o.padding && 12 === o.st.fit.o.maxZoom && 0 === o.st.fit.o.duration);
+  check('cadrage : villes et angles de la boite de chaque region, avec marge, sans zoom excessif', 6 === fp.length && fp.indexOf('-1.946,48.182') !== -1 && fp.indexOf('1.802,50.069') !== -1 && fp.indexOf('-5.141,47.2879') !== -1 && fp.indexOf('-1.0209,48.867') !== -1 && JSON.stringify({ top: 72, right: 48, bottom: 48, left: 48 }) === JSON.stringify(o.st.fit.o.padding) && 12 === o.st.fit.o.maxZoom && 0 === o.st.fit.o.duration);
   const lg = o.st.controlNodes.filter(n => n.node.classList.contains('g2rd-wpjm-geo-map__legend'));
   const legend = lg[0] && lg[0].node;
   check('legende : controle MapLibre en haut a gauche, ajoute une seule fois', 1 === lg.length && 'top-left' === lg[0].pos && legend.classList.contains('maplibregl-ctrl') && 'legend' === o.st.controls[o.st.controls.length - 1] && 'bottom-right' === o.st.attribPos);
@@ -892,12 +904,14 @@ const regionNoBox = { id: 15, title: 'Sans boite', permalink: 'https://x.test/jo
   o = await osmMap({ data: [multiJobs[2]] });
   check('une seule region : cadrage sur sa boite entiere, pas de saut de zoom', !o.st.jump && !!o.st.fit && '-5.141,47.2879|-1.0209,48.867' === o.st.fit.b.pts.map(p => p.join()).join('|') && 12 === o.st.fit.o.maxZoom);
   o = await osmMap({ data: [regionNoBox] });
-  check('region sans boite : cadrage sur son centre', !o.st.jump && !!o.st.fit && '-2.8331,48.1794' === o.st.fit.b.pts.map(p => p.join()).join('|'));
+  check('region sans boite, seule : saut au zoom 6 sur son centre, pas de fitBounds', !!o.st.jump && 6 === o.st.jump.zoom && '-2.8331,48.1794' === o.st.jump.center.join() && !o.st.fit);
   o = await osmMap({ data: [cityAndRegion] });
   const cb = o.st.fit.b.pts;
   check('une ville plus une region : la boite contient la region entiere et la ville', !o.st.jump && Math.min(...cb.map(p => p[0])) === -1.946 && Math.max(...cb.map(p => p[0])) === 4.8357 && Math.min(...cb.map(p => p[1])) === 45.764 && Math.max(...cb.map(p => p[1])) === 50.069);
   o = await osmMap({ data: [jobs[0]] });
   check('une seule ville sans region : saut au zoom 10', !!o.st.jump && 10 === o.st.jump.zoom && !o.st.fit);
+  o = await osmMap({ data: multiJobs, italicFirst: true });
+  check('police : la police italique du premier calque de texte est ecartee (Regular preferee)', ['Noto Sans Regular'].join() === o.st.layers.find(l => l.id === 'g2rd-region-label').layout['text-font'].join() && ['Noto Sans Regular'].join() === o.st.layers.find(l => l.id === 'g2rd-cluster-count').layout['text-font'].join());
   o = await osmMap({ data: multiJobs, throwRender: true });
   check('attribution.render() qui leve apres les zones : pas de point de secours, une seule couche d etiquettes', 1 === o.st.layers.filter(l => l.id === 'g2rd-region-label').length && !o.st.layers.some(l => l.id === 'g2rd-region-dot'));
   o = await osmMap({ data: multiJobs, clustering: false });

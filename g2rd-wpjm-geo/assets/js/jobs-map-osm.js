@@ -78,12 +78,17 @@
 		return shapesPromise;
 	}
 
-	// Curseur en main au survol d'un calque cliquable.
-	function pointer( map, id ) {
-		map.on( 'mouseenter', id, function () {
-			map.getCanvas().style.cursor = 'pointer';
+	// Curseur en main au-dessus d'un calque cliquable, un seul écouteur : avec des paires entrée/sortie par calque, passer d'un calque à un autre laisse le curseur vide.
+	// Seuls les calques déjà présents sont interrogés (les zones et le point de secours arrivent plus tard).
+	function trackCursor( map ) {
+		var ids = [ 'g2rd-points', 'g2rd-clusters', 'g2rd-region-fill', 'g2rd-region-label', 'g2rd-region-dot' ];
+		map.on( 'mousemove', function ( event ) {
+			var layers = ids.filter( function ( id ) {
+				return map.getLayer( id );
+			} );
+			map.getCanvas().style.cursor = layers.length && map.queryRenderedFeatures( event.point, { layers: layers } ).length ? 'pointer' : '';
 		} );
-		map.on( 'mouseleave', id, function () {
+		map.on( 'mouseout', function () {
 			map.getCanvas().style.cursor = '';
 		} );
 	}
@@ -115,7 +120,7 @@
 			var text = ( region.label ? region.label + ' \u00b7 ' : '' ) + C.jobCount( region.jobs.length, i18n );
 			return {
 				type: 'Feature',
-				properties: { code: String( region.code ), text: text },
+				properties: { code: String( region.code ), text: text, count: region.jobs.length },
 				geometry: { type: 'Point', coordinates: [ region.position.lng, region.position.lat ] }
 			};
 		} );
@@ -128,10 +133,13 @@
 				'text-field': [ 'get', 'text' ],
 				'text-font': font,
 				'text-size': 13,
-				'text-anchor': 'top',
-				'text-offset': [ 0, 0.8 ],
-				'text-allow-overlap': true,
-				'text-ignore-placement': true
+				// Sans chevauchement : une étiquette qui ne tient pas est masquée (sa zone reste cliquable, la région reste dans la liste sous la carte).
+				'text-variable-anchor': [ 'top', 'bottom', 'left', 'right' ],
+				'text-radial-offset': 0.8,
+				'text-allow-overlap': false,
+				'text-ignore-placement': false,
+				// La région qui a le plus d'offres est placée d'abord.
+				'symbol-sort-key': [ '-', 0, [ 'get', 'count' ] ]
 			},
 			paint: { 'text-color': '#9a3412', 'text-halo-color': '#fff', 'text-halo-width': 2 }
 		}, map.getLayer( 'g2rd-clusters' ) ? 'g2rd-clusters' : undefined );
@@ -146,7 +154,6 @@
 			}
 		};
 		map.on( 'click', 'g2rd-region-label', open );
-		pointer( map, 'g2rd-region-label' );
 		return open;
 	}
 
@@ -159,7 +166,6 @@
 			paint: { 'circle-radius': 5, 'circle-color': '#9a3412', 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 }
 		}, map.getLayer( 'g2rd-region-label' ) ? 'g2rd-region-label' : undefined );
 		map.on( 'click', 'g2rd-region-dot', open );
-		pointer( map, 'g2rd-region-dot' );
 	}
 
 	function addZones( map, geojson, byCode, i18n, show ) {
@@ -205,7 +211,6 @@
 		map.on( 'mouseleave', 'g2rd-region-fill', function () {
 			setHover( null );
 		} );
-		pointer( map, 'g2rd-region-fill' );
 		map.on( 'click', 'g2rd-region-fill', function ( event ) {
 			// Un point, un regroupement ou une étiquette de la zone garde la priorité (l'étiquette ouvre déjà la région).
 			if ( map.queryRenderedFeatures( event.point, { layers: [ 'g2rd-points', 'g2rd-clusters', 'g2rd-region-label' ] } ).length ) {
@@ -281,15 +286,25 @@
 		} );
 	}
 
+	// Police des textes du style : Regular de préférence, puis Bold, jamais Italic si une autre existe (le premier calque de texte
+	// d'OpenFreeMap est en italique) ; à défaut, la première trouvée.
 	function textFont( map ) {
-		var layers = symbolLayers( map );
-		for ( var i = 0; i < layers.length; i++ ) {
-			var font = layers[ i ].layout[ 'text-font' ];
+		var fonts = [];
+		symbolLayers( map ).forEach( function ( layer ) {
+			var font = layer.layout[ 'text-font' ];
 			if ( Array.isArray( font ) && font.length && 'string' === typeof font[ 0 ] ) {
-				return font;
+				fonts.push( font );
 			}
-		}
-		return [ 'Noto Sans Regular' ];
+		} );
+		var upright = fonts.filter( function ( font ) {
+			return ! /italic/i.test( font[ 0 ] );
+		} );
+		var pick = function ( list, pattern ) {
+			return list.filter( function ( font ) {
+				return pattern.test( font[ 0 ] );
+			} )[ 0 ];
+		};
+		return pick( upright, /regular/i ) || pick( upright, /bold/i ) || upright[ 0 ] || fonts[ 0 ] || [ 'Noto Sans Regular' ];
 	}
 
 	function localizeLabels( map, lang ) {
@@ -572,9 +587,7 @@
 					}
 					show( feature.geometry.coordinates, C.buildInfoContent( jobs, i18n ) );
 				} );
-				[ 'g2rd-clusters', 'g2rd-points' ].forEach( function ( id ) {
-					pointer( map, id );
-				} );
+				trackCursor( map );
 
 				if ( regions.length ) {
 					// Étiquettes tout de suite, sans attendre les contours.
@@ -611,14 +624,16 @@
 					ui.set( '' );
 					// Les points du canevas ne prennent pas le focus : liste des offres sous la carte pour le clavier et les lecteurs d'écran.
 					C.places( container, groups, i18n, regions );
-					if ( 1 === coords.length && ! regions.length ) {
-						map.jumpTo( { center: coords[ 0 ], zoom: 10 } );
+					if ( 1 === coords.length ) {
+						// Un seul point (une ville, ou une région sans boîte) : un cadrage monterait au zoom maximal.
+						map.jumpTo( { center: coords[ 0 ], zoom: regions.length ? 6 : 10 } );
 					} else {
 						var bounds = new ml.LngLatBounds();
 						coords.forEach( function ( coord ) {
 							bounds.extend( coord );
 						} );
-						map.fitBounds( bounds, { padding: 48, maxZoom: 12, duration: 0 } );
+						// Marge en haut avec des régions : la légende ne doit pas cacher une ville.
+						map.fitBounds( bounds, { padding: regions.length ? { top: 72, right: 48, bottom: 48, left: 48 } : 48, maxZoom: 12, duration: 0 } );
 					}
 				}
 				container.classList.add( 'is-ready' );
