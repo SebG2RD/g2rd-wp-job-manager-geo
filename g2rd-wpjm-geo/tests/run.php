@@ -29,6 +29,7 @@ use G2RD\WPJMGeo\Logger;
 use G2RD\WPJMGeo\MigrationTool;
 use G2RD\WPJMGeo\PhotonGeocoder;
 use G2RD\WPJMGeo\PrivacyPolicy;
+use G2RD\WPJMGeo\Regions;
 use G2RD\WPJMGeo\RegeocodeTool;
 use G2RD\WPJMGeo\RestController;
 use G2RD\WPJMGeo\Settings;
@@ -1066,6 +1067,52 @@ check( '« Paris » de nouveau : servi par le cache, toujours la France', is_arr
 $upper = $geo->geocode( 'PARIS' );
 check( 'même texte en majuscules : servi par le même cache', is_array( $upper ) && 'FR' === $upper['country_short'] && 1 === $paris_calls );
 G2RD_Test_State::$http_responder = null;
+
+echo PHP_EOL . '32. Régions françaises' . PHP_EOL;
+check( '18 régions, codes INSEE', array( '01', '02', '03', '04', '06', '11', '24', '27', '28', '32', '44', '52', '53', '75', '76', '84', '93', '94' ) === Regions::codes() );
+$n = Regions::find( 'Normandie' );
+check( 'nom officiel : code, nom, centre', is_array( $n ) && '28' === $n['code'] && 'Normandie' === $n['name'] && '49.1202' === $n['lat'] && '0.1128' === $n['lng'] );
+check( 'accents, casse, tirets et article ignorés', '11' === Regions::find( 'ile de france' )['code'] && '11' === Regions::find( "l'Île-de-France" )['code'] && '04' === Regions::find( 'la réunion' )['code'] && '93' === Regions::find( 'provence alpes cote d azur' )['code'] );
+check( 'sigles et variantes', '11' === Regions::find( 'IDF' )['code'] && '11' === Regions::find( 'Région parisienne' )['code'] && '93' === Regions::find( 'paca' )['code'] && '93' === Regions::find( 'Région Sud' )['code'] && '84' === Regions::find( 'AURA' )['code'] && '32' === Regions::find( 'HDF' )['code'] && '27' === Regions::find( 'BFC' )['code'] && '24' === Regions::find( 'Région Centre' )['code'] && '04' === Regions::find( 'Réunion' )['code'] && '03' === Regions::find( 'Guyane française' )['code'] );
+check( 'anciennes régions rattachées à l’actuelle', '44' === Regions::find( 'Alsace' )['code'] && '75' === Regions::find( 'Poitou-Charentes' )['code'] && '84' === Regions::find( 'Rhône-Alpes' )['code'] && '27' === Regions::find( 'Franche-Comté' )['code'] && '76' === Regions::find( 'Midi-Pyrénées' )['code'] && '32' === Regions::find( 'Picardie' )['code'] && '28' === Regions::find( 'Haute-Normandie' )['code'] );
+check( 'préfixe « Région » accepté', '53' === Regions::find( 'Région Bretagne' )['code'] );
+check( 'texte qui n’est pas une région : null', null === Regions::find( 'Rouen' ) && null === Regions::find( 'Centre' ) && null === Regions::find( 'Bretagne (90)' ) && null === Regions::find( '' ) && null === Regions::get( '99' ) );
+$all = Regions::all();
+check( 'liste pour l’autocomplétion : 18 entrées, codes en chaîne, autres noms', 18 === count( $all ) && '11' === $all[5]['code'] && 'Île-de-France' === $all[5]['name'] && in_array( 'IDF', $all[5]['aliases'], true ) && in_array( 'Alsace', $all[10]['aliases'], true ) && array() === $all[0]['aliases'] );
+
+$shapes = json_decode( (string) file_get_contents( dirname( __DIR__ ) . '/assets/data/regions-fr.geojson' ), true );
+$codes  = array_map(
+	function ( $feature ) {
+		return $feature['properties']['code'];
+	},
+	$shapes['features']
+);
+sort( $codes );
+check( 'contours embarqués : les 18 régions, propriétés code et nom seulement', Regions::codes() === $codes && array( 'code', 'nom' ) === array_keys( $shapes['features'][0]['properties'] ) );
+function g2rd_in_ring( array $point, array $ring ) {
+	$inside = false;
+	for ( $i = 0, $j = count( $ring ) - 1; $i < count( $ring ); $j = $i++ ) {
+		if ( ( $ring[ $i ][1] > $point[1] ) !== ( $ring[ $j ][1] > $point[1] ) && $point[0] < ( $ring[ $j ][0] - $ring[ $i ][0] ) * ( $point[1] - $ring[ $i ][1] ) / ( $ring[ $j ][1] - $ring[ $i ][1] ) + $ring[ $i ][0] ) {
+			$inside = ! $inside;
+		}
+	}
+	return $inside;
+}
+$inside = 0;
+$names  = 0;
+foreach ( $shapes['features'] as $feature ) {
+	$region   = Regions::get( $feature['properties']['code'] );
+	$polygons = 'Polygon' === $feature['geometry']['type'] ? array( $feature['geometry']['coordinates'] ) : $feature['geometry']['coordinates'];
+	$names   += ( $region && $region['name'] === $feature['properties']['nom'] ) ? 1 : 0;
+	foreach ( $polygons as $polygon ) {
+		if ( $region && g2rd_in_ring( array( (float) $region['lng'], (float) $region['lat'] ), $polygon[0] ) ) {
+			++$inside;
+			break;
+		}
+	}
+}
+check( 'noms identiques à ceux des contours', 18 === $names );
+check( 'chaque centre est à l’intérieur du contour de sa région', 18 === $inside );
 
 $results = $GLOBALS['g2rd_results'];
 echo PHP_EOL . sprintf( 'Résultat : %d réussis, %d échoués', $results['pass'], $results['fail'] ) . PHP_EOL;
