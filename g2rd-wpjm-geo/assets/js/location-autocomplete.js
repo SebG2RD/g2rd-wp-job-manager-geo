@@ -66,6 +66,21 @@
 		return out;
 	}
 
+	// Commune dont le nom est aussi celui d'une region (« Bretagne », Indre) : le libelle recoit un indice que le
+	// serveur reconnait (PhotonGeocoder::hint), sinon il lirait la region. Departement (2 chiffres, 3 pour 97),
+	// ou code postal complet pour la Corse (20) ; sans code postal, le nom reste seul.
+	function homonymName( props ) {
+		var found = /(?:^|\D)(\d{5})(?!\d)/.exec( String( props.postcode || '' ) );
+		var code = found ? found[ 1 ] : '';
+		if ( ! T || ! code || ! T.findRegion( props.name, regionIndex ) ) {
+			return props.name;
+		}
+		if ( '20' === code.slice( 0, 2 ) ) {
+			return props.name + ' ' + code;
+		}
+		return props.name + ' (' + code.slice( 0, '97' === code.slice( 0, 2 ) ? 3 : 2 ) + ')';
+	}
+
 	function fromPhoton( features, placesOnly ) {
 		var places = [];
 		var count = {};
@@ -93,6 +108,7 @@
 					parts.push( part );
 				}
 			} );
+			parts[ 0 ] = homonymName( props );
 			var label = parts.join( ', ' );
 			if ( seen[ label ] ) {
 				return;

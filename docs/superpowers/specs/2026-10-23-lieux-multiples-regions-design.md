@@ -379,6 +379,7 @@ Dans `GET /wp-json/g2rd-wpjm-geo/v1/jobs`, chaque offre gagne un champ `places`,
 - Sur la carte, le nombre d'un regroupement compte les lieux et non les offres distinctes ; à petite échelle, certaines étiquettes de région sont masquées pour éviter les chevauchements (la zone reste cliquable et la région figure dans la liste sous la carte).
 - Retour au mode Google : la liste des lieux est ignorée et WP Job Manager géocode « Paris ; Lyon » comme une seule adresse.
 - Une commune dont le nom contient « et » écrit avec des espaces plutôt qu'avec des tirets (« Saint Germain et Mons ») est coupée en deux. Seuls les départements et collectivités à « -et- » sont protégés.
+- Une commune dont le nom est celui d'une région (« Bretagne », dans l'Indre) saisie à la main, sans indice de département ni code postal, est lue comme la région. Choisie dans la liste, elle reçoit un indice (« Bretagne (36), Centre-Val de Loire, France »).
 - Homonymes dans « Aussi à » : une offre à deux Saint-Denis n'affiche pas l'autre Saint-Denis sur le point d'un Saint-Denis.
 - « et » dans un libellé Photon choisi n'est pas neutralisé (contrairement à « / », « | » et « ; »).
 - « Lorraine » après « Grand Est » est refusé comme doublon (même région).

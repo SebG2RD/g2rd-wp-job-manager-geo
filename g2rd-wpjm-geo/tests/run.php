@@ -1298,6 +1298,9 @@ $before = count( $GLOBALS['g2rd_world_queries'] );
 $r      = $locator->locate( 'Normandie' );
 check( 'région seule : centre fixe, adresse régionale, sans requête', is_array( $r ) && array( 'type' => 'region', 'label' => 'Normandie', 'lat' => '49.1202', 'lng' => '0.1128', 'region' => '28' ) === $r['places'][0] && 'Normandie' === $r['address']['state_long'] && 'FR' === $r['address']['country_short'] && '' === $r['address']['city'] && 'Normandie, France' === $r['address']['formatted_address'] && count( $GLOBALS['g2rd_world_queries'] ) === $before );
 check( 'homonyme avec indice : « Bretagne (90) » cherché comme une ville', 'city:Bretagne' === g2rd_labels( $locator->locate( 'Bretagne (90)' ) ) && in_array( 'Bretagne', $GLOBALS['g2rd_world_queries'], true ) );
+$before = count( $GLOBALS['g2rd_world_queries'] );
+$r      = $locator->locate( 'Bretagne (90), Bourgogne-Franche-Comté, France' );
+check( 'libellé complet d’une commune homonyme d’une région (indice du département) : une ville, aucune région', 'city:Bretagne' === g2rd_labels( $r ) && is_array( $r ) && 1 === count( $r['places'] ) && count( $GLOBALS['g2rd_world_queries'] ) > $before );
 check( 'doublons après placement : « Alsace ; Lorraine » donne une seule zone Grand Est', 'region:Grand Est' === g2rd_labels( $locator->locate( 'Alsace ; Lorraine' ) ) );
 $world_responder = G2RD_Test_State::$http_responder;
 // Photon d'un site en anglais : la région de Rouen s'appelle « Normandy ».
