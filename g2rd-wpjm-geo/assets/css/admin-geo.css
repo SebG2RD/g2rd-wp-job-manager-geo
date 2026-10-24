@@ -27,20 +27,24 @@
 	transition: background-color 0.15s ease, box-shadow 0.15s ease;
 }
 
+/* Survol : le fond reste blanc (un fond teinté se confondrait avec la page claire) ; bordure et ombre se renforcent. */
 .g2rd-app .g2rd-geo-toc__link:hover,
 .g2rd-app .g2rd-geo-toc__link:focus {
 	color: #0b1b2b;
-	background: #e6eef6;
-	box-shadow: 0 2px 6px rgba(11, 27, 43, 0.3);
+	background: #fff;
+	border-color: rgba(11, 27, 43, 0.5);
+	box-shadow: 0 2px 8px rgba(11, 27, 43, 0.35);
 }
 
 .g2rd-app .g2rd-geo-toc__link:focus {
 	outline: none;
 }
 
+/* Focus clavier : double anneau, turquoise (visible sur le bandeau sombre) puis bleu nuit (visible sur le fond clair). */
 .g2rd-app .g2rd-geo-toc__link:focus-visible {
-	outline: 2px solid #2dd4bf;
+	outline: 2px solid #0b1b2b;
 	outline-offset: 2px;
+	box-shadow: 0 0 0 4px #2dd4bf;
 }
 
 @media (prefers-reduced-motion: reduce) {
