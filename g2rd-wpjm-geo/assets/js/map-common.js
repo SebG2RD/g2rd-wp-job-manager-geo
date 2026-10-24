@@ -441,10 +441,21 @@
 				count++;
 			}
 		}
-		var cities = groups.map( function ( group ) {
+		// Les groupes de meme libelle (Paris, Paris 15e...) forment une seule section.
+		var merged = Object.create( null );
+		var mergedList = [];
+		groups.forEach( function ( group ) {
 			group.jobs.forEach( remember );
 			var label = placeLabel( group.jobs[ 0 ] );
-			return { label: label, heading: label + ' \u2014 ' + jobCount( group.jobs.length, i18n ), jobs: group.jobs };
+			var key = label.toLocaleLowerCase( 'fr' );
+			if ( ! merged[ key ] ) {
+				merged[ key ] = { label: label, jobs: [] };
+				mergedList.push( merged[ key ] );
+			}
+			merged[ key ].jobs = merged[ key ].jobs.concat( group.jobs );
+		} );
+		var cities = mergedList.map( function ( entry ) {
+			return { label: entry.label, heading: entry.label + ' \u2014 ' + jobCount( entry.jobs.length, i18n ), jobs: entry.jobs };
 		} ).sort( byLabel );
 		var areas = ( regions || [] ).map( function ( region ) {
 			region.jobs.forEach( remember );

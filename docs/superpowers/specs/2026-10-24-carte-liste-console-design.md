@@ -10,8 +10,8 @@ Trois corrections d'interface, constatées sur le site après la 1.2.0. Concepti
 
 ## 1. Répartition des points
 
-- **MapLibre** (`assets/js/jobs-map-osm.js`) : source `g2rd-jobs` avec `clusterRadius: 25` (au lieu de 50) et `clusterMaxZoom: 10` (au lieu de 14). Les deux valeurs deviennent des constantes nommées en tête du fichier.
-- **Google** (`assets/js/jobs-map.js`) : `MarkerClusterer` reçoit l'algorithme `new markerClusterer.SuperClusterAlgorithm( { radius: 25, maxZoom: 11 } )` (le zoom Google, en tuiles de 256 px, vaut le zoom MapLibre + 1). Si la bibliothèque chargée n'expose pas `SuperClusterAlgorithm`, le comportement par défaut reste.
+- **MapLibre** (`assets/js/jobs-map-osm.js`) : source `g2rd-jobs` avec `clusterRadius: 20` (au lieu de 50) et `clusterMaxZoom: 14` (inchangé). Les deux valeurs deviennent des constantes nommées en tête du fichier.
+- **Google** (`assets/js/jobs-map.js`) : `MarkerClusterer` reçoit l'algorithme `new markerClusterer.SuperClusterAlgorithm( { radius: 40, maxZoom: 15 } )` (le zoom Google, en tuiles de 256 px, vaut le zoom MapLibre + 1). Ces valeurs viennent de mesures faites dans Chrome en vue France : avec un rayon de 25, Évreux restait dans la bulle de Paris ; avec 20, Paris, Évreux, Amiens, Blois, Vierzon, Lyon et Marseille sont distincts. `clusterMaxZoom` n'a pas d'effet sur la vue France, et l'abaisser ne fait que superposer des points dans les quartiers denses. Le `SuperClusterAlgorithm` livré mesure le rayon sur une grille de 512 pour des tuiles de 256 : le rayon effectif à l'écran vaut la moitié de la valeur passée, d'où 40 pour obtenir les 20 de MapLibre. Si la bibliothèque chargée n'expose pas `SuperClusterAlgorithm`, le comportement par défaut reste.
 - Le nombre affiché dans une bulle ne change pas.
 
 ## 2. Liste des offres sous la carte
@@ -37,7 +37,7 @@ Trois corrections d'interface, constatées sur le site après la 1.2.0. Concepti
 ```
 
 - **Résumé** : `i18n.places` suivi, entre parenthèses, du nombre d'offres **distinctes** (identifiants `id` uniques sur l'ensemble des lieux et des régions ; une offre à deux villes compte une fois), écrit avec `jobCount()`.
-- **Sections** : une par lieu (groupe de coordonnées), puis une par région. Intertitre d'un lieu : `placeLabel()` du premier poste + « — » + `jobCount()`. Intertitre d'une région : `regionTitle()` (inchangé). Les lieux sont triés par ordre alphabétique de leur intertitre (`localeCompare` en français, sans tenir compte de la casse ni des accents) ; les régions viennent après, triées de la même façon.
+- **Sections** : une par lieu, puis une par région. Les groupes de coordonnées de même libellé (Paris, Paris 15e et Paris 13e ont la même ville) sont fusionnés en une seule section, sans tenir compte de la casse, et le nombre de l'intertitre est celui de la section fusionnée. Intertitre d'un lieu : `placeLabel()` du premier poste + « — » + `jobCount()`. Intertitre d'une région : `regionTitle()` (inchangé). Les lieux sont triés par ordre alphabétique de leur intertitre (`localeCompare` en français, sans tenir compte de la casse ni des accents) ; les régions viennent après, triées de la même façon.
 - **Offre** : titre en lien (`safeUrl`), ou en texte s'il n'y a pas d'URL ; entreprise et type de contrat joints par « · », parties vides omises ; ligne « Aussi à » (`i18n.alsoAt`) si l'offre a d'autres lieux. Aucun bouton.
 - Tout le texte passe par `textContent`. Le code JS reste en ASCII (« · » et « — » en `·` et `—`).
 - **Styles** (`assets/css/frontend.css`) :
@@ -62,8 +62,8 @@ Trois corrections d'interface, constatées sur le site après la 1.2.0. Concepti
 ## Tests
 
 - **JS (jsdom)** :
-  - options de la source `g2rd-jobs` (rayon 25, zoom 10) ;
-  - algorithme passé à `MarkerClusterer` (rayon 25, zoom 11), avec et sans `SuperClusterAlgorithm` ;
+  - options de la source `g2rd-jobs` (rayon 20, zoom 14) ;
+  - algorithme passé à `MarkerClusterer` (rayon 40, zoom 15), avec et sans `SuperClusterAlgorithm` ;
   - liste : largeur sans `max-width` (classe), résumé avec le nombre d'offres distinctes, ordre alphabétique (accents compris), régions après les villes, intertitres, ligne « entreprise · contrat », « Aussi à », absence de bouton et de défilement interne, titre malveillant rendu en texte.
 - **PHP** : classes du sommaire ; `admin-geo.css` chargée avec et sans le thème G2RD.
 - **Docker** (`tools/docker/verify.sh`) : la page des réglages charge `admin-geo.css`.

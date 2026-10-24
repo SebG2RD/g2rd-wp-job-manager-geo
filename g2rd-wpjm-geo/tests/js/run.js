@@ -1001,6 +1001,14 @@ const regionNoBox = { id: 15, title: 'Sans boite', permalink: 'https://x.test/jo
     const css = src('css/frontend.css');
     const block = css.slice(css.indexOf('Liste des offres sous la carte'), css.indexOf('Champ « Lieu »'));
     check('styles : pleine largeur, aucun defilement interne, focus clavier', /width:\s*100%/.test(block) && !/max-height|overflow-y/.test(block) && /:focus-visible/.test(block));
+    const mw = new JSDOM('<div id="wrap"><div id="map"></div></div>', { runScripts: 'outside-only', url: 'https://x.test/' }).window;
+    mw.eval(src('js/map-common.js'));
+    const MC = mw.g2rdWpjmGeoMapCommon;
+    const mk = (id, lat, lng) => ({ id: id, title: 'Offre ' + id, permalink: 'https://x.test/job/' + id, company: 'E', job_type: 'CDI', city: 'Paris', country: 'France', latitude: lat, longitude: lng });
+    const msp = MC.splitPlaces([mk(1, 48.85, 2.35), mk(2, 48.85, 2.35), mk(3, 48.83, 2.29)]);
+    const mdet = MC.places(mw.document.getElementById('map'), MC.groupByCoordinates(msp.points), li18n, msp.regions);
+    const mheads = [...mdet.querySelectorAll('.g2rd-wpjm-geo-places__heading')].map(h => h.textContent);
+    check('lieux de meme libelle fusionnes en une section', 1 === mheads.length && 'Paris, France — 3 offres' === mheads[0] && 3 === mdet.querySelectorAll('.g2rd-wpjm-geo-places__job').length);
   }
 
   console.log('\nResultat JS : ' + pass + ' reussis, ' + fail + ' echoues');

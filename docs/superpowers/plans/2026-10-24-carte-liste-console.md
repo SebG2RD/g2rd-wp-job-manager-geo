@@ -65,9 +65,9 @@ Section à insérer avant la ligne `console.log('\nResultat JS : …');` :
 ```js
   console.log('\nP. Regroupement des points');
   o = await osmMap({ data: jobs });
-  check('carte libre : regroupement sur 25 px, jusqu au zoom 10', 25 === o.st.sources['g2rd-jobs'].clusterRadius && 10 === o.st.sources['g2rd-jobs'].clusterMaxZoom);
+  check('carte libre : regroupement sur 20 px, jusqu au zoom 14', 20 === o.st.sources['g2rd-jobs'].clusterRadius && 14 === o.st.sources['g2rd-jobs'].clusterMaxZoom);
   let gm = await map({ clustering: true, data: jobs });
-  check('carte Google : algorithme SuperCluster sur 25 px, jusqu au zoom 11', !!gm.st.cluster && !!gm.st.cluster.algorithm && 25 === gm.st.cluster.algorithm.options.radius && 11 === gm.st.cluster.algorithm.options.maxZoom);
+  check('carte Google : algorithme SuperCluster sur 40 px (grille 512), jusqu au zoom 15', !!gm.st.cluster && !!gm.st.cluster.algorithm && 40 === gm.st.cluster.algorithm.options.radius && 15 === gm.st.cluster.algorithm.options.maxZoom);
   gm = await map({ clustering: true, data: jobs, noAlgorithm: true });
   check('carte Google sans SuperClusterAlgorithm : regroupement par defaut', !!gm.st.cluster && undefined === gm.st.cluster.algorithm);
 ```
@@ -657,7 +657,7 @@ Dans `readme.txt`, juste après `== Changelog ==` (avant `= 1.2.0 =`), ajouter :
 
 ```
 = 1.2.1 =
-* Carte : points moins regroupés quand on dézoome (rayon de 25 px ; plus de regroupement à l'échelle d'une agglomération), sur la carte libre comme sur la carte Google.
+* Carte : points moins regroupés quand on dézoome (rayon de 20 px), sur la carte libre comme sur la carte Google.
 * Liste des offres sous la carte : pleine largeur, une section par lieu (ordre alphabétique, régions à la fin), une ligne par offre, nombre d'offres dans la barre d'ouverture.
 * Console d'administration : sommaire des réglages plus lisible.
 ```
