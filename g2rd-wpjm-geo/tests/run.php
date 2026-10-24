@@ -1133,6 +1133,11 @@ check( 'mentions vagues écartées', array( 'Paris' ) === PlaceParser::split( 'T
 check( 'doublons fusionnés (accents, casse)', array( 'Évreux', 'Lyon' ) === PlaceParser::split( 'Évreux ; EVREUX ; Lyon ; lyon' ) );
 check( 'texte vide ou UTF-8 invalide : aucun morceau, sans avertissement', array() === PlaceParser::split( '' ) && array() === PlaceParser::split( "Lyon \xC3\x28" ) );
 check( 'au plus 30 morceaux', 30 === count( PlaceParser::split( implode( ';', range( 1, 50 ) ) ) ) );
+check( 'texte importé : entités décodées, balises retirées (<br> vaut un retour à la ligne)', array( "Villeneuve-d'Ascq", 'Paris & Lyon', 'Lille' ) === PlaceParser::split( 'Villeneuve-d&#039;Ascq ; Paris &amp; Lyon<br />Lille' ) );
+$long  = 'Paris' . str_repeat( "\u{00A0}", 20000 ) . 'b ; Lyon';
+$start = microtime( true );
+$parts = PlaceParser::split( $long );
+check( 'texte démesuré : longueur bornée à 2 000 caractères avant les expressions régulières', array( 'Paris' ) === $parts && microtime( true ) - $start < 1 );
 
 $results = $GLOBALS['g2rd_results'];
 echo PHP_EOL . sprintf( 'Résultat : %d réussis, %d échoués', $results['pass'], $results['fail'] ) . PHP_EOL;
