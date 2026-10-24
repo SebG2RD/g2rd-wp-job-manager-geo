@@ -144,6 +144,14 @@ class JobsMap {
 			'mapLabel'  => __( 'Carte des offres d’emploi', 'g2rd-wpjm-geo' ),
 			'regeocode' => __( 'Re-géocoder les offres', 'g2rd-wpjm-geo' ),
 			'places'    => __( 'Liste des offres de la carte', 'g2rd-wpjm-geo' ),
+			'alsoAt'        => __( 'Aussi à :', 'g2rd-wpjm-geo' ),
+			/* translators: %s: region name. */
+			'regionTitle'   => __( '%s (toute la région)', 'g2rd-wpjm-geo' ),
+			'oneJob'        => __( '1 offre', 'g2rd-wpjm-geo' ),
+			/* translators: %d: number of jobs (2 or more). */
+			'manyJobsShort' => __( '%d offres', 'g2rd-wpjm-geo' ),
+			'legendCity'    => __( 'Offre dans une ville', 'g2rd-wpjm-geo' ),
+			'legendRegion'  => __( 'Offre sur toute une région', 'g2rd-wpjm-geo' ),
 		);
 
 		$attributes = array(

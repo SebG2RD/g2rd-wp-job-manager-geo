@@ -1541,6 +1541,12 @@ list( $s ) = boot( array( 'provider' => Settings::PROVIDER_GOOGLE, 'browser_api_
 list( , $c ) = g2rd_ac_config();
 check( 'mode Google : ni étiquettes ni régions', ! isset( $c['tags'] ) && ! isset( $c['regions'] ) && ! isset( $c['tagsI18n'] ) );
 
+echo PHP_EOL . '40. Carte libre : contours des régions' . PHP_EOL;
+list( $s ) = boot( array( 'provider' => Settings::PROVIDER_OSM ) );
+$cfg = ( new \G2RD\WPJMGeo\OsmAssets( $s ) )->config();
+check( 'URL des contours servie par le plugin, versionnée', 0 === strpos( $cfg['regionsUrl'], G2RD_WPJM_GEO_URL . 'assets/data/regions-fr.geojson?ver=' ) );
+check( 'crédit ODbL avec lien https vers la source', false !== strpos( $cfg['regionsCredit'], 'ODbL' ) && false !== strpos( $cfg['regionsCredit'], 'href="https://www.data.gouv.fr/' ) );
+
 $results = $GLOBALS['g2rd_results'];
 echo PHP_EOL . sprintf( 'Résultat : %d réussis, %d échoués', $results['pass'], $results['fail'] ) . PHP_EOL;
 exit( $results['fail'] ? 1 : 0 );

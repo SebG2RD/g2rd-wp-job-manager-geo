@@ -76,12 +76,12 @@ async function map({ mapId, clustering, data, restFail, nonce }) {
 const HOSTILE_ATTRIBUTION = '<a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> <a href="https://www.openmaptiles.org/" target="_blank">&copy; OpenMapTiles</a> Data from <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>'
   + '<img src="x" onerror="window.pwned=1"><iframe srcdoc="<b>cadre</b>"></iframe><a href="javascript:window.pwned=2">piege</a><b data-poc="1" onmouseover="window.pwned=3">gras</b>';
 
-async function osmMap({ data, clustering = true, noWebgl = false, styleFail = false, restFail = false, preload = true, admin = '', narrow = false }) {
-  const i18n = JSON.stringify({ loading: 'Chargement', error: 'ERREUR', empty: 'VIDE', view: 'Voir offre', manyJobs: '%d offres ici', regeocode: 'Re-geocoder', places: 'Liste' }).replace(/"/g, '&quot;');
+async function osmMap({ data, clustering = true, noWebgl = false, styleFail = false, restFail = false, preload = true, admin = '', narrow = false, regionsFail = false, throwRender = false }) {
+  const i18n = JSON.stringify({ loading: 'Chargement', error: 'ERREUR', empty: 'VIDE', view: 'Voir offre', manyJobs: '%d offres ici', regeocode: 'Re-geocoder', places: 'Liste', alsoAt: 'Aussi à :', regionTitle: '%s (toute la région)', oneJob: '1 offre', manyJobsShort: '%d offres', legendCity: 'Offre dans une ville', legendRegion: 'Offre sur toute une région' }).replace(/"/g, '&quot;');
   const html = '<div class="g2rd-wpjm-geo-map" data-rest-url="https://x.test/wp-json/g2rd-wpjm-geo/v1/jobs" data-per-page="4" data-clustering="' + (clustering ? 1 : 0) + '" data-admin-url="' + admin + '" data-nonce="" data-i18n="' + i18n + '"><div class="g2rd-wpjm-geo-map__canvas"></div><p class="g2rd-wpjm-geo-map__status">Chargement</p></div>';
   const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://x.test/' });
   const w = dom.window;
-  const st = { map: null, mapOpts: null, sources: {}, layers: [], layout: [], popups: [], fit: null, jump: null, ease: null, controls: [], noRotate: false };
+  const st = { map: null, mapOpts: null, sources: {}, layers: [], layout: [], popups: [], fit: null, jump: null, ease: null, controls: [], noRotate: false, before: {}, states: [], markers: [], rendered: [], regionFetches: 0 };
   class FakeMap {
     constructor(o) {
       st.mapOpts = o; st.map = this; this.events = {};
@@ -96,15 +96,18 @@ async function osmMap({ data, clustering = true, noWebgl = false, styleFail = fa
     }
     on(ev, a, b) { const k = b ? ev + ':' + a : ev; (this.events[k] = this.events[k] || []).push(b || a); }
     fire(k, arg) { (this.events[k] || []).forEach(f => f(arg)); }
-    getStyle() { return { sources: { openmaptiles: { type: 'vector', url: 'https://tiles.openfreemap.org/planet' } }, layers: [
+    getStyle() { return { sources: Object.assign({ openmaptiles: { type: 'vector', url: 'https://tiles.openfreemap.org/planet' } }, st.sources), layers: [
       { id: 'place-label', type: 'symbol', layout: { 'text-field': ['get', 'name'], 'text-font': ['Noto Sans Regular'] } },
       { id: 'road-ref', type: 'symbol', layout: { 'text-field': ['get', 'ref'], 'text-font': ['Noto Sans Bold'] } },
       { id: 'water', type: 'fill' }
     ] }; }
     setLayoutProperty(id, prop, value) { st.layout.push({ id, prop, value }); }
     addSource(id, s) { st.sources[id] = s; }
-    addLayer(l) { st.layers.push(l); }
-    getSource(id) { return id === 'openmaptiles' ? { attribution: HOSTILE_ATTRIBUTION } : { getClusterExpansionZoom: () => Promise.resolve(7) }; }
+    addLayer(l, before) { st.layers.push(l); if (before) st.before[l.id] = before; }
+    getLayer(id) { return st.layers.find(l => l.id === id); }
+    setFeatureState(f, s) { st.states.push({ f, s }); }
+    queryRenderedFeatures() { return st.rendered; }
+    getSource(id) { if (throwRender && 'g2rd-regions' === id) throw new Error('render'); return id === 'openmaptiles' ? { attribution: HOSTILE_ATTRIBUTION } : { getClusterExpansionZoom: () => Promise.resolve(7) }; }
     easeTo(o) { st.ease = o; }
     fitBounds(b, o) { st.fit = { b, o }; }
     jumpTo(o) { st.jump = o; }
@@ -114,14 +117,25 @@ async function osmMap({ data, clustering = true, noWebgl = false, styleFail = fa
   class LngLatBounds { constructor() { this.pts = []; } extend(p) { this.pts.push(p); return this; } }
   class NavigationControl { constructor(o) { this.kind = 'nav'; this.o = o; } }
   class FullscreenControl { constructor() { this.kind = 'full'; } }
-  const fake = { Map: FakeMap, Popup, LngLatBounds, NavigationControl, FullscreenControl };
+  class Marker { constructor(o) { this.o = o; st.markers.push(this); } setLngLat(c) { this.c = c; return this; } addTo() { return this; } }
+  const fake = { Map: FakeMap, Popup, LngLatBounds, NavigationControl, FullscreenControl, Marker };
   if (preload) w.maplibregl = fake;
   w.WebGL2RenderingContext = noWebgl ? undefined : function () {};
   w.HTMLCanvasElement.prototype.getContext = function () { return noWebgl ? null : {}; };
   if (narrow) w.innerWidth = 600;
-  w.g2rdWpjmGeoOsm = { styleUrl: 'https://tiles.openfreemap.org/styles/liberty', maplibreJs: 'https://x.test/vendor/maplibre-gl.js', maplibreCss: 'https://x.test/vendor/maplibre-gl.css', language: 'fr', locale: { 'Popup.Close': 'Fermer', 'Map.Title': '' } };
+  w.g2rdWpjmGeoOsm = { styleUrl: 'https://tiles.openfreemap.org/styles/liberty', maplibreJs: 'https://x.test/vendor/maplibre-gl.js', maplibreCss: 'https://x.test/vendor/maplibre-gl.css', language: 'fr', locale: { 'Popup.Close': 'Fermer', 'Map.Title': '' }, regionsUrl: 'https://x.test/data/regions-fr.geojson?ver=1', regionsCredit: '<a href="https://www.data.gouv.fr/fr/datasets/contours-administratifs/">Contours des régions : data.gouv.fr (ODbL)</a>' };
   w.IntersectionObserver = undefined;
   w.fetch = (url) => {
+    if (url.indexOf('https://x.test/data/regions-fr.geojson') === 0) {
+      st.regionFetches++;
+      if (regionsFail) return Promise.resolve({ ok: false, status: 404, json: () => Promise.reject(new Error('404')) });
+      const square = (x, y) => ({ type: 'Polygon', coordinates: [[[x, y], [x + 1, y], [x + 1, y + 1], [x, y]]] });
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ type: 'FeatureCollection', features: [
+        { type: 'Feature', properties: { code: '28', nom: 'Normandie' }, geometry: square(0, 49) },
+        { type: 'Feature', properties: { code: '53', nom: 'Bretagne' }, geometry: square(-3, 48) },
+        { type: 'Feature', properties: { code: '11', nom: 'Île-de-France' }, geometry: square(2, 48) }
+      ] }) });
+    }
     if (restFail) return Promise.resolve({ ok: false, status: 500, headers: { get: () => null } });
     const page = +new URL(url).searchParams.get('page'), per = 4;
     return Promise.resolve({ ok: true, status: 200, headers: { get: h => h === 'X-WP-TotalPages' ? String(Math.ceil(data.length / per) || 1) : null }, json: () => Promise.resolve(data.slice((page - 1) * per, page * per)) });
@@ -205,6 +219,12 @@ async function tagsAc({ features = null, max = 10, required = false, regions = R
   if (input) { input.focus(); await wait(10); }
   return { w, d, native, input, calls, panel: d.querySelector('.g2rd-wpjm-geo-ac'), tags: () => [...d.querySelectorAll('.g2rd-wpjm-geo-tags__tag')], options: () => [...d.querySelectorAll('.g2rd-wpjm-geo-ac [role=option]')] };
 }
+
+const multiJobs = [
+  { id: 11, title: 'Multi', permalink: 'https://x.test/job/11', company: 'M', city: 'Paris', country: 'France', latitude: 48.856614, longitude: 2.352222, job_type: '', places: [{ type: 'city', label: 'Paris', lat: 48.856614, lng: 2.352222 }, { type: 'city', label: 'Lyon', lat: 45.764, lng: 4.8357 }, { type: 'region', label: 'Normandie', lat: 49.1202, lng: 0.1128, region: '28' }] },
+  { id: 12, title: '<img src=x onerror=alert(1)>Region', permalink: 'https://x.test/job/12', company: 'R', city: '', country: 'France', latitude: 49.1202, longitude: 0.1128, job_type: '', places: [{ type: 'region', label: 'Normandie', lat: 49.1202, lng: 0.1128, region: '28' }] },
+  { id: 13, title: 'Bretagne seule', permalink: 'https://x.test/job/13', company: 'B', city: '', country: 'France', latitude: 48.1794, longitude: -2.8331, job_type: '', places: [{ type: 'region', label: 'Bretagne', lat: 48.1794, lng: -2.8331, region: '53' }] }
+];
 
 (async () => {
   console.log('\nA. Autocompletion - cas nominal');
@@ -800,6 +820,48 @@ async function tagsAc({ features = null, max = 10, required = false, regions = R
     const homo = C.splitPlaces([{ id: 1, places: [{ type: 'city', label: 'Saint-Denis', lat: 48.93, lng: 2.35 }, { type: 'city', label: 'Saint-Denis', lat: -20.88, lng: 55.45 }, { type: 'city', label: 'Rouen', lat: 49.44, lng: 1.09 }] }]);
     check('homonymes : « Aussi a » sans doublon de libelle', 'Saint-Denis' === homo.points[2]._also.join(', '));
   }
+
+  console.log('\nN. Carte libre : plusieurs lieux et regions');
+  o = await osmMap({ data: multiJobs });
+  check('une offre a Paris et Lyon : un point dans chaque ville', 2 === o.st.sources['g2rd-jobs'].data.features.length);
+  o.st.map.fire('click:g2rd-points', { features: [{ properties: { gid: 1, count: 1 }, geometry: { coordinates: [4.8357, 45.764] } }] });
+  check('fenetre de Lyon : « Aussi a : Paris, Normandie »', /Aussi à : Paris, Normandie/.test(o.st.popups[0].node.textContent));
+  check('contours charges une fois, depuis le plugin', 1 === o.st.regionFetches);
+  const zone = o.st.sources['g2rd-regions'];
+  check('zones : source GeoJSON des seules regions affichees, identifiant code, credit ODbL', !!zone && 2 === zone.data.features.length && 'code' === zone.promoteId && /ODbL/.test(zone.attribution));
+  const fill = o.st.layers.find(l => l.id === 'g2rd-region-fill'), line = o.st.layers.find(l => l.id === 'g2rd-region-line');
+  check('zones : remplissage et contour, dessines sous les points', !!fill && 'fill' === fill.type && !!line && 'line' === line.type && 'g2rd-clusters' === o.st.before['g2rd-region-fill'] && 'g2rd-clusters' === o.st.before['g2rd-region-line']);
+  const badges = o.st.markers.map(m => m.o.element);
+  check('pastilles : une par region, nombre d offres, bouton nomme', 2 === badges.length && '2 offres' === badges[0].textContent && '1 offre' === badges[1].textContent && 'button' === badges[0].type && /Normandie \(toute la région\) — 2 offres/.test(badges[0].getAttribute('aria-label')) && 0.1128 === o.st.markers[0].c[0]);
+  badges[0].click();
+  const rp = o.st.popups[o.st.popups.length - 1];
+  check('clic sur la pastille : fenetre des offres de la region, titre malveillant en texte', 2 === rp.node.querySelectorAll('li').length && 0 === rp.node.querySelectorAll('img').length && /toute la région/.test(rp.node.textContent));
+  const before = o.st.popups.length;
+  o.st.rendered = [{ layer: { id: 'g2rd-points' } }];
+  o.st.map.fire('click:g2rd-region-fill', { point: {}, lngLat: [0.5, 49.5], features: [{ properties: { code: '28' } }] });
+  check('clic sur un point dans une zone : la fenetre de la zone ne s ouvre pas', before === o.st.popups.length);
+  o.st.rendered = [];
+  o.st.map.fire('click:g2rd-region-fill', { point: {}, lngLat: [0.5, 49.5], features: [{ properties: { code: '28' } }] });
+  check('clic dans la zone : fenetre de la region', before + 1 === o.st.popups.length);
+  o.st.map.fire('mousemove:g2rd-region-fill', { features: [{ properties: { code: '53' } }] });
+  check('survol : contour renforce (etat hover)', o.st.states.some(x => '53' === x.f.id && true === x.s.hover));
+  check('cadrage : villes et centres des regions', 4 === o.st.fit.b.pts.length);
+  const legend = o.el.querySelector('.g2rd-wpjm-geo-map__legend');
+  check('legende : deux entrees, pastilles visuelles masquees aux lecteurs d ecran, texte sans couleur', !!legend && 2 === legend.querySelectorAll('li').length && 2 === legend.querySelectorAll('.g2rd-wpjm-geo-map__swatch[aria-hidden="true"]').length && /Offre dans une ville/.test(legend.textContent) && /Offre sur toute une région/.test(legend.textContent));
+  const mlist = o.w.document.querySelector('.g2rd-wpjm-geo-map__places');
+  check('liste sous la carte : regions comprises', /Normandie \(toute la région\) — 2 offres/.test(mlist.textContent) && /Bretagne \(toute la région\) — 1 offre/.test(mlist.textContent));
+  check('credit des contours dans l attribution, lien https', /ODbL/.test(o.st.attribNode.textContent) && [...o.st.attribNode.querySelectorAll('a')].some(a => 0 === a.href.indexOf('https://www.data.gouv.fr/')));
+  o = await osmMap({ data: multiJobs, regionsFail: true });
+  const fb = o.st.markers.map(m => m.o.element);
+  check('contours injoignables : reperes etiquettes a leur centre, sans zone', !o.st.sources['g2rd-regions'] && 2 === fb.length && 'Normandie · 2 offres' === fb[0].textContent && fb[0].classList.contains('g2rd-wpjm-geo-region-badge--marker') && !o.el.classList.contains('has-error'));
+  o = await osmMap({ data: jobs });
+  check('aucune region : contours non charges, ni pastille ni legende', 0 === o.st.regionFetches && 0 === o.st.markers.length && !o.el.querySelector('.g2rd-wpjm-geo-map__legend'));
+  o = await osmMap({ data: [multiJobs[2]] });
+  check('une seule region : centrage sur la region (zoom 6)', !!o.st.jump && 6 === o.st.jump.zoom && !o.st.fit);
+  o = await osmMap({ data: multiJobs, throwRender: true });
+  check('attribution.render() qui leve apres les zones : pas de pastille de secours en double', 2 === o.st.markers.length);
+  o = await osmMap({ data: multiJobs, clustering: false });
+  check('sans regroupement : zones, pastilles et legende dessinees', !!o.st.sources['g2rd-regions'] && 2 === o.st.markers.length && !!o.el.querySelector('.g2rd-wpjm-geo-map__legend'));
 
   console.log('\nResultat JS : ' + pass + ' reussis, ' + fail + ' echoues');
   process.exit(fail ? 1 : 0);

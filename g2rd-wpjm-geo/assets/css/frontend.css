@@ -326,3 +326,74 @@ a.g2rd-wpjm-geo-iw__title:focus {
 .g2rd-wpjm-geo-ac__icon {
 	margin-inline-end: 6px;
 }
+
+/* ---------- Régions : pastilles, repères de secours, légende ---------- */
+.g2rd-wpjm-geo-region-badge {
+	margin: 0;
+	padding: 3px 10px;
+	color: #fff;
+	font: 700 12px/1.3 system-ui, -apple-system, "Segoe UI", sans-serif;
+	white-space: nowrap;
+	background: #b45309;
+	border: 2px solid #fff;
+	border-radius: 12px;
+	box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+	cursor: pointer;
+}
+
+.g2rd-wpjm-geo-region-badge:focus-visible {
+	outline: 3px solid #1d2327;
+	outline-offset: 2px;
+}
+
+.g2rd-wpjm-geo-map__legend {
+	position: absolute;
+	bottom: 8px;
+	left: 8px;
+	z-index: 2;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px 12px;
+	max-width: calc(100% - 16px);
+	margin: 0;
+	padding: 4px 8px;
+	color: #1d2327;
+	font: 400 12px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+	list-style: none;
+	background: rgba(255, 255, 255, 0.92);
+	border-radius: 4px;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.g2rd-wpjm-geo-map__legend li {
+	display: inline-flex;
+	gap: 6px;
+	align-items: center;
+	margin: 0;
+}
+
+.g2rd-wpjm-geo-map__swatch {
+	display: inline-block;
+	flex: none;
+}
+
+.g2rd-wpjm-geo-map__swatch--point {
+	width: 10px;
+	height: 10px;
+	background: #c0392b;
+	border: 2px solid #fff;
+	border-radius: 50%;
+	box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+
+.g2rd-wpjm-geo-map__swatch--region {
+	width: 14px;
+	height: 10px;
+	background: rgba(239, 108, 0, 0.3);
+	border: 1.5px solid #ef6c00;
+}
+
+.g2rd-wpjm-geo-iw__also {
+	color: #50575e;
+	font-size: 13px;
+}

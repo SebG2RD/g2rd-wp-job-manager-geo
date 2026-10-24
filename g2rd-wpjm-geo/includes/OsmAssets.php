@@ -68,6 +68,9 @@ class OsmAssets {
 			'styleUrl'    => esc_url_raw( (string) $this->settings->get( 'osm_style_url' ), array( 'https' ) ),
 			'maplibreJs'  => esc_url_raw( $vendor . 'maplibre-gl.js?ver=' . self::MAPLIBRE_VERSION ),
 			'maplibreCss' => esc_url_raw( $vendor . 'maplibre-gl.css?ver=' . self::MAPLIBRE_VERSION ),
+			'regionsUrl'    => esc_url_raw( G2RD_WPJM_GEO_URL . 'assets/data/regions-fr.geojson?ver=' . G2RD_WPJM_GEO_VERSION, array( 'http', 'https' ) ),
+			// Obligation de la licence ODbL : citer la source des contours, affichée par le contrôle d'attribution du plugin.
+			'regionsCredit' => '<a href="' . esc_url( 'https://www.data.gouv.fr/fr/datasets/contours-administratifs/' ) . '">' . esc_html__( 'Contours des régions : data.gouv.fr (ODbL)', 'g2rd-wpjm-geo' ) . '</a>',
 			'language'    => strtolower( substr( (string) preg_replace( '/[^A-Za-z]/', '', (string) $locale ), 0, 2 ) ),
 			// Textes de l'interface MapLibre (en anglais par défaut).
 			'locale'      => array(

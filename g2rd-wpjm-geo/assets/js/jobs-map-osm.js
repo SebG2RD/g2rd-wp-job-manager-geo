@@ -5,6 +5,9 @@
  * - Offres aux coordonnées identiques réunies en un point ; clustering natif dont
  *   les cercles comptent les offres (clusterProperties) et non les lieux.
  * - Fenêtres construites en DOM (textContent) par map-common.js.
+ * - Plusieurs lieux par offre : un point par ville ; chaque région est une zone
+ *   colorée (contours chargés à la demande depuis le plugin) avec une pastille,
+ *   ou, si les contours manquent, un repère en étiquette à son centre.
  */
 ( function ( window, document ) {
 	'use strict';
@@ -14,6 +17,9 @@
 	var COLOR = '#c0392b';
 	var SOURCE = 'g2rd-jobs';
 	var maplibrePromise = null;
+	var REGION_COLOR = '#ef6c00';
+	var REGION_SOURCE = 'g2rd-regions';
+	var shapesPromise = null;
 
 	function loadMaplibre() {
 		if ( window.maplibregl ) {
@@ -50,6 +56,124 @@
 			maplibrePromise = null;
 		} );
 		return maplibrePromise;
+	}
+
+	// Contours des régions (GeoJSON du plugin, ODbL), chargés une seule fois et seulement si une offre régionale est affichée.
+	function loadShapes() {
+		if ( ! shapesPromise ) {
+			shapesPromise = cfg.regionsUrl ? window.fetch( cfg.regionsUrl, { credentials: 'same-origin' } ).then( function ( response ) {
+				if ( ! response.ok ) {
+					throw new Error( 'HTTP ' + response.status );
+				}
+				return response.json();
+			} ) : Promise.reject( new Error( 'no-regions-url' ) );
+			shapesPromise.catch( function () {
+				shapesPromise = null; // Un échec n'est pas mémorisé.
+			} );
+		}
+		return shapesPromise;
+	}
+
+	function openRegion( map, ml, region, i18n, lngLat ) {
+		new ml.Popup( { maxWidth: '320px' } )
+			.setLngLat( lngLat )
+			.setDOMContent( C.buildRegionContent( region, i18n ) )
+			.addTo( map );
+	}
+
+	// Pastille (avec zones) ou repère en étiquette (sans zones) au centre de chaque région : un bouton, accessible au clavier.
+	function addBadges( map, ml, regions, i18n, fallback ) {
+		regions.forEach( function ( region ) {
+			var center = [ region.position.lng, region.position.lat ];
+			var button = document.createElement( 'button' );
+			button.type = 'button';
+			button.className = 'g2rd-wpjm-geo-region-badge' + ( fallback ? ' g2rd-wpjm-geo-region-badge--marker' : '' );
+			button.textContent = fallback ? region.label + ' \u00b7 ' + C.jobCount( region.jobs.length, i18n ) : C.jobCount( region.jobs.length, i18n );
+			button.setAttribute( 'aria-label', C.regionTitle( region, i18n ) );
+			button.addEventListener( 'click', function ( event ) {
+				event.stopPropagation();
+				openRegion( map, ml, region, i18n, center );
+			} );
+			new ml.Marker( { element: button } ).setLngLat( center ).addTo( map );
+		} );
+	}
+
+	function addZones( map, ml, geojson, regions, i18n ) {
+		var byCode = Object.create( null );
+		regions.forEach( function ( region ) {
+			byCode[ region.code ] = region;
+		} );
+		var features = ( ( geojson && Array.isArray( geojson.features ) ) ? geojson.features : [] ).filter( function ( feature ) {
+			return feature && feature.geometry && feature.properties && byCode[ feature.properties.code ];
+		} ).map( function ( feature ) {
+			return { type: 'Feature', properties: { code: String( feature.properties.code ) }, geometry: feature.geometry };
+		} );
+		if ( ! features.length ) {
+			throw new Error( 'no-shapes' );
+		}
+		map.addSource( REGION_SOURCE, {
+			type: 'geojson',
+			data: { type: 'FeatureCollection', features: features },
+			promoteId: 'code',
+			attribution: cfg.regionsCredit || ''
+		} );
+		// Sous les points et les regroupements : une ville reste cliquable dans une zone.
+		var before = map.getLayer( 'g2rd-clusters' ) ? 'g2rd-clusters' : undefined;
+		var hover = [ 'boolean', [ 'feature-state', 'hover' ], false ];
+		map.addLayer( { id: 'g2rd-region-fill', type: 'fill', source: REGION_SOURCE, paint: { 'fill-color': REGION_COLOR, 'fill-opacity': [ 'case', hover, 0.32, 0.18 ] } }, before );
+		map.addLayer( { id: 'g2rd-region-line', type: 'line', source: REGION_SOURCE, paint: { 'line-color': REGION_COLOR, 'line-width': [ 'case', hover, 3, 1.5 ] } }, before );
+
+		var hovered = null;
+		function setHover( code ) {
+			if ( hovered ) {
+				map.setFeatureState( { source: REGION_SOURCE, id: hovered }, { hover: false } );
+			}
+			hovered = code;
+			if ( hovered ) {
+				map.setFeatureState( { source: REGION_SOURCE, id: hovered }, { hover: true } );
+			}
+		}
+		map.on( 'mousemove', 'g2rd-region-fill', function ( event ) {
+			var feature = event.features && event.features[ 0 ];
+			var code = feature && feature.properties ? String( feature.properties.code ) : null;
+			if ( code !== hovered ) {
+				setHover( code );
+			}
+		} );
+		map.on( 'mouseleave', 'g2rd-region-fill', function () {
+			setHover( null );
+		} );
+		map.on( 'click', 'g2rd-region-fill', function ( event ) {
+			// Un point ou un regroupement de la zone garde la priorité.
+			if ( map.queryRenderedFeatures( event.point, { layers: [ 'g2rd-points', 'g2rd-clusters' ] } ).length ) {
+				return;
+			}
+			var feature = event.features && event.features[ 0 ];
+			var region = feature && feature.properties ? byCode[ feature.properties.code ] : null;
+			if ( region ) {
+				openRegion( map, ml, region, i18n, event.lngLat );
+			}
+		} );
+		addBadges( map, ml, regions, i18n, false );
+	}
+
+	// Légende : un rond (point d'une ville) et un carré (zone d'une région), décrits par le texte et non par la couleur.
+	function addLegend( container, i18n ) {
+		if ( ! i18n.legendCity || ! i18n.legendRegion || container.querySelector( '.g2rd-wpjm-geo-map__legend' ) ) {
+			return;
+		}
+		var legend = document.createElement( 'ul' );
+		legend.className = 'g2rd-wpjm-geo-map__legend';
+		[ [ 'point', i18n.legendCity ], [ 'region', i18n.legendRegion ] ].forEach( function ( entry ) {
+			var item = document.createElement( 'li' );
+			var swatch = document.createElement( 'span' );
+			swatch.className = 'g2rd-wpjm-geo-map__swatch g2rd-wpjm-geo-map__swatch--' + entry[ 0 ];
+			swatch.setAttribute( 'aria-hidden', 'true' );
+			item.appendChild( swatch );
+			item.appendChild( document.createTextNode( entry[ 1 ] ) );
+			legend.appendChild( item );
+		} );
+		container.appendChild( legend );
 	}
 
 	// MapLibre 5 utilise WebGL 2 et se replie sur WebGL 1. Le contexte de test est libéré aussitôt.
@@ -244,7 +368,13 @@
 
 		Promise.all( [ loadMaplibre(), C.createFetcher( container ).fetchAll() ] ).then( function ( results ) {
 			var ml = results[ 0 ];
-			var groups = C.groupByCoordinates( results[ 1 ] );
+			var split = C.splitPlaces( results[ 1 ] );
+			var groups = C.groupByCoordinates( split.points );
+			var regions = split.regions;
+			var shapes = regions.length ? loadShapes() : null;
+			if ( shapes ) {
+				shapes.catch( function () {} ); // Échec traité au chargement de la carte (repères de secours).
+			}
 			var jobsById = {};
 			var features = groups.map( function ( group, index ) {
 				jobsById[ index ] = group.jobs;
@@ -269,7 +399,8 @@
 			map.addControl( new ml.NavigationControl( { showCompass: false } ), 'top-right' );
 			map.addControl( new ml.FullscreenControl(), 'top-right' );
 			// Crédits obligatoires (OpenStreetMap, OpenMapTiles, fournisseur des tuiles), rendus en texte.
-			map.addControl( new AttributionControl( window.innerWidth < 782 ), 'bottom-right' );
+			var attribution = new AttributionControl( window.innerWidth < 782 );
+			map.addControl( attribution, 'bottom-right' );
 			map.dragRotate.disable();
 			map.touchZoomRotate.disableRotation();
 			map.touchPitch.disable();
@@ -367,18 +498,39 @@
 					} );
 				} );
 
-				if ( ! features.length ) {
+				if ( shapes ) {
+					var zoned = false;
+					shapes.then( function ( geojson ) {
+						addZones( map, ml, geojson, regions, i18n );
+						zoned = true;
+						attribution.render(); // Crédit des contours (ODbL).
+					} ).catch( function () {
+						if ( ! zoned ) {
+							addBadges( map, ml, regions, i18n, true ); // Contours injoignables ou inutilisables : repères à leur centre.
+						}
+					} );
+				}
+
+				var coords = features.map( function ( feature ) {
+					return feature.geometry.coordinates;
+				} ).concat( regions.map( function ( region ) {
+					return [ region.position.lng, region.position.lat ];
+				} ) );
+				if ( ! coords.length ) {
 					ui.empty();
 				} else {
 					ui.set( '' );
 					// Les points du canevas ne prennent pas le focus : liste des offres sous la carte pour le clavier et les lecteurs d'écran.
-					C.places( container, groups, i18n );
-					if ( 1 === features.length ) {
-						map.jumpTo( { center: features[ 0 ].geometry.coordinates, zoom: 10 } );
+					C.places( container, groups, i18n, regions );
+					if ( regions.length ) {
+						addLegend( container, i18n );
+					}
+					if ( 1 === coords.length ) {
+						map.jumpTo( { center: coords[ 0 ], zoom: features.length ? 10 : 6 } );
 					} else {
 						var bounds = new ml.LngLatBounds();
-						features.forEach( function ( feature ) {
-							bounds.extend( feature.geometry.coordinates );
+						coords.forEach( function ( coord ) {
+							bounds.extend( coord );
 						} );
 						map.fitBounds( bounds, { padding: 48, maxZoom: 12, duration: 0 } );
 					}
