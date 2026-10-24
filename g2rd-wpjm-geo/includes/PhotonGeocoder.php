@@ -31,7 +31,7 @@ class PhotonGeocoder {
 	const MAX_LENGTH   = 200;
 	const MAX_RESPONSE = 262144;  // 256 Kio.
 
-	const CACHE_VERSION = '3'; // À incrémenter quand le choix du lieu ou la clé change (résultats gardés 30 jours).
+	const CACHE_VERSION = '4'; // À incrémenter quand le choix du lieu, la clé ou le contenu du cache change (résultats gardés 30 jours).
 
 	/**
 	 * Valeurs osm_value d'un lieu dont le nom est celui de la ville.
@@ -177,28 +177,32 @@ class PhotonGeocoder {
 	 * @return array<string,string>|null|\WP_Error Adresse au format WPJM, null si introuvable, WP_Error si le service est indisponible.
 	 */
 	public function geocode( $text ) {
+		$result = $this->geocode_detailed( $text );
+		return is_array( $result ) ? $result['address'] : $result;
+	}
+
+	/**
+	 * Géocode une localisation et renvoie aussi le département et le nom du lieu
+	 * trouvé (règle de la virgule de PlaceLocator, libellé sur la carte).
+	 *
+	 * @param string $text Localisation saisie.
+	 * @return array{address:array<string,string>,county:string,name:string}|null|\WP_Error
+	 */
+	public function geocode_detailed( $text ) {
 		$this->last_was_cached = true;
 		$cleaned               = self::clean( $text );
-		$segments              = array_map( array( __CLASS__, 'normalize' ), explode( ',', $cleaned ) );
-		if ( '' === $segments[0] || in_array( $segments[0], self::VAGUE, true ) ) {
-			// Rien de comparable (vide, écriture non latine) ou pas de lieu précis : inutile d'appeler Photon.
+		$key                   = $this->cache_key( $text, $cleaned );
+		if ( null === $key ) {
 			return null;
 		}
-
-		$base   = $this->base_url();
-		$hint   = self::hint( $text );
-		$lang   = self::language( get_locale() );
-		// Clé = texte réellement envoyé à Photon (casse ignorée). Une clé tirée des segments
-		// normalisés, qui perdent toute lettre non latine, laisserait une variante saisie par un
-		// soumetteur (« Paris Москва », « Paris ＴＥＸＡＳ ») fixer le résultat des autres offres.
-		$query  = function_exists( 'mb_strtolower' ) ? mb_strtolower( $cleaned, 'UTF-8' ) : strtolower( $cleaned );
-		$key    = self::CACHE_PREFIX . md5( self::CACHE_VERSION . '|' . $base . '|' . $lang . '|' . self::preferred_country() . '|' . $query . '|' . $hint );
 		$cached = get_transient( $key );
 		if ( is_array( $cached ) && array_key_exists( 'r', $cached ) ) {
-			return $cached['r'];
+			return self::detailed( $cached );
 		}
 
 		$this->last_was_cached = false;
+		$base                  = $this->base_url();
+		$lang                  = self::language( get_locale() );
 		$features              = $this->request( $base, $cleaned, $lang, true );
 		if ( is_wp_error( $features ) && 'g2rd_photon_bad_request' === $features->get_error_code() ) {
 			$features = $this->request( $base, $cleaned, $lang, false );
@@ -207,10 +211,80 @@ class PhotonGeocoder {
 			return $features;
 		}
 
-		$feature = self::pick( $features, $cleaned, $hint );
+		$feature = self::pick( $features, $cleaned, self::hint( $text ) );
 		$address = $feature ? self::to_address( $feature ) : null;
-		set_transient( $key, array( 'r' => $address ), $address ? self::CACHE_TTL : self::MISS_TTL );
-		return $address;
+		$entry   = array(
+			'r' => $address,
+			'c' => ( $feature && $address ) ? self::property( $feature, 'county' ) : '',
+			'n' => ( $feature && $address ) ? self::property( $feature, 'name' ) : '',
+		);
+		set_transient( $key, $entry, $address ? self::CACHE_TTL : self::MISS_TTL );
+		return self::detailed( $entry );
+	}
+
+	/**
+	 * Le texte peut-il être géocodé sans appeler Photon (résultat en cache, ou
+	 * texte qui ne désigne aucun lieu) ?
+	 *
+	 * @param string $text Localisation saisie.
+	 * @return bool
+	 */
+	public function is_cached( $text ) {
+		$key = $this->cache_key( $text, self::clean( $text ) );
+		if ( null === $key ) {
+			return true;
+		}
+		$cached = get_transient( $key );
+		return is_array( $cached ) && array_key_exists( 'r', $cached );
+	}
+
+	/**
+	 * Clé de cache, ou null si le texte ne doit pas être envoyé à Photon.
+	 *
+	 * @param string $text    Localisation saisie.
+	 * @param string $cleaned Texte nettoyé (clean()).
+	 * @return string|null
+	 */
+	private function cache_key( $text, $cleaned ) {
+		$segments = array_map( array( __CLASS__, 'normalize' ), explode( ',', $cleaned ) );
+		if ( '' === $segments[0] || in_array( $segments[0], self::VAGUE, true ) ) {
+			// Rien de comparable (vide, écriture non latine) ou pas de lieu précis : inutile d'appeler Photon.
+			return null;
+		}
+		// Clé = texte réellement envoyé à Photon (casse ignorée). Une clé tirée des segments
+		// normalisés, qui perdent toute lettre non latine, laisserait une variante saisie par un
+		// soumetteur (« Paris Москва », « Paris ＴＥＸＡＳ ») fixer le résultat des autres offres.
+		$query = function_exists( 'mb_strtolower' ) ? mb_strtolower( $cleaned, 'UTF-8' ) : strtolower( $cleaned );
+		return self::CACHE_PREFIX . md5( self::CACHE_VERSION . '|' . $this->base_url() . '|' . self::language( get_locale() ) . '|' . self::preferred_country() . '|' . $query . '|' . self::hint( $text ) );
+	}
+
+	/**
+	 * Résultat détaillé d'une entrée de cache.
+	 *
+	 * @param array<string,mixed> $entry Entrée (r : adresse, c : département, n : nom).
+	 * @return array{address:array<string,string>,county:string,name:string}|null
+	 */
+	private static function detailed( array $entry ) {
+		if ( empty( $entry['r'] ) || ! is_array( $entry['r'] ) ) {
+			return null;
+		}
+		return array(
+			'address' => $entry['r'],
+			'county'  => ( isset( $entry['c'] ) && is_string( $entry['c'] ) ) ? $entry['c'] : '',
+			'name'    => ( isset( $entry['n'] ) && is_string( $entry['n'] ) ) ? $entry['n'] : '',
+		);
+	}
+
+	/**
+	 * Propriété texte d'une entité Photon, assainie et tronquée.
+	 *
+	 * @param array<string,mixed> $feature Entité GeoJSON.
+	 * @param string              $key     Propriété.
+	 * @return string
+	 */
+	private static function property( array $feature, $key ) {
+		$props = ( isset( $feature['properties'] ) && is_array( $feature['properties'] ) ) ? $feature['properties'] : array();
+		return ( isset( $props[ $key ] ) && is_scalar( $props[ $key ] ) ) ? self::truncate( sanitize_text_field( (string) $props[ $key ] ) ) : '';
 	}
 
 	/**

@@ -1139,6 +1139,30 @@ $start = microtime( true );
 $parts = PlaceParser::split( $long );
 check( 'texte démesuré : longueur bornée à 2 000 caractères avant les expressions régulières', array( 'Paris' ) === $parts && microtime( true ) - $start < 1 );
 
+echo PHP_EOL . '34. Géocodeur : département et nom du résultat, cache' . PHP_EOL;
+list( $s ) = boot();
+$geo  = new PhotonGeocoder( $s );
+$urls = array();
+G2RD_Test_State::$http_responder = function ( $method, $url ) use ( &$urls ) {
+	$urls[] = $url;
+	if ( false !== strpos( $url, 'q=Rouen' ) ) {
+		return photon_reply( array( photon_feature( 'Rouen', 'place', 'city', 1.0999, 49.4432, array( 'county' => 'Seine-Maritime', 'state' => 'Normandie', 'country' => 'France', 'countrycode' => 'FR' ) ) ) );
+	}
+	return photon_reply( array() );
+};
+check( 'texte jamais vu : pas en cache, aucune requête', false === $geo->is_cached( 'Rouen, Seine-Maritime' ) && 0 === count( $urls ) );
+$d = $geo->geocode_detailed( 'Rouen, Seine-Maritime' );
+check( 'résultat détaillé : adresse WPJM, département, nom', is_array( $d ) && '49.4432' === $d['address']['lat'] && 'Seine-Maritime' === $d['county'] && 'Rouen' === $d['name'] && ! isset( $d['address']['county'] ) && false === $geo->last_was_cached() );
+check( 'puis en cache', $geo->is_cached( 'Rouen, Seine-Maritime' ) && 1 === count( $urls ) );
+$again = $geo->geocode_detailed( 'Rouen, Seine-Maritime' );
+check( 'département relu depuis le cache, sans requête', is_array( $again ) && 'Seine-Maritime' === $again['county'] && $geo->last_was_cached() && 1 === count( $urls ) );
+$address = $geo->geocode( 'Rouen, Seine-Maritime' );
+check( 'geocode() inchangé : adresse seule', is_array( $address ) && '1.0999' === $address['long'] && ! isset( $address['address'] ) );
+check( 'introuvable : null, mis en cache', null === $geo->geocode_detailed( 'Atlantide' ) && $geo->is_cached( 'Atlantide' ) );
+check( 'texte sans lieu (vague, vide) : rien à demander à Photon', $geo->is_cached( 'Télétravail' ) && $geo->is_cached( ' (75) ' ) );
+check( 'version du cache : 4', '4' === PhotonGeocoder::CACHE_VERSION );
+G2RD_Test_State::$http_responder = null;
+
 $results = $GLOBALS['g2rd_results'];
 echo PHP_EOL . sprintf( 'Résultat : %d réussis, %d échoués', $results['pass'], $results['fail'] ) . PHP_EOL;
 exit( $results['fail'] ? 1 : 0 );
