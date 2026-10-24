@@ -228,12 +228,131 @@ a.g2rd-wpjm-geo-iw__title:focus {
 }
 
 /* ---------- Liste des offres sous la carte (accès au clavier) ---------- */
+/* Sélecteurs préfixés par la liste : ils l'emportent sur les styles de contenu du thème (« .entry-content h3 », « .entry-content ul »). */
 .g2rd-wpjm-geo-map__places {
-	margin-top: 12px;
+	box-sizing: border-box;
+	width: 100%;
+	max-width: none;
+	margin: 12px 0 0;
+	color: #1d2327;
+	font: 400 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+	border-top: 1px solid #dcdcde;
+	border-bottom: 1px solid #dcdcde;
 }
+
 .g2rd-wpjm-geo-map__places > summary {
-	cursor: pointer;
+	display: flex;
+	gap: 10px;
+	align-items: center;
+	padding: 10px 2px;
 	font-weight: 600;
+	font-size: 15px;
+	list-style: none;
+	cursor: pointer;
+}
+
+.g2rd-wpjm-geo-map__places > summary::-webkit-details-marker {
+	display: none;
+}
+
+/* Chevron dessiné en CSS : pointe à droite, vers le bas une fois ouvert. */
+.g2rd-wpjm-geo-map__places > summary::before {
+	content: "";
+	flex: none;
+	width: 7px;
+	height: 7px;
+	border-right: 2px solid currentColor;
+	border-bottom: 2px solid currentColor;
+	transform: rotate(-45deg);
+	transition: transform 0.15s ease;
+}
+
+.g2rd-wpjm-geo-map__places[open] > summary::before {
+	transform: rotate(45deg);
+}
+
+.g2rd-wpjm-geo-map__places > summary:focus {
+	outline: none;
+}
+
+.g2rd-wpjm-geo-map__places > summary:focus-visible {
+	outline: 2px solid #a93226;
+	outline-offset: 2px;
+}
+
+.g2rd-wpjm-geo-map__places .g2rd-wpjm-geo-places {
+	padding: 0 0 12px;
+}
+
+.g2rd-wpjm-geo-map__places .g2rd-wpjm-geo-places__group {
+	margin: 0;
+	padding: 0;
+}
+
+.g2rd-wpjm-geo-map__places .g2rd-wpjm-geo-places__heading {
+	margin: 16px 0 4px;
+	padding: 0;
+	color: #1d2327;
+	font: 700 15px/1.3 system-ui, -apple-system, "Segoe UI", sans-serif;
+	letter-spacing: normal;
+	text-transform: none;
+}
+
+.g2rd-wpjm-geo-map__places .g2rd-wpjm-geo-places__jobs {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.g2rd-wpjm-geo-map__places .g2rd-wpjm-geo-places__job {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 2px 16px;
+	align-items: baseline;
+	justify-content: space-between;
+	margin: 0;
+	padding: 8px 0;
+	list-style: none;
+	border-top: 1px solid #f0f0f1;
+}
+
+.g2rd-wpjm-geo-map__places .g2rd-wpjm-geo-places__title {
+	color: #a93226;
+	font-weight: 600;
+	text-decoration: none;
+}
+
+.g2rd-wpjm-geo-map__places a.g2rd-wpjm-geo-places__title:hover,
+.g2rd-wpjm-geo-map__places a.g2rd-wpjm-geo-places__title:focus {
+	text-decoration: underline;
+}
+
+.g2rd-wpjm-geo-map__places .g2rd-wpjm-geo-places__meta {
+	color: #50575e;
+	font-size: 13px;
+	text-align: right;
+}
+
+.g2rd-wpjm-geo-map__places .g2rd-wpjm-geo-places__also {
+	flex-basis: 100%;
+	color: #646970;
+	font-size: 13px;
+}
+
+@media (max-width: 600px) {
+	.g2rd-wpjm-geo-map__places .g2rd-wpjm-geo-places__job {
+		flex-direction: column;
+	}
+
+	.g2rd-wpjm-geo-map__places .g2rd-wpjm-geo-places__meta {
+		text-align: left;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.g2rd-wpjm-geo-map__places > summary::before {
+		transition: none;
+	}
 }
 
 /* ---------- Champ « Lieu » à étiquettes (mode libre) ---------- */

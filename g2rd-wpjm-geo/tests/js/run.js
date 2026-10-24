@@ -459,7 +459,7 @@ const regionNoBox = { id: 15, title: 'Sans boite', permalink: 'https://x.test/jo
   if (nBtn) nBtn.click();
   check('petit ecran : le bouton affiche puis masque les credits', shown && !nAt.classList.contains('maplibregl-compact-show'));
   const places = o.w.document.querySelector('.g2rd-wpjm-geo-map + .g2rd-wpjm-geo-map__places');
-  check('liste des offres sous la carte, pour le clavier', !!places && 'Liste' === places.querySelector('summary').textContent && places.children.length > 1);
+  check('liste des offres sous la carte, pour le clavier', !!places && /^Liste \(\d+ offres?\)$/.test(places.querySelector('summary').textContent) && places.children.length > 1);
   o = await osmMap({ data: jobs, styleFail: true });
   o.st.map.fire('load', {});
   await wait(10);
@@ -970,6 +970,38 @@ const regionNoBox = { id: 15, title: 'Sans boite', permalink: 'https://x.test/jo
   check('carte Google : algorithme SuperCluster sur 25 px, jusqu au zoom 11', !!gm.st.cluster && !!gm.st.cluster.algorithm && 25 === gm.st.cluster.algorithm.options.radius && 11 === gm.st.cluster.algorithm.options.maxZoom);
   gm = await map({ clustering: true, data: jobs, noAlgorithm: true });
   check('carte Google sans SuperClusterAlgorithm : regroupement par defaut', !!gm.st.cluster && undefined === gm.st.cluster.algorithm);
+
+  console.log('\nO. Liste des offres sous la carte');
+  {
+    const lw = new JSDOM('<div id="wrap"><div id="map"></div></div>', { runScripts: 'outside-only', url: 'https://x.test/' }).window;
+    lw.eval(src('js/map-common.js'));
+    const C = lw.g2rdWpjmGeoMapCommon;
+    const li18n = { places: 'Liste des offres de la carte', alsoAt: 'Aussi à :', regionTitle: '%s (toute la région)', oneJob: '1 offre', manyJobsShort: '%d offres' };
+    const sp = C.splitPlaces([
+      { id: 1, title: 'Multi', permalink: 'https://x.test/job/1', company: 'M', job_type: 'CDI', city: 'Paris', country: 'France', latitude: 48.85, longitude: 2.35, places: [{ type: 'city', label: 'Paris', lat: 48.85, lng: 2.35 }, { type: 'city', label: 'Évreux', lat: 49.02, lng: 1.15 }, { type: 'region', label: 'Normandie', lat: 49.12, lng: 0.11, region: '28' }] },
+      { id: 2, title: '<img src=x onerror=alert(1)>', permalink: 'javascript:alert(1)', company: '', job_type: '', city: 'Bezons', country: 'France', latitude: 48.92, longitude: 2.21 },
+      { id: 3, title: 'Agent', permalink: 'https://x.test/job/3', company: 'CEA', job_type: 'CDI', city: 'Bruyères-le-Châtel', country: 'France', latitude: 48.59, longitude: 2.19 },
+      { id: 4, title: 'Région seule', permalink: 'https://x.test/job/4', company: 'R', job_type: 'CDD', city: '', country: 'France', latitude: 47.75, longitude: 1.67, places: [{ type: 'region', label: 'Centre-Val de Loire', lat: 47.75, lng: 1.67, region: '24' }] }
+    ]);
+    const box = lw.document.getElementById('map');
+    const details = C.places(box, C.groupByCoordinates(sp.points), li18n, sp.regions);
+    const heads = [...details.querySelectorAll('.g2rd-wpjm-geo-places__heading')].map(h => h.textContent);
+    const jobsLi = [...details.querySelectorAll('.g2rd-wpjm-geo-places__job')];
+    check('liste juste apres la carte, dans le meme parent', box.nextElementSibling === details && 'wrap' === details.parentNode.id);
+    check('resume : nombre d offres distinctes', 'Liste des offres de la carte (4 offres)' === details.querySelector('summary').textContent);
+    check('sections : lieux par ordre alphabetique (accents compris), puis regions', JSON.stringify(['Bezons, France — 1 offre', 'Bruyères-le-Châtel, France — 1 offre', 'Évreux — 1 offre', 'Paris, France — 1 offre', 'Centre-Val de Loire (toute la région) — 1 offre', 'Normandie (toute la région) — 1 offre']) === JSON.stringify(heads));
+    check('intertitres de niveau 3', 6 === details.querySelectorAll('h3.g2rd-wpjm-geo-places__heading').length);
+    const agent = jobsLi.find(li => /Agent/.test(li.textContent));
+    check('offre : titre en lien, « entreprise · contrat », aucun bouton', 'https://x.test/job/3' === agent.querySelector('a.g2rd-wpjm-geo-places__title').href && 'CEA · CDI' === agent.querySelector('.g2rd-wpjm-geo-places__meta').textContent && !details.querySelector('button, .g2rd-wpjm-geo-iw__link'));
+    const multi = jobsLi.find(li => /Multi/.test(li.textContent) && 0 === li.closest('section').querySelector('h3').textContent.indexOf('Paris'));
+    check('offre a plusieurs lieux : ligne « Aussi a »', !!multi && 'Aussi à : Évreux, Normandie' === multi.querySelector('.g2rd-wpjm-geo-places__also').textContent);
+    const evil = jobsLi.find(li => /img/.test(li.textContent));
+    check('titre malveillant en texte, lien dangereux ecarte, parties vides omises', 0 === details.querySelectorAll('img').length && !evil.querySelector('a') && !evil.querySelector('.g2rd-wpjm-geo-places__meta'));
+    check('aucun balisage des fenetres de carte dans la liste', !details.querySelector('.g2rd-wpjm-geo-iw'));
+    const css = src('css/frontend.css');
+    const block = css.slice(css.indexOf('Liste des offres sous la carte'), css.indexOf('Champ « Lieu »'));
+    check('styles : pleine largeur, aucun defilement interne, focus clavier', /width:\s*100%/.test(block) && !/max-height|overflow-y/.test(block) && /:focus-visible/.test(block));
+  }
 
   console.log('\nResultat JS : ' + pass + ' reussis, ' + fail + ' echoues');
   process.exit(fail ? 1 : 0);
