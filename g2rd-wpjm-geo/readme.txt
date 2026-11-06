@@ -55,7 +55,7 @@ Le plugin ne modifie ni WP Job Manager, ni Go Fetch Jobs, ni le thème. En mode 
 
 == Tests ==
 
-`php tests/run.php` ; `npm --prefix ../tools/jsdom i jsdom@24` puis `NODE_PATH=../tools/jsdom/node_modules node tests/js/run.js` ; `tools/docker/verify.sh` (dépôt).
+Depuis la racine du dépôt (les tests ne sont pas livrés dans l'archive) : `composer install` et `npm ci --prefix tools/jsdom --ignore-scripts` une fois, puis `composer test` (PHP), `composer test:js` (JS, jsdom 30 figé par `tools/jsdom/package-lock.json`) et `tools/docker/verify.sh` (WordPress jetable). Voir le README du dépôt.
 
 == Frequently Asked Questions ==
 
