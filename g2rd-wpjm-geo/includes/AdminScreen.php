@@ -14,12 +14,14 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Rattaché au menu « G2RD » : délègue à \G2RD\AdminConsole (feuille et polices
  * chargées par le thème). Sinon : même balisage, avec la copie de la feuille
- * de la console (assets/css/console.css) et les polices du plugin.
+ * de la console (assets/css/console.css) et les polices du plugin. Dans les
+ * deux cas, charge aussi assets/css/admin-geo.css (styles propres au plugin).
  */
 class AdminScreen {
 
-	const STYLE_HANDLE  = 'g2rd-wpjm-geo-console';
-	const SCRIPT_HANDLE = 'g2rd-wpjm-geo-admin-settings';
+	const STYLE_HANDLE       = 'g2rd-wpjm-geo-console';
+	const SCRIPT_HANDLE      = 'g2rd-wpjm-geo-admin-settings';
+	const ADMIN_STYLE_HANDLE = 'g2rd-wpjm-geo-admin';
 
 	/**
 	 * Hooks.
@@ -50,6 +52,9 @@ class AdminScreen {
 			wp_enqueue_style( self::STYLE_HANDLE, G2RD_WPJM_GEO_URL . 'assets/css/console.css', array( 'wp-components', 'dashicons' ), file_exists( $file ) ? (string) filemtime( $file ) : G2RD_WPJM_GEO_VERSION );
 			wp_add_inline_style( self::STYLE_HANDLE, self::font_face_css() );
 		}
+		// Styles propres au plugin (sommaire), chargés avec ou sans la console du thème G2RD.
+		$admin_css = G2RD_WPJM_GEO_DIR . 'assets/css/admin-geo.css';
+		wp_enqueue_style( self::ADMIN_STYLE_HANDLE, G2RD_WPJM_GEO_URL . 'assets/css/admin-geo.css', array(), file_exists( $admin_css ) ? (string) filemtime( $admin_css ) : G2RD_WPJM_GEO_VERSION );
 		wp_enqueue_script( self::SCRIPT_HANDLE, G2RD_WPJM_GEO_URL . 'assets/js/admin-settings.js', array(), G2RD_WPJM_GEO_VERSION, true );
 	}
 

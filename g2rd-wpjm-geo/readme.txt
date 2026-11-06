@@ -3,7 +3,7 @@ Contributors: g2rd
 Requires at least: 6.4
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.2.0
+Stable tag: 1.2.1
 License: GPLv2 or later
 
 Complète WP Job Manager : autocomplétion mondiale des villes, carte des offres, candidatures Go Fetch Jobs.
@@ -55,7 +55,7 @@ Le plugin ne modifie ni WP Job Manager, ni Go Fetch Jobs, ni le thème. En mode 
 
 == Tests ==
 
-`php tests/run.php` ; `npm --prefix ../tools/jsdom i jsdom@24` puis `NODE_PATH=../tools/jsdom/node_modules node tests/js/run.js` ; `tools/docker/verify.sh` (dépôt).
+Depuis la racine du dépôt (les tests ne sont pas livrés dans l'archive) : `composer install` et `npm ci --prefix tools/jsdom --ignore-scripts` une fois, puis `composer test` (PHP), `composer test:js` (JS, jsdom 30 figé par `tools/jsdom/package-lock.json`) et `tools/docker/verify.sh` (WordPress jetable). Voir le README du dépôt.
 
 == Frequently Asked Questions ==
 
@@ -89,6 +89,11 @@ En mode libre, saisir chaque lieu dans le champ « Lieu » (étiquettes) ; sans 
 Le plugin est prévu pour un site seul : en multisite, la désinstallation ne nettoie que le site courant.
 
 == Changelog ==
+
+= 1.2.1 =
+* Carte : points moins regroupés quand on dézoome (rayon de 20 px), sur la carte libre comme sur la carte Google : en vue France, Paris, Évreux, le Nord ou Lyon restent distincts.
+* Liste des offres sous la carte : pleine largeur, une section par lieu (ordre alphabétique, régions à la fin), une ligne par offre, nombre d'offres dans la barre d'ouverture ; styles protégés contre ceux du thème.
+* Console d'administration : sommaire des réglages plus lisible, sur le bandeau sombre comme sur écran étroit.
 
 = 1.2.0 =
 * Mode libre : plusieurs lieux par offre (10 au plus), villes et régions françaises, avec une autocomplétion à étiquettes sur le champ « Lieu » natif et une aide « ; » sous le champ, même sans autocomplétion.

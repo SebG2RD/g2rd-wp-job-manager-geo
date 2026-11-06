@@ -47,6 +47,16 @@
 		parent.appendChild( node );
 	}
 
+	function addText( parent, tagName, className, text ) {
+		if ( ! text ) {
+			return;
+		}
+		var node = document.createElement( tagName );
+		node.className = className;
+		node.textContent = text;
+		parent.appendChild( node );
+	}
+
 	function buildJobNode( job, i18n, compact ) {
 		var wrapper = document.createElement( compact ? 'li' : 'div' );
 		wrapper.className = 'g2rd-wpjm-geo-iw__job';
@@ -364,27 +374,105 @@
 		};
 	}
 
+	// Ligne d'une offre dans la liste sous la carte : titre, « entreprise · contrat », autres lieux.
+	function placesJob( job, i18n ) {
+		var item = document.createElement( 'li' );
+		item.className = 'g2rd-wpjm-geo-places__job';
+		var url = safeUrl( job.permalink );
+		var title = document.createElement( url ? 'a' : 'span' );
+		title.className = 'g2rd-wpjm-geo-places__title';
+		title.textContent = job.title || '';
+		if ( url ) {
+			title.href = url;
+		}
+		item.appendChild( title );
+		var meta = [ job.company, job.job_type ].filter( function ( part ) {
+			return 'string' === typeof part && '' !== part.trim();
+		} ).join( ' \u00b7 ' );
+		addText( item, 'span', 'g2rd-wpjm-geo-places__meta', meta );
+		if ( Array.isArray( job._also ) && job._also.length ) {
+			addText( item, 'span', 'g2rd-wpjm-geo-places__also', ( i18n.alsoAt ? i18n.alsoAt + ' ' : '' ) + job._also.join( ', ' ) );
+		}
+		return item;
+	}
+
+	function placesSection( heading, jobs, i18n ) {
+		var section = document.createElement( 'section' );
+		section.className = 'g2rd-wpjm-geo-places__group';
+		addText( section, 'h3', 'g2rd-wpjm-geo-places__heading', heading );
+		var list = document.createElement( 'ul' );
+		list.className = 'g2rd-wpjm-geo-places__jobs';
+		jobs.forEach( function ( job ) {
+			list.appendChild( placesJob( job, i18n ) );
+		} );
+		section.appendChild( list );
+		return section;
+	}
+
+	function byLabel( a, b ) {
+		return a.label.localeCompare( b.label, 'fr', { sensitivity: 'base' } );
+	}
+
 	/**
-	 * Liste repliable des offres de la carte, juste après elle : accès au clavier et aux
-	 * lecteurs d'écran quand les points sont dessinés dans un canevas (MapLibre).
-	 * `groups` : groupes de villes ; `regions` (facultatif) : entrées de région de splitPlaces().
+	 * Liste repliable des offres de la carte, juste après elle et sur toute la largeur
+	 * du parent : accès au clavier et aux lecteurs d'écran quand les points sont dessinés
+	 * dans un canevas (MapLibre). Une section par lieu (ordre alphabétique), puis une par région.
+	 *
+	 * @param {Element} container Conteneur de la carte.
+	 * @param {Array}   groups    Groupes de groupByCoordinates().
+	 * @param {Object}  i18n      Textes.
+	 * @param {Array}   regions   Régions de splitPlaces() (facultatif).
+	 * @return {Element} Élément details inséré.
 	 */
 	function placesList( container, groups, i18n, regions ) {
 		var previous = container.nextElementSibling;
 		if ( previous && previous.classList.contains( 'g2rd-wpjm-geo-map__places' ) ) {
 			previous.parentNode.removeChild( previous );
 		}
+		// Une offre à plusieurs lieux apparaît dans plusieurs sections mais ne compte qu'une fois.
+		var seen = Object.create( null );
+		var count = 0;
+		function remember( job ) {
+			var key = undefined === job.id || null === job.id ? null : String( job.id );
+			if ( null === key || ! seen[ key ] ) {
+				if ( null !== key ) {
+					seen[ key ] = true;
+				}
+				count++;
+			}
+		}
+		// Les groupes de meme libelle (Paris, Paris 15e...) forment une seule section.
+		var merged = Object.create( null );
+		var mergedList = [];
+		groups.forEach( function ( group ) {
+			group.jobs.forEach( remember );
+			var label = placeLabel( group.jobs[ 0 ] );
+			var key = label.toLocaleLowerCase( 'fr' );
+			if ( ! merged[ key ] ) {
+				merged[ key ] = { label: label, jobs: [] };
+				mergedList.push( merged[ key ] );
+			}
+			merged[ key ].jobs = merged[ key ].jobs.concat( group.jobs );
+		} );
+		var cities = mergedList.map( function ( entry ) {
+			return { label: entry.label, heading: entry.label + ' \u2014 ' + jobCount( entry.jobs.length, i18n ), jobs: entry.jobs };
+		} ).sort( byLabel );
+		var areas = ( regions || [] ).map( function ( region ) {
+			region.jobs.forEach( remember );
+			return { label: region.label || '', heading: regionTitle( region, i18n ), jobs: region.jobs };
+		} ).sort( byLabel );
+
 		var details = document.createElement( 'details' );
 		details.className = 'g2rd-wpjm-geo-map__places';
 		var summary = document.createElement( 'summary' );
-		summary.textContent = i18n.places || '';
+		summary.textContent = ( i18n.places || '' ) + ' (' + jobCount( count, i18n ) + ')';
 		details.appendChild( summary );
-		groups.forEach( function ( group ) {
-			details.appendChild( buildInfoContent( group.jobs, i18n ) );
+		var body = document.createElement( 'div' );
+		body.className = 'g2rd-wpjm-geo-places';
+		cities.concat( areas ).forEach( function ( entry ) {
+			body.appendChild( placesSection( entry.heading, entry.jobs, i18n ) );
 		} );
-		( regions || [] ).forEach( function ( region ) {
-			details.appendChild( buildRegionContent( region, i18n ) );
-		} );
+		details.appendChild( body );
 		container.parentNode.insertBefore( details, container.nextSibling );
 		return details;
 	}

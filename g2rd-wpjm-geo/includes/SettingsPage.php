@@ -145,9 +145,9 @@ class SettingsPage {
 			'journal'        => __( 'Journal', 'g2rd-wpjm-geo' ),
 			'outils'         => __( 'Outils', 'g2rd-wpjm-geo' ),
 		);
-		echo '<nav class="g2rd-row g2rd-row--wrap" aria-label="' . esc_attr__( 'Sommaire', 'g2rd-wpjm-geo' ) . '">';
+		echo '<nav class="g2rd-row g2rd-row--wrap g2rd-geo-toc" aria-label="' . esc_attr__( 'Sommaire', 'g2rd-wpjm-geo' ) . '">';
 		foreach ( $items as $id => $label ) {
-			echo '<a class="g2rd-chip g2rd-chip--muted" href="#g2rd-geo-' . esc_attr( $id ) . '">' . esc_html( $label ) . '</a>';
+			echo '<a class="g2rd-geo-toc__link" href="#g2rd-geo-' . esc_attr( $id ) . '">' . esc_html( $label ) . '</a>';
 		}
 		echo '</nav>';
 	}

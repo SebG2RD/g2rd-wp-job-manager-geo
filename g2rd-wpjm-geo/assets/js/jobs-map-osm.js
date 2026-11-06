@@ -18,6 +18,9 @@
 	var cfg = window.g2rdWpjmGeoOsm || {};
 	var COLOR = '#c0392b';
 	var SOURCE = 'g2rd-jobs';
+	// Rayon mesure : Paris, Evreux, Amiens, Blois, Lyon restent distincts en vue France ; regroupement maintenu jusqu au zoom 14 pour les quartiers denses.
+	var CLUSTER_RADIUS = 20;
+	var CLUSTER_MAX_ZOOM = 14;
 	var maplibrePromise = null;
 	var REGION_COLOR = '#ef6c00';
 	var REGION_LINE_COLOR = '#d35400';
@@ -523,8 +526,8 @@
 					type: 'geojson',
 					data: { type: 'FeatureCollection', features: features },
 					cluster: clustering,
-					clusterMaxZoom: 14,
-					clusterRadius: 50,
+					clusterMaxZoom: CLUSTER_MAX_ZOOM,
+					clusterRadius: CLUSTER_RADIUS,
 					clusterProperties: { jobs: [ '+', [ 'get', 'count' ] ] }
 				} );
 				map.addLayer( {

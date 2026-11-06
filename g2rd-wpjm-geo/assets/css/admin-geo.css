@@ -1,0 +1,54 @@
+/**
+ * G2RD WP Job Manager Geo : styles propres au plugin dans la console G2RD.
+ * Chargés sur les écrans du plugin avec ou sans le thème G2RD.
+ */
+
+/* Sommaire des réglages : pastilles blanches, lisibles sur le bandeau sombre comme
+   sur le fond clair (sur écran étroit, le sommaire passe sous le bandeau). */
+.g2rd-app .g2rd-geo-toc {
+	gap: 8px;
+	margin-bottom: 22px;
+}
+
+.g2rd-app .g2rd-geo-toc__link {
+	display: inline-flex;
+	align-items: center;
+	padding: 6px 14px;
+	color: #0b1b2b;
+	font-weight: 600;
+	font-size: 13px;
+	line-height: 1.4;
+	white-space: nowrap;
+	text-decoration: none;
+	background: #fff;
+	border: 1px solid rgba(11, 27, 43, 0.15);
+	border-radius: 999px;
+	box-shadow: 0 1px 3px rgba(11, 27, 43, 0.25);
+	transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+/* Survol : le fond reste blanc (un fond teinté se confondrait avec la page claire) ; bordure et ombre se renforcent. */
+.g2rd-app .g2rd-geo-toc__link:hover,
+.g2rd-app .g2rd-geo-toc__link:focus {
+	color: #0b1b2b;
+	background: #fff;
+	border-color: rgba(11, 27, 43, 0.5);
+	box-shadow: 0 2px 8px rgba(11, 27, 43, 0.35);
+}
+
+.g2rd-app .g2rd-geo-toc__link:focus {
+	outline: none;
+}
+
+/* Focus clavier : double anneau, turquoise (visible sur le bandeau sombre) puis bleu nuit (visible sur le fond clair). */
+.g2rd-app .g2rd-geo-toc__link:focus-visible {
+	outline: 2px solid #0b1b2b;
+	outline-offset: 2px;
+	box-shadow: 0 0 0 4px #2dd4bf;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.g2rd-app .g2rd-geo-toc__link {
+		transition: none;
+	}
+}
