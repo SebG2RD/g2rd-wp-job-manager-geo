@@ -92,9 +92,14 @@ les offres placées par Photon.
    - pendant un import, une tâche WP-Cron ou WP-CLI, ou si Photon vient
      d'échouer (drapeau `g2rd_wpjm_geo_photon_down`, 5 minutes), l'offre part
      directement dans la file ;
-   - sinon, `PlaceLocator::locate()` a droit à un seul appel à Photon pendant
-     l'enregistrement. Si plusieurs villes ne sont pas en cache, l'offre part
-     dans la file pour ne pas ralentir l'enregistrement.
+   - sinon, `PlaceLocator::locate()` place tous les lieux pendant
+     l'enregistrement : chaque ville a son point sur la carte dès
+     l'enregistrement, sans attendre WP-Cron. Le temps accordé à Photon est
+     borné (`GeocodingIntegration::SAVE_SECONDS`, 8 secondes ; un appel déjà
+     parti peut encore durer 5 secondes) : au-delà, les villes restantes ne
+     sont plus envoyées à Photon et l'offre part dans la file. Jusqu'en 1.2.1,
+     un seul appel était permis : dès deux villes absentes du cache, l'offre
+     attendait le passage de WP-Cron.
 3. `PlaceLocator` découpe le texte (`PlaceParser` : « ; », « | », « / »,
    retour à la ligne, « et »), reconnaît les régions sans réseau (`Regions`),
    applique la règle de la virgule et géocode les villes avec `PhotonGeocoder`

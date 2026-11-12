@@ -37,6 +37,15 @@ class GeocodingIntegration {
 	const DOWN_TTL  = 300;
 
 	/**
+	 * Temps accordé à Photon pendant un enregistrement (secondes) : tous les lieux de
+	 * l'offre sont placés tout de suite, pour qu'ils soient sur la carte dès
+	 * l'enregistrement. Au-delà (Photon lent), l'offre passe par la file. Un appel
+	 * déjà parti peut encore durer PhotonGeocoder::TIMEOUT : l'enregistrement reste
+	 * loin du max_execution_time de PHP.
+	 */
+	const SAVE_SECONDS = 8;
+
+	/**
 	 * Vrai pendant write() : nos propres écritures ne retirent pas la source.
 	 *
 	 * @var bool
@@ -70,10 +79,11 @@ class GeocodingIntegration {
 	 * @param Settings       $settings Réglages.
 	 * @param PhotonGeocoder $geocoder Géocodeur.
 	 * @param GeocodeQueue   $queue    File différée.
+	 * @param callable|null  $clock    Horloge en secondes (tests) ; null : microtime().
 	 */
-	public function __construct( Settings $settings, PhotonGeocoder $geocoder, GeocodeQueue $queue ) {
+	public function __construct( Settings $settings, PhotonGeocoder $geocoder, GeocodeQueue $queue, $clock = null ) {
 		$this->settings = $settings;
-		$this->locator  = new PlaceLocator( $geocoder );
+		$this->locator  = new PlaceLocator( $geocoder, null, $clock );
 		$this->queue    = $queue;
 	}
 
@@ -181,8 +191,8 @@ class GeocodingIntegration {
 			return;
 		}
 
-		// Budget d'un texte absent du cache : au plus un appel à Photon pendant l'enregistrement, comme pour un lieu unique.
-		$result = $this->locator->locate( $location, 1 );
+		// Tous les lieux sont placés pendant l'enregistrement (un point par ville sur la carte dès l'enregistrement), dans la limite de SAVE_SECONDS.
+		$result = $this->locator->locate( $location, PlaceLocator::UNLIMITED, self::SAVE_SECONDS );
 		if ( is_wp_error( $result ) ) {
 			set_transient( self::DOWN_FLAG, 1, self::DOWN_TTL );
 			self::write( $job_id, null, Settings::PROVIDER_OSM );
@@ -190,7 +200,7 @@ class GeocodingIntegration {
 			return;
 		}
 		if ( $result['deferred'] ) {
-			// Plusieurs villes inconnues du cache : placées par la file, pour ne pas ralentir l'enregistrement.
+			// Photon trop lent pour finir pendant l'enregistrement : les lieux sont placés par la file.
 			self::write( $job_id, null, Settings::PROVIDER_OSM );
 			$this->queue->push( $job_id );
 			return;

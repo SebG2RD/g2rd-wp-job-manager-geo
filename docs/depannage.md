@@ -51,6 +51,11 @@ carte ; les visiteurs ne voient rien.
   règle de la virgule : séparez les lieux par « ; » pour lever le doute. Les
   cas connus sont listés dans la FAQ du `readme.txt`, section « Limites connues
   des lieux multiples ».
+- Offre à plusieurs villes sans aucun point juste après l'enregistrement :
+  jusqu'en 1.2.1, dès deux villes absentes du cache, l'offre attendait le
+  passage de WP-Cron (voir la section suivante). Depuis la 1.2.2, toutes
+  les villes sont placées pendant l'enregistrement ; seul un Photon trop lent
+  (plus de 8 secondes) renvoie encore l'offre vers la file.
 
 ## Les offres importées restent sans coordonnées (mode libre)
 

@@ -114,9 +114,12 @@ ok 'formulaire : un seul champ de localisation' "$(is "$(echo "$F" | grep -o 'na
 
 echo "10. Plusieurs lieux et régions (mode libre)"
 JOBM=$(wp post create --post_type=job_listing --post_status=publish --post_title='Poste multi-lieux' --porcelain)
+# Villes retirées du cache Photon : l'enregistrement doit les placer lui-même, sans attendre WP-Cron.
+wp eval '$g = new G2RD\WPJMGeo\PhotonGeocoder( new G2RD\WPJMGeo\Settings() ); $k = new ReflectionMethod( $g, "cache_key" ); $k->setAccessible( true ); foreach ( array( "Paris", "Lyon" ) as $p ) { delete_transient( $k->invoke( $g, $p, G2RD\WPJMGeo\PhotonGeocoder::clean( $p ) ) ); }' >/dev/null
+wp option delete g2rd_wpjm_geo_geocode_queue >/dev/null 2>&1
 curl -s -b cookies.txt -H "X-WP-Nonce: $NONCE" -H 'Content-Type: application/json' -X POST -d '{"meta":{"_job_location":"Paris ; Lyon ; Normandie"}}' "$B/wp-json/wp/v2/job-listings/$JOBM" >/dev/null
-wp cron event run g2rd_wpjm_geo_geocode >/dev/null
-ok 'trois lieux enregistrés' "$(is "$(wp eval "echo count( (array) get_post_meta( $JOBM, '_g2rd_wpjm_geo_places', true ) );")" 3)"
+ok 'trois lieux enregistrés dès l’enregistrement, sans passage WP-Cron' "$(is "$(wp eval "echo count( (array) get_post_meta( $JOBM, '_g2rd_wpjm_geo_places', true ) );")" 3)"
+ok 'offre multi-lieux absente de la file' "$(hasnt "$(wp option get g2rd_wpjm_geo_geocode_queue --format=json 2>/dev/null)" "$JOBM")"
 ok 'premier lieu dans WP Job Manager' "$(is "$(wp post meta get "$JOBM" geolocation_city 2>/dev/null)" Paris)"
 ok 'texte saisi conservé' "$(is "$(wp post meta get "$JOBM" _job_location 2>/dev/null)" 'Paris ; Lyon ; Normandie')"
 R=$(curl -s "$B/wp-json/g2rd-wpjm-geo/v1/jobs")
