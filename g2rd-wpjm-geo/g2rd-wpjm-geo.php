@@ -3,7 +3,7 @@
  * Plugin Name:       G2RD WP Job Manager Geo
  * Plugin URI:        https://g2rd.fr
  * Description:       Complète WP Job Manager : autocomplétion mondiale des villes (Google Places ou OpenStreetMap) sur le champ de localisation natif, carte interactive des offres, et normalisation des candidatures des offres importées par Go Fetch Jobs.
- * Version:           1.2.2
+ * Version:           1.3.0
  * Requires at least: 6.4
  * Requires PHP:      7.4
  * Author:            G2RD
@@ -21,7 +21,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'G2RD_WPJM_GEO_VERSION', '1.2.2' );
+define( 'G2RD_WPJM_GEO_VERSION', '1.3.0' );
 define( 'G2RD_WPJM_GEO_FILE', __FILE__ );
 define( 'G2RD_WPJM_GEO_DIR', plugin_dir_path( __FILE__ ) );
 define( 'G2RD_WPJM_GEO_URL', plugin_dir_url( __FILE__ ) );
