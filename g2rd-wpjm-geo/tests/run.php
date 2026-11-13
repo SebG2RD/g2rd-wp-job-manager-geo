@@ -20,6 +20,7 @@ require __DIR__ . '/bootstrap.php';
 use G2RD\WPJMGeo\AdminMenu;
 use G2RD\WPJMGeo\AdminScreen;
 use G2RD\WPJMGeo\AdminLocation;
+use G2RD\WPJMGeo\AdminListColumn;
 use G2RD\WPJMGeo\LocationHelp;
 use G2RD\WPJMGeo\ApplicationNormalizer;
 use G2RD\WPJMGeo\GeocodeQueue;
@@ -1685,6 +1686,36 @@ foreach ( $invalid as $id => $pair ) {
 }
 check( 'coordonnées (0, 0), hors bornes, non numériques ou absentes : null', count( $invalid ) === $nulls );
 check( 'texte brut : balises retirées, entités décodées', 'Lille & environs' === RestController::plain( 'Lille &amp; <b>environs</b>' ) && '' === RestController::plain( array( 'x' ) ) );
+
+echo PHP_EOL . '42. Liste des offres : colonne « Carte »' . PHP_EOL;
+list( $s ) = boot( array( 'provider' => Settings::PROVIDER_OSM ) );
+G2RD_Test_State::$meta[800] = array(
+	'_job_location'                   => 'Rouen ; Normandie',
+	'geolocation_lat'                 => '49.4432',
+	'geolocation_long'                => '1.0999',
+	'geolocation_city'                => 'Rouen',
+	GeocodingIntegration::META_SOURCE => 'osm',
+	GeocodingIntegration::META_PLACES => array(
+		array( 'type' => 'city', 'label' => 'Rouen', 'lat' => '49.4432', 'lng' => '1.0999' ),
+		array( 'type' => 'region', 'label' => 'Normandie', 'lat' => '49.1202', 'lng' => '0.1128', 'region' => '28' ),
+	),
+);
+G2RD_Test_State::$meta[801] = array( '_job_location' => 'Paris', 'geolocation_lat' => '48.85', 'geolocation_long' => '2.35' );
+G2RD_Test_State::$meta[802] = array( '_job_location' => '  ' );
+G2RD_Test_State::$meta[803] = array( '_job_location' => 'Rouen ; Caen' );
+G2RD_Test_State::$meta[804] = array( '_job_location' => 'Nulle part', 'geolocation_lat' => '0', 'geolocation_long' => '0', GeocodingIntegration::META_SOURCE => 'osm' );
+
+$st = AdminListColumn::state( 800, Settings::PROVIDER_OSM, array() );
+check( 'état : placée en mode libre, villes et régions de la carte', AdminListColumn::PLACED === $st['state'] && array( 'Rouen', 'Normandie' ) === $st['labels'] );
+check( 'état : coordonnées écrites par Google en mode libre → introuvable', AdminListColumn::MISSING === AdminListColumn::state( 801, Settings::PROVIDER_OSM, array() )['state'] );
+check( 'état : lieu vide', AdminListColumn::EMPTY_LOCATION === AdminListColumn::state( 802, Settings::PROVIDER_OSM, array() )['state'] );
+check( 'état : offre dans la file → en attente', AdminListColumn::PENDING === AdminListColumn::state( 803, Settings::PROVIDER_OSM, array( 803 => true ) )['state'] );
+check( 'état : hors de la file → introuvable', AdminListColumn::MISSING === AdminListColumn::state( 803, Settings::PROVIDER_OSM, array() )['state'] );
+check( 'état : coordonnées (0, 0) → pas placée', AdminListColumn::MISSING === AdminListColumn::state( 804, Settings::PROVIDER_OSM, array() )['state'] );
+$st = AdminListColumn::state( 801, Settings::PROVIDER_GOOGLE, array() );
+check( 'état, mode Google : coordonnées sans source → placée, libellé du lieu', AdminListColumn::PLACED === $st['state'] && array( 'Paris' ) === $st['labels'] );
+check( 'état, mode Google : pas d’état « en attente »', AdminListColumn::MISSING === AdminListColumn::state( 803, Settings::PROVIDER_GOOGLE, array( 803 => true ) )['state'] );
+check( 'état, mode Google : offre géocodée par Photon → introuvable', AdminListColumn::MISSING === AdminListColumn::state( 800, Settings::PROVIDER_GOOGLE, array() )['state'] );
 
 $results = $GLOBALS['g2rd_results'];
 echo PHP_EOL . sprintf( 'Résultat : %d réussis, %d échoués', $results['pass'], $results['fail'] ) . PHP_EOL;

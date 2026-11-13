@@ -19,7 +19,7 @@
 
 - Tests PHP, depuis la racine du dépôt : `C:/PHP/php.exe g2rd-wpjm-geo/tests/run.php`. La dernière ligne doit être `Résultat : N réussis, 0 échoués`. Tout avertissement PHP compte comme un échec.
 - Le harnais (`tests/bootstrap.php`) :
-  - charge automatiquement `includes/<Classe>.php` ;
+  - charge les classes de `includes/` depuis une liste explicite, en fin de `tests/bootstrap.php` : une nouvelle classe doit y être ajoutée ;
   - simule `get_post_meta` (lecture de `G2RD_Test_State::$meta[ $id ][ $key ]`, `''` si absente), `get_option` / `update_option`, les hooks avec priorité et nombre d'arguments, et `esc_attr` / `esc_html` (`htmlspecialchars`, `ENT_QUOTES`) ;
   - simule `wp_enqueue_style`, qui note `G2RD_Test_State::$enqueued[ 'style:' . $handle ] = $src` ;
   - définit `G2RD_WPJM_GEO_URL`, `G2RD_WPJM_GEO_DIR` et `G2RD_WPJM_GEO_VERSION` (`'test'`) ;
@@ -150,6 +150,7 @@ git commit -m "refactor(carte) : coordonnées d'une offre partagées (RestContro
 
 **Fichiers :**
 - Créer : `g2rd-wpjm-geo/includes/AdminListColumn.php`
+- Modifier : `g2rd-wpjm-geo/tests/bootstrap.php` (ajouter `'AdminListColumn'` après `'AdminLocation'` dans la liste des classes chargées)
 - Test : `g2rd-wpjm-geo/tests/run.php` (en-tête `use`, nouvelle section 42)
 
 - [ ] **Étape 1 : écrire les tests qui échouent**
