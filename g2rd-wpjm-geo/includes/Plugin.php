@@ -112,6 +112,7 @@ final class Plugin {
 			( new AdminScreen() )->register();
 			( new PrivacyPolicy( $this->settings ) )->register();
 			( new RegeocodeTool( $this->settings, $geocoder ) )->register();
+			( new AdminListColumn( $this->settings ) )->register();
 			( new MigrationTool( $this->settings, $normalizer, $logger ) )->register();
 		}
 	}

@@ -1717,6 +1717,52 @@ check( 'état, mode Google : coordonnées sans source → placée, libellé du l
 check( 'état, mode Google : pas d’état « en attente »', AdminListColumn::MISSING === AdminListColumn::state( 803, Settings::PROVIDER_GOOGLE, array( 803 => true ) )['state'] );
 check( 'état, mode Google : offre géocodée par Photon → introuvable', AdminListColumn::MISSING === AdminListColumn::state( 800, Settings::PROVIDER_GOOGLE, array() )['state'] );
 
+update_option( GeocodeQueue::OPTION, array( 803 ) );
+G2RD_Test_State::$meta[805] = array(
+	'_job_location'                   => 'Caen',
+	'geolocation_lat'                 => '49.1829',
+	'geolocation_long'                => '-0.3707',
+	GeocodingIntegration::META_SOURCE => 'osm',
+	GeocodingIntegration::META_PLACES => array(
+		array( 'type' => 'city', 'label' => 'Caen "x" & <b>y</b>', 'lat' => '49.1829', 'lng' => '-0.3707' ),
+	),
+);
+$column = new AdminListColumn( $s );
+$column->register();
+
+$c = apply_filters( 'manage_edit-job_listing_columns', array( 'cb' => '', 'job_position' => 'Poste', 'job_location' => 'Lieu', 'job_status' => 'Statut' ) );
+check( 'colonne « Carte » insérée juste après le lieu', array( 'cb', 'job_position', 'job_location', AdminListColumn::COLUMN, 'job_status' ) === array_keys( $c ) && 'Carte' === $c[ AdminListColumn::COLUMN ] );
+$c = $column->columns( array( 'cb' => '', 'lieu_perso' => 'Lieu du poste' ) );
+check( 'sans colonne job_location : « Carte » ajoutée en fin', array( 'cb', 'lieu_perso', AdminListColumn::COLUMN ) === array_keys( $c ) );
+
+$cell = function ( $column_name, $id ) {
+	ob_start();
+	do_action( 'manage_job_listing_posts_custom_column', $column_name, $id );
+	return (string) ob_get_clean();
+};
+$html = $cell( AdminListColumn::COLUMN, 800 );
+check( 'rendu placé : ✓ vert, infobulle et texte pour lecteur d’écran', false !== strpos( $html, 'g2rd-wpjm-geo-mapcol--placed tips' ) && false !== strpos( $html, '<span class="dashicons dashicons-yes-alt" aria-hidden="true"></span>' ) && false !== strpos( $html, 'data-tip="Placée sur la carte : Rouen, Normandie"' ) && false !== strpos( $html, '<span class="screen-reader-text">Placée sur la carte : Rouen, Normandie</span>' ) );
+$html = $cell( AdminListColumn::COLUMN, 803 );
+check( 'rendu en attente (offre de la file) : horloge rouge', false !== strpos( $html, 'g2rd-wpjm-geo-mapcol--pending' ) && false !== strpos( $html, 'dashicons-clock' ) && false !== strpos( $html, 'En attente de géocodage' ) );
+$html = $cell( AdminListColumn::COLUMN, 802 );
+check( 'rendu lieu vide : ✗ rouge', false !== strpos( $html, 'g2rd-wpjm-geo-mapcol--empty' ) && false !== strpos( $html, 'dashicons-dismiss' ) && false !== strpos( $html, 'Lieu non renseigné' ) );
+$html = $cell( AdminListColumn::COLUMN, 801 );
+check( 'rendu introuvable : ✗ rouge et piste de correction', false !== strpos( $html, 'g2rd-wpjm-geo-mapcol--missing' ) && false !== strpos( $html, 'dashicons-dismiss' ) && false !== strpos( $html, 'Re-géocoder les offres' ) );
+$html = $cell( AdminListColumn::COLUMN, 805 );
+check( 'rendu : libellé échappé dans l’infobulle et dans le texte', false === strpos( $html, '<b>' ) && 2 === substr_count( $html, 'Caen &quot;x&quot; &amp; y' ) );
+check( 'rendu : rien pour une autre colonne', '' === $cell( 'job_status', 800 ) );
+
+$GLOBALS['typenow'] = 'job_listing';
+do_action( 'admin_enqueue_scripts', 'edit.php' );
+$style = isset( G2RD_Test_State::$enqueued[ 'style:' . AdminListColumn::STYLE_HANDLE ] ) ? G2RD_Test_State::$enqueued[ 'style:' . AdminListColumn::STYLE_HANDLE ] : '';
+check( 'feuille de la colonne chargée sur la liste des offres', G2RD_WPJM_GEO_URL . 'assets/css/admin-list.css' === $style );
+G2RD_Test_State::$enqueued = array();
+do_action( 'admin_enqueue_scripts', 'post.php' );
+$GLOBALS['typenow'] = 'post';
+do_action( 'admin_enqueue_scripts', 'edit.php' );
+check( 'feuille absente des autres écrans (édition d’une offre, liste des articles)', ! isset( G2RD_Test_State::$enqueued[ 'style:' . AdminListColumn::STYLE_HANDLE ] ) );
+unset( $GLOBALS['typenow'] );
+
 $results = $GLOBALS['g2rd_results'];
 echo PHP_EOL . sprintf( 'Résultat : %d réussis, %d échoués', $results['pass'], $results['fail'] ) . PHP_EOL;
 exit( $results['fail'] ? 1 : 0 );
