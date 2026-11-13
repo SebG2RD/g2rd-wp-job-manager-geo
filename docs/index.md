@@ -19,6 +19,7 @@ Conceptions et plans, par évolution :
 | 1.1.0 | Fournisseur libre (MapLibre, OpenFreeMap, Photon) | [spec](superpowers/specs/2026-10-16-fournisseur-libre-osm-design.md) | [plan](superpowers/plans/2026-10-16-fournisseur-libre-osm.md) |
 | 1.2.0 | Plusieurs lieux par offre, régions françaises | [spec](superpowers/specs/2026-10-23-lieux-multiples-regions-design.md) | [plan](superpowers/plans/2026-10-24-lieux-multiples-regions.md) |
 | 1.2.1 | Carte moins regroupée, liste sous la carte, sommaire de la console | [spec](superpowers/specs/2026-10-24-carte-liste-console-design.md) | [plan](superpowers/plans/2026-10-24-carte-liste-console.md) |
+| 1.2.2 | Correctif : toutes les villes placées dès l'enregistrement (remplace le « budget d'appels » de la spec 1.2.0) | — | — |
 
 Documents ailleurs dans le dépôt :
 

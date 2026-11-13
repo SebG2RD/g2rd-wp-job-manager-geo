@@ -66,26 +66,45 @@ class PlaceLocator {
 	private $lookups = 0;
 
 	/**
+	 * Horloge en secondes (remplaçable dans les tests), ou null : microtime().
+	 *
+	 * @var callable|null
+	 */
+	private $clock;
+
+	/**
+	 * Instant au-delà duquel locate() n'envoie plus de texte à Photon, ou null : sans échéance.
+	 *
+	 * @var float|null
+	 */
+	private $deadline = null;
+
+	/**
 	 * Constructeur.
 	 *
 	 * @param PhotonGeocoder $geocoder Géocodeur.
 	 * @param callable|null  $sleeper  Pause en secondes après chaque appel réel ; null : aucune.
+	 * @param callable|null  $clock    Horloge en secondes ; null : microtime().
 	 */
-	public function __construct( PhotonGeocoder $geocoder, $sleeper = null ) {
+	public function __construct( PhotonGeocoder $geocoder, $sleeper = null, $clock = null ) {
 		$this->geocoder = $geocoder;
 		$this->sleeper  = is_callable( $sleeper ) ? $sleeper : null;
+		$this->clock    = is_callable( $clock ) ? $clock : null;
 	}
 
 	/**
 	 * Place les lieux d'un texte.
 	 *
-	 * @param string $text   Texte du champ « Lieu ».
-	 * @param int    $budget Textes absents du cache que l'on peut envoyer à Photon (UNLIMITED : sans limite).
+	 * @param string    $text    Texte du champ « Lieu ».
+	 * @param int       $budget  Textes absents du cache que l'on peut envoyer à Photon (UNLIMITED : sans limite).
+	 * @param int|float $seconds Délai après lequel plus aucun texte absent du cache n'est envoyé à Photon (0 : sans délai).
+	 *                           Un appel déjà parti peut encore durer PhotonGeocoder::TIMEOUT.
 	 * @return array{places:list<array<string,string>>,address:array<string,string>|null,missing:list<string>,deferred:bool}|\WP_Error
 	 */
-	public function locate( $text, $budget = self::UNLIMITED ) {
-		$this->budget  = (int) $budget;
-		$this->lookups = 0;
+	public function locate( $text, $budget = self::UNLIMITED, $seconds = 0 ) {
+		$this->budget   = (int) $budget;
+		$this->lookups  = 0;
+		$this->deadline = $seconds > 0 ? $this->now() + (float) $seconds : null;
 		$found         = array();
 		$seen          = array();
 		$missing       = array();
@@ -324,14 +343,14 @@ class PlaceLocator {
 	}
 
 	/**
-	 * Géocode un texte en respectant le budget, puis marque une pause après un appel réel.
+	 * Géocode un texte en respectant le budget et l'échéance, puis marque une pause après un appel réel.
 	 *
 	 * @param string $text Texte.
-	 * @return array{address:array<string,string>,county:string,name:string}|null|\WP_Error|string DEFER si le budget est épuisé.
+	 * @return array{address:array<string,string>,county:string,name:string}|null|\WP_Error|string DEFER si le budget est épuisé ou le délai écoulé.
 	 */
 	private function geocode( $text ) {
 		if ( ! $this->geocoder->is_cached( $text ) ) {
-			if ( 0 === $this->budget ) {
+			if ( 0 === $this->budget || ( null !== $this->deadline && $this->now() >= $this->deadline ) ) {
 				return self::DEFER;
 			}
 			if ( $this->lookups >= self::MAX_LOOKUPS ) {
@@ -347,6 +366,15 @@ class PlaceLocator {
 			call_user_func( $this->sleeper, 1 );
 		}
 		return $result;
+	}
+
+	/**
+	 * Horloge en secondes.
+	 *
+	 * @return float
+	 */
+	private function now() {
+		return $this->clock ? (float) call_user_func( $this->clock ) : microtime( true );
 	}
 
 	/**

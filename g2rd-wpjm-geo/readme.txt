@@ -3,7 +3,7 @@ Contributors: g2rd
 Requires at least: 6.4
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.2.1
+Stable tag: 1.2.2
 License: GPLv2 or later
 
 Complète WP Job Manager : autocomplétion mondiale des villes, carte des offres, candidatures Go Fetch Jobs.
@@ -89,6 +89,9 @@ En mode libre, saisir chaque lieu dans le champ « Lieu » (étiquettes) ; sans 
 Le plugin est prévu pour un site seul : en multisite, la désinstallation ne nettoie que le site courant.
 
 == Changelog ==
+
+= 1.2.2 =
+* Correctif : une offre enregistrée avec plusieurs villes (étiquettes choisies dans l'autocomplétion, ou séparées par « ; ») a un point par ville sur la carte dès l'enregistrement. Auparavant, dès deux villes inconnues du cache, l'offre perdait ses coordonnées et attendait le passage de WP-Cron, sans point sur la carte en attendant, et pour toujours si WP-Cron ne tournait pas. Le temps accordé à Photon pendant l'enregistrement est borné à 8 secondes ; au-delà, la file d'attente prend le relais comme avant.
 
 = 1.2.1 =
 * Carte : points moins regroupés quand on dézoome (rayon de 20 px), sur la carte libre comme sur la carte Google : en vue France, Paris, Évreux, le Nord ou Lyon restent distincts.

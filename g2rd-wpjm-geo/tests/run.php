@@ -1354,6 +1354,28 @@ $r = $locator->locate( 'Brest ; Normandie ; Caen', 1 );
 check( 'budget 1 : villes en cache et régions ne comptent pas', 'city:Brest | region:Normandie | city:Caen' === g2rd_labels( $r ) && false === $r['deferred'] && 2 === count( $GLOBALS['g2rd_world_queries'] ) );
 $r = $locator->locate( 'Le Havre', 0 );
 check( 'budget 0 : texte absent du cache → à différer, sans requête', true === $r['deferred'] && 2 === count( $GLOBALS['g2rd_world_queries'] ) );
+// Échéance en secondes (enregistrement interactif) : une fois le délai écoulé, plus aucun texte absent du cache ne part vers Photon.
+$now   = 0;
+$timed = new PlaceLocator(
+	new PhotonGeocoder( $s ),
+	null,
+	function () use ( &$now ) {
+		return $now;
+	}
+);
+g2rd_world( array() );
+$world_responder                 = G2RD_Test_State::$http_responder;
+G2RD_Test_State::$http_responder = function ( $method, $url ) use ( $world_responder, &$now ) {
+	$now += 4; // Photon lent : 4 s par appel.
+	return call_user_func( $world_responder, $method, $url );
+};
+$r = $timed->locate( 'Rouen ; Paris ; Lyon', PlaceLocator::UNLIMITED, 6 );
+check( 'échéance : délai écoulé → à différer, plus aucun appel à Photon', is_array( $r ) && true === $r['deferred'] && array() === $r['places'] && array( 'Rouen', 'Paris' ) === $GLOBALS['g2rd_world_queries'] );
+$r = $timed->locate( 'Le Havre ; Rouen ; Paris', PlaceLocator::UNLIMITED, 2 );
+check( 'échéance : les textes en cache restent placés après le délai', 'city:Le Havre | city:Rouen | city:Paris' === g2rd_labels( $r ) && false === $r['deferred'] );
+G2RD_Test_State::$http_responder = $world_responder;
+$r                               = $timed->locate( 'Rennes ; Lyon ; Rouen ; Paris', PlaceLocator::UNLIMITED, 6 );
+check( 'échéance : dans les temps, plusieurs villes absentes du cache sont toutes placées', 'city:Rennes | city:Lyon | city:Rouen | city:Paris' === g2rd_labels( $r ) && false === $r['deferred'] );
 G2RD_Test_State::$http_responder = function () {
 	return new WP_Error( 'http_request_failed', 'timeout' );
 };
@@ -1409,14 +1431,49 @@ check( 'liste de lieux modifiée : cache des offres renouvelé', 1 === G2RD_Test
 list( , , $queue ) = geo_boot();
 g2rd_world( array() );
 job_with_google_coords( 502 );
-do_action( 'job_manager_job_location_edited', 502, 'Caen ; Le Havre' );
+do_action( 'job_manager_job_location_edited', 502, 'Caen ; Le Havre ; Paris ; Lyon' );
 $queue->flush();
-check( 'deux villes absentes du cache : file d’attente, anciennes coordonnées effacées, une seule requête', array( 502 ) === get_option( GeocodeQueue::OPTION ) && ! isset( G2RD_Test_State::$meta[502]['geolocated'] ) && 1 === count( $GLOBALS['g2rd_world_queries'] ) );
-G2RD_Test_State::$meta[502]['_job_location'] = 'Caen ; Le Havre';
+check( 'quatre villes absentes du cache : toutes placées dès l’enregistrement, sans file d’attente', array() === get_option( GeocodeQueue::OPTION, array() ) && 'Caen' === G2RD_Test_State::$meta[502]['geolocation_city'] && 'osm' === G2RD_Test_State::$meta[502][ $src ] && array( 'city:Caen', 'city:Le Havre', 'city:Paris', 'city:Lyon' ) === $types( G2RD_Test_State::$meta[502][ $places ] ) && 4 === count( $GLOBALS['g2rd_world_queries'] ) );
+check( 'enregistrement : aucune pause entre les appels à Photon', 0 === $GLOBALS['g2rd_sleeps'] );
+
+list( , , $queue ) = geo_boot();
+g2rd_world( array() );
+job_with_google_coords( 505 );
+G2RD_Test_State::$doing_cron = true; // Import ou WP-Cron : aucun appel réseau pendant l'enregistrement.
+do_action( 'job_manager_job_location_edited', 505, 'Caen ; Le Havre' );
+G2RD_Test_State::$doing_cron = false;
+$queue->flush();
+check( 'contexte différé : file d’attente, anciennes coordonnées effacées, aucune requête', array( 505 ) === get_option( GeocodeQueue::OPTION ) && ! isset( G2RD_Test_State::$meta[505]['geolocated'] ) && array() === $GLOBALS['g2rd_world_queries'] );
+G2RD_Test_State::$meta[505]['_job_location'] = 'Caen ; Le Havre';
 unset( G2RD_Test_State::$scheduled[ GeocodeQueue::CRON_HOOK ] );
 do_action( GeocodeQueue::CRON_HOOK );
-check( 'file : tous les lieux placés', 'Caen' === G2RD_Test_State::$meta[502]['geolocation_city'] && array( 'city:Caen', 'city:Le Havre' ) === $types( G2RD_Test_State::$meta[502][ $places ] ) );
-check( 'file : une pause après l’appel réel (Le Havre), aucune sur le cache (Caen)', 1 === $GLOBALS['g2rd_sleeps'] );
+check( 'file : tous les lieux placés', 'Caen' === G2RD_Test_State::$meta[505]['geolocation_city'] && array( 'city:Caen', 'city:Le Havre' ) === $types( G2RD_Test_State::$meta[505][ $places ] ) );
+check( 'file : une pause après chaque appel réel à Photon', 2 === $GLOBALS['g2rd_sleeps'] );
+
+list( $s ) = boot( array( 'provider' => 'osm' ) );
+$now       = 0;
+$geocoder  = new PhotonGeocoder( $s );
+$slow      = new GeocodeQueue( $s, $geocoder, '__return_false' );
+$slow->register();
+( new GeocodingIntegration(
+	$s,
+	$geocoder,
+	$slow,
+	function () use ( &$now ) {
+		return $now;
+	}
+) )->register();
+g2rd_world( array() );
+$world_responder                 = G2RD_Test_State::$http_responder;
+G2RD_Test_State::$http_responder = function ( $method, $url ) use ( $world_responder, &$now ) {
+	$now += GeocodingIntegration::SAVE_SECONDS; // Photon très lent : le délai est écoulé dès le premier appel.
+	return call_user_func( $world_responder, $method, $url );
+};
+job_with_google_coords( 506 );
+do_action( 'job_manager_job_location_edited', 506, 'Caen ; Le Havre' );
+$slow->flush();
+check( 'Photon lent pendant l’enregistrement : délai écoulé, file d’attente, une seule requête', array( 506 ) === get_option( GeocodeQueue::OPTION ) && ! isset( G2RD_Test_State::$meta[506]['geolocated'] ) && array( 'Caen' ) === $GLOBALS['g2rd_world_queries'] && ! get_transient( GeocodingIntegration::DOWN_FLAG ) );
+G2RD_Test_State::$http_responder = null;
 
 geo_boot( 'google' );
 G2RD_Test_State::$post_types[503] = 'job_listing';

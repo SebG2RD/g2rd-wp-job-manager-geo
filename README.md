@@ -19,7 +19,7 @@ Deux fournisseurs au choix, qui s'appliquent ensemble à la carte, à l'autocomp
 
 Le plugin ne modifie ni WP Job Manager, ni Go Fetch Jobs, ni le thème.
 
-Version : **1.2.1**. Licence : GPL-2.0-or-later.
+Version : **1.2.2**. Licence : GPL-2.0-or-later.
 
 ## Documentation
 
