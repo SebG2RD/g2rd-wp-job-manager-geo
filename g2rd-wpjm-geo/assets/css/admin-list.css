@@ -1,0 +1,36 @@
+/* Colonne « Carte » de la liste des offres (wp-admin/edit.php?post_type=job_listing). */
+.wp-list-table .column-g2rd_wpjm_geo_map {
+	width: 4em;
+	text-align: center;
+}
+
+.g2rd-wpjm-geo-mapcol {
+	display: inline-block;
+	line-height: 1;
+}
+
+.g2rd-wpjm-geo-mapcol .dashicons {
+	width: 20px;
+	height: 20px;
+	font-size: 20px;
+}
+
+/* Couleurs de l'administration WordPress ; la forme de l'icône porte aussi l'information. */
+.g2rd-wpjm-geo-mapcol--placed {
+	color: #00a32a;
+}
+
+.g2rd-wpjm-geo-mapcol--empty,
+.g2rd-wpjm-geo-mapcol--foreign,
+.g2rd-wpjm-geo-mapcol--missing,
+.g2rd-wpjm-geo-mapcol--pending {
+	color: #d63638;
+}
+
+/* Écran étroit : la cellule suit le libellé de colonne affiché par WordPress. */
+@media screen and (max-width: 782px) {
+	.wp-list-table .column-g2rd_wpjm_geo_map {
+		width: auto;
+		text-align: left;
+	}
+}

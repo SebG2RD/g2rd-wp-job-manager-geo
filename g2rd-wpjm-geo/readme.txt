@@ -3,7 +3,7 @@ Contributors: g2rd
 Requires at least: 6.4
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.2.2
+Stable tag: 1.3.0
 License: GPLv2 or later
 
 Complète WP Job Manager : autocomplétion mondiale des villes, carte des offres, candidatures Go Fetch Jobs.
@@ -15,6 +15,7 @@ Complète WP Job Manager : autocomplétion mondiale des villes, carte des offres
 * Autocomplétion des villes du monde entier (Google Places, ou Photon en mode libre) sur le champ de localisation NATIF de WP Job Manager : formulaire public (`job_location`) et wp-admin (`_job_location`). Aucun second champ.
 * Carte interactive des offres publiées et géocodées par le fournisseur actif (`geolocation_lat` / `geolocation_long` de WP Job Manager), avec clustering et liste des offres partageant les mêmes coordonnées. Shortcode `[wpjm_jobs_map]` (attribut facultatif `height`) et bloc « Carte des offres d’emploi ».
 * Mode libre : plusieurs lieux par offre (10 au plus), villes et régions françaises, saisis en étiquettes dans le champ « Lieu » natif (enregistrés séparés par « ; »). Le texte libre et les imports sont reconnus aussi : « Paris, Lyon » donne deux villes, « Rouen, Normandie » une seule. Sur la carte, un point par ville et une zone colorée par région.
+* Liste des offres dans wp-admin : colonne « Carte », ✓ vert si les villes de l'offre sont placées sur la carte ; sinon rouge, ✗ (lieu vide, ville introuvable, coordonnées d'un autre fournisseur de carte) ou horloge (géocodage en attente). L'infobulle donne les villes placées ou la raison, et un texte est lu par les lecteurs d'écran.
 * Go Fetch Jobs (facultatif) : remplacement des URL de candidature des offres importées par une adresse email générique, outil d'analyse / simulation / correction par lots, journal avec rétention.
 
 Le plugin ne modifie ni WP Job Manager, ni Go Fetch Jobs, ni le thème. En mode Google, le géocodage reste celui de WP Job Manager ; en mode libre, le plugin géocode les offres avec Photon et écrit les coordonnées par les méthodes publiques de WP Job Manager.
@@ -89,6 +90,9 @@ En mode libre, saisir chaque lieu dans le champ « Lieu » (étiquettes) ; sans 
 Le plugin est prévu pour un site seul : en multisite, la désinstallation ne nettoie que le site courant.
 
 == Changelog ==
+
+= 1.3.0 =
+* Liste des offres dans wp-admin : nouvelle colonne « Carte ». ✓ vert : villes placées sur la carte. ✗ rouge : lieu vide, ville introuvable, ou coordonnées d'un autre fournisseur de carte. Horloge rouge : géocodage en attente. L'infobulle donne les villes placées ou la raison, et un texte est lu par les lecteurs d'écran.
 
 = 1.2.2 =
 * Correctif : une offre enregistrée avec plusieurs villes (étiquettes choisies dans l'autocomplétion, ou séparées par « ; ») a un point par ville sur la carte dès l'enregistrement. Auparavant, dès deux villes inconnues du cache, l'offre perdait ses coordonnées et attendait le passage de WP-Cron, sans point sur la carte en attendant, et pour toujours si WP-Cron ne tournait pas. Le temps accordé à Photon pendant l'enregistrement est borné à 8 secondes ; au-delà, la file d'attente prend le relais comme avant.

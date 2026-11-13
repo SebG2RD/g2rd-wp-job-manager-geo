@@ -133,6 +133,12 @@ ok 'import Go Fetch : deux villes placées' "$(is "$(wp eval "echo count( (array
 F=$(curl -sL "$B/?page_id=$FORM")
 ok 'formulaire : script des étiquettes, régions et aide « ; »' "$(has "$F" 'location-tags.js')$(has "$F" '"tags":true')$(has "$F" '"code":"28"')$(has "$F" 'Séparez plusieurs lieux')"
 
+JOBE=$(wp post create --post_type=job_listing --post_status=publish --post_title='Poste sans lieu' --porcelain)
+L=$(admin 'edit.php?post_type=job_listing')
+ok 'liste des offres : colonne « Carte » et sa feuille' "$(has "$L" 'column-g2rd_wpjm_geo_map')$(has "$L" 'assets/css/admin-list.css')"
+ok 'liste des offres : offre multi-lieux en vert, avec ses lieux' "$(has "$L" 'g2rd-wpjm-geo-mapcol--placed')$(has "$L" 'sur la carte : Paris, Lyon, Normandie')"
+ok 'liste des offres : offre sans lieu en rouge' "$(has "$L" 'g2rd-wpjm-geo-mapcol--empty')"
+
 echo "11. Retour vers Google"
 wp option update g2rd_wpjm_geo_settings '{"provider":"google"}' --format=json >/dev/null
 R=$(curl -s "$B/wp-json/g2rd-wpjm-geo/v1/jobs")

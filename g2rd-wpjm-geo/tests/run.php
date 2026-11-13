@@ -20,6 +20,7 @@ require __DIR__ . '/bootstrap.php';
 use G2RD\WPJMGeo\AdminMenu;
 use G2RD\WPJMGeo\AdminScreen;
 use G2RD\WPJMGeo\AdminLocation;
+use G2RD\WPJMGeo\AdminListColumn;
 use G2RD\WPJMGeo\LocationHelp;
 use G2RD\WPJMGeo\ApplicationNormalizer;
 use G2RD\WPJMGeo\GeocodeQueue;
@@ -1666,6 +1667,105 @@ list( $s ) = boot( array( 'provider' => Settings::PROVIDER_OSM ) );
 $cfg = ( new \G2RD\WPJMGeo\OsmAssets( $s ) )->config();
 check( 'URL des contours servie par le plugin, versionnée', 0 === strpos( $cfg['regionsUrl'], G2RD_WPJM_GEO_URL . 'assets/data/regions-fr.geojson?ver=' ) );
 check( 'crédit ODbL avec lien https vers la source', false !== strpos( $cfg['regionsCredit'], 'ODbL' ) && false !== strpos( $cfg['regionsCredit'], 'href="https://www.data.gouv.fr/' ) );
+
+echo PHP_EOL . '41. Carte : coordonnées d’une offre' . PHP_EOL;
+boot();
+G2RD_Test_State::$meta[810] = array( 'geolocation_lat' => '49.44321234', 'geolocation_long' => '1.0999' );
+check( 'coordonnées valides : arrondies à 6 décimales', array( 49.443212, 1.0999 ) === RestController::coordinates( 810 ) );
+$invalid = array(
+	811 => array( '0', '0' ),
+	812 => array( '91', '1' ),
+	813 => array( '1', '-181' ),
+	814 => array( 'abc', '1' ),
+	815 => array( '', '' ),
+);
+$nulls = 0;
+foreach ( $invalid as $id => $pair ) {
+	G2RD_Test_State::$meta[ $id ] = array( 'geolocation_lat' => $pair[0], 'geolocation_long' => $pair[1] );
+	$nulls                       += null === RestController::coordinates( $id ) ? 1 : 0;
+}
+check( 'coordonnées (0, 0), hors bornes, non numériques ou absentes : null', count( $invalid ) === $nulls );
+check( 'texte brut : balises retirées, entités décodées', 'Lille & environs' === RestController::plain( 'Lille &amp; <b>environs</b>' ) && '' === RestController::plain( array( 'x' ) ) );
+
+echo PHP_EOL . '42. Liste des offres : colonne « Carte »' . PHP_EOL;
+list( $s ) = boot( array( 'provider' => Settings::PROVIDER_OSM ) );
+G2RD_Test_State::$meta[800] = array(
+	'_job_location'                   => 'Rouen ; Normandie',
+	'geolocation_lat'                 => '49.4432',
+	'geolocation_long'                => '1.0999',
+	'geolocation_city'                => 'Rouen',
+	GeocodingIntegration::META_SOURCE => 'osm',
+	GeocodingIntegration::META_PLACES => array(
+		array( 'type' => 'city', 'label' => 'Rouen', 'lat' => '49.4432', 'lng' => '1.0999' ),
+		array( 'type' => 'region', 'label' => 'Normandie', 'lat' => '49.1202', 'lng' => '0.1128', 'region' => '28' ),
+	),
+);
+G2RD_Test_State::$meta[801] = array( '_job_location' => 'Paris', 'geolocation_lat' => '48.85', 'geolocation_long' => '2.35' );
+G2RD_Test_State::$meta[802] = array( '_job_location' => '  ' );
+G2RD_Test_State::$meta[803] = array( '_job_location' => 'Rouen ; Caen' );
+G2RD_Test_State::$meta[804] = array( '_job_location' => 'Nulle part', 'geolocation_lat' => '0', 'geolocation_long' => '0', GeocodingIntegration::META_SOURCE => 'osm' );
+
+$st = AdminListColumn::state( 800, Settings::PROVIDER_OSM, array() );
+check( 'état : placée en mode libre, villes et régions de la carte', AdminListColumn::PLACED === $st['state'] && array( 'Rouen', 'Normandie' ) === $st['labels'] );
+check( 'état : coordonnées écrites par Google en mode libre → autre fournisseur', AdminListColumn::FOREIGN === AdminListColumn::state( 801, Settings::PROVIDER_OSM, array() )['state'] );
+G2RD_Test_State::$meta[806] = array( '_job_location' => 'Atlantide' );
+check( 'état : lieu sans aucune coordonnée → introuvable', AdminListColumn::MISSING === AdminListColumn::state( 806, Settings::PROVIDER_OSM, array() )['state'] );
+check( 'état : lieu vide', AdminListColumn::EMPTY_LOCATION === AdminListColumn::state( 802, Settings::PROVIDER_OSM, array() )['state'] );
+check( 'état : offre dans la file → en attente', AdminListColumn::PENDING === AdminListColumn::state( 803, Settings::PROVIDER_OSM, array( 803 => true ) )['state'] );
+check( 'état : hors de la file → introuvable', AdminListColumn::MISSING === AdminListColumn::state( 803, Settings::PROVIDER_OSM, array() )['state'] );
+check( 'état : coordonnées (0, 0) → pas placée', AdminListColumn::MISSING === AdminListColumn::state( 804, Settings::PROVIDER_OSM, array() )['state'] );
+$st = AdminListColumn::state( 801, Settings::PROVIDER_GOOGLE, array() );
+check( 'état, mode Google : coordonnées sans source → placée, libellé du lieu', AdminListColumn::PLACED === $st['state'] && array( 'Paris' ) === $st['labels'] );
+check( 'état, mode Google : pas d’état « en attente »', AdminListColumn::MISSING === AdminListColumn::state( 803, Settings::PROVIDER_GOOGLE, array( 803 => true ) )['state'] );
+check( 'état, mode Google : offre géocodée par Photon → autre fournisseur', AdminListColumn::FOREIGN === AdminListColumn::state( 800, Settings::PROVIDER_GOOGLE, array() )['state'] );
+
+update_option( GeocodeQueue::OPTION, array( 803 ) );
+G2RD_Test_State::$meta[805] = array(
+	'_job_location'                   => 'Caen',
+	'geolocation_lat'                 => '49.1829',
+	'geolocation_long'                => '-0.3707',
+	GeocodingIntegration::META_SOURCE => 'osm',
+	GeocodingIntegration::META_PLACES => array(
+		array( 'type' => 'city', 'label' => 'Caen "x" & <b>y</b>', 'lat' => '49.1829', 'lng' => '-0.3707' ),
+	),
+);
+$column = new AdminListColumn( $s );
+$column->register();
+
+$c = apply_filters( 'manage_edit-job_listing_columns', array( 'cb' => '', 'job_position' => 'Poste', 'job_location' => 'Lieu', 'job_status' => 'Statut' ) );
+check( 'colonne « Carte » insérée juste après le lieu', array( 'cb', 'job_position', 'job_location', AdminListColumn::COLUMN, 'job_status' ) === array_keys( $c ) && 'Carte' === $c[ AdminListColumn::COLUMN ] );
+$c = $column->columns( array( 'cb' => '', 'lieu_perso' => 'Lieu du poste' ) );
+check( 'sans colonne job_location : « Carte » ajoutée en fin', array( 'cb', 'lieu_perso', AdminListColumn::COLUMN ) === array_keys( $c ) );
+
+$cell = function ( $column_name, $id ) {
+	ob_start();
+	do_action( 'manage_job_listing_posts_custom_column', $column_name, $id );
+	return (string) ob_get_clean();
+};
+$html = $cell( AdminListColumn::COLUMN, 800 );
+check( 'rendu placé : ✓ vert, infobulle et texte pour lecteur d’écran', false !== strpos( $html, 'g2rd-wpjm-geo-mapcol--placed tips' ) && false !== strpos( $html, '<span class="dashicons dashicons-yes-alt" aria-hidden="true"></span>' ) && false !== strpos( $html, 'data-tip="Placée sur la carte : Rouen, Normandie"' ) && false !== strpos( $html, '<span class="screen-reader-text">Placée sur la carte : Rouen, Normandie</span>' ) );
+$html = $cell( AdminListColumn::COLUMN, 803 );
+check( 'rendu en attente (offre de la file) : horloge rouge', false !== strpos( $html, 'g2rd-wpjm-geo-mapcol--pending' ) && false !== strpos( $html, 'dashicons-clock' ) && false !== strpos( $html, 'En attente de géocodage' ) );
+$html = $cell( AdminListColumn::COLUMN, 802 );
+check( 'rendu lieu vide : ✗ rouge', false !== strpos( $html, 'g2rd-wpjm-geo-mapcol--empty' ) && false !== strpos( $html, 'dashicons-dismiss' ) && false !== strpos( $html, 'Lieu non renseigné' ) );
+$html = $cell( AdminListColumn::COLUMN, 806 );
+check( 'rendu introuvable : ✗ rouge et piste de correction', false !== strpos( $html, 'g2rd-wpjm-geo-mapcol--missing' ) && false !== strpos( $html, 'dashicons-dismiss' ) && false !== strpos( $html, 'Ville introuvable' ) && false !== strpos( $html, 'Re-géocoder les offres' ) );
+$html = $cell( AdminListColumn::COLUMN, 801 );
+check( 'rendu autre fournisseur : ✗ rouge, raison exacte et piste de correction', false !== strpos( $html, 'g2rd-wpjm-geo-mapcol--foreign' ) && false !== strpos( $html, 'dashicons-dismiss' ) && false !== strpos( $html, 'autre fournisseur' ) && false === strpos( $html, 'introuvable' ) && false !== strpos( $html, 'Re-géocoder les offres' ) );
+$html = $cell( AdminListColumn::COLUMN, 805 );
+check( 'rendu : libellé échappé dans l’infobulle et dans le texte', false === strpos( $html, '<b>' ) && 2 === substr_count( $html, 'Caen &quot;x&quot; &amp; y' ) );
+check( 'rendu : rien pour une autre colonne', '' === $cell( 'job_status', 800 ) );
+
+$GLOBALS['typenow'] = 'job_listing';
+do_action( 'admin_enqueue_scripts', 'edit.php' );
+$style = isset( G2RD_Test_State::$enqueued[ 'style:' . AdminListColumn::STYLE_HANDLE ] ) ? G2RD_Test_State::$enqueued[ 'style:' . AdminListColumn::STYLE_HANDLE ] : '';
+check( 'feuille de la colonne chargée sur la liste des offres', G2RD_WPJM_GEO_URL . 'assets/css/admin-list.css' === $style );
+G2RD_Test_State::$enqueued = array();
+do_action( 'admin_enqueue_scripts', 'post.php' );
+$GLOBALS['typenow'] = 'post';
+do_action( 'admin_enqueue_scripts', 'edit.php' );
+check( 'feuille absente des autres écrans (édition d’une offre, liste des articles)', ! isset( G2RD_Test_State::$enqueued[ 'style:' . AdminListColumn::STYLE_HANDLE ] ) );
+unset( $GLOBALS['typenow'] );
 
 $results = $GLOBALS['g2rd_results'];
 echo PHP_EOL . sprintf( 'Résultat : %d réussis, %d échoués', $results['pass'], $results['fail'] ) . PHP_EOL;

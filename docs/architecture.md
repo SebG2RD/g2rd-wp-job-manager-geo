@@ -64,6 +64,7 @@ table propres au plugin.
 | `GoFetchIntegration`, `ApplicationNormalizer`, `UrlChecker` | Remplacement des candidatures Go Fetch Jobs |
 | `Logger` | Table `{prefix}g2rd_wpjm_geo_log`, purge quotidienne |
 | `RegeocodeTool`, `MigrationTool` | Outils de la section « Outils », par lots via admin-ajax |
+| `AdminListColumn` | Colonne « Carte » de la liste des offres : même règle que l'API de la carte (`RestController::coordinates()`, source du fournisseur actif) ; sinon lieu vide, en attente (file de géocodage), coordonnées de l'autre fournisseur ou introuvable |
 | `PrivacyPolicy` | Texte suggéré pour la politique de confidentialité |
 
 ## Les deux fournisseurs
