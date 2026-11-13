@@ -682,3 +682,10 @@ Attendu :
 
 Lancer : `git status --short && git log --oneline main..HEAD`
 Attendu : arbre propre, et sur la branche les commits de la spec, du plan, des tâches 1 à 5 et de la version.
+
+---
+
+## Écarts constatés pendant l'exécution
+
+- **Chargement des classes en test** : `tests/bootstrap.php` charge les classes depuis une liste explicite. `AdminListColumn` y a été ajoutée à la tâche 2.
+- **État `foreign`** (ajouté après la tâche 3). La première capture de la liste a montré un cas trompeur : une offre placée par l'autre fournisseur de carte s'affichait « Ville introuvable ». Cela arrive après un changement de fournisseur, ou en mode libre pour une offre géocodée autrefois par Google. Le nouvel état garde le ✗ rouge, mais son infobulle dit « Coordonnées d'un autre fournisseur de carte ». Il est testé en mode libre et en mode Google, et la spec est à jour. Total des tests PHP : 408.

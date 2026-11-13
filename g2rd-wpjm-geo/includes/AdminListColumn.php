@@ -23,6 +23,7 @@ class AdminListColumn {
 	const PLACED         = 'placed';
 	const EMPTY_LOCATION = 'empty';
 	const PENDING        = 'pending';
+	const FOREIGN        = 'foreign';
 	const MISSING        = 'missing';
 
 	/**
@@ -125,7 +126,7 @@ class AdminListColumn {
 	/**
 	 * État d'une offre pour la colonne. Placée : coordonnées valides venant du fournisseur
 	 * actif (règle de la carte). Sinon, dans l'ordre : lieu vide, en attente (file du mode
-	 * libre), introuvable.
+	 * libre), coordonnées de l'autre fournisseur (absentes de cette carte), introuvable.
 	 *
 	 * @param int             $job_id   ID de l'offre.
 	 * @param string          $provider Fournisseur actif.
@@ -136,8 +137,8 @@ class AdminListColumn {
 		$is_osm = Settings::PROVIDER_OSM === $provider;
 		$source = (string) get_post_meta( $job_id, GeocodingIntegration::META_SOURCE, true );
 		$ours   = $is_osm ? Settings::PROVIDER_OSM === $source : ( '' === $source || Settings::PROVIDER_GOOGLE === $source );
-		$point  = $ours ? RestController::coordinates( $job_id ) : null;
-		if ( $point ) {
+		$point  = RestController::coordinates( $job_id );
+		if ( $point && $ours ) {
 			$city   = RestController::plain( get_post_meta( $job_id, 'geolocation_city', true ) );
 			$label  = '' !== $city ? $city : RestController::plain( get_post_meta( $job_id, '_job_location', true ) );
 			$labels = array();
@@ -156,6 +157,8 @@ class AdminListColumn {
 			$state = self::EMPTY_LOCATION;
 		} elseif ( $is_osm && isset( $queued[ $job_id ] ) ) {
 			$state = self::PENDING;
+		} elseif ( $point ) {
+			$state = self::FOREIGN;
 		} else {
 			$state = self::MISSING;
 		}
@@ -185,6 +188,8 @@ class AdminListColumn {
 				return array( 'dashicons-dismiss', __( 'Lieu non renseigné', 'g2rd-wpjm-geo' ) );
 			case self::PENDING:
 				return array( 'dashicons-clock', __( 'En attente de géocodage', 'g2rd-wpjm-geo' ) );
+			case self::FOREIGN:
+				return array( 'dashicons-dismiss', __( 'Coordonnées d’un autre fournisseur de carte : utilisez « Re-géocoder les offres » dans les réglages du plugin', 'g2rd-wpjm-geo' ) );
 			default:
 				return array( 'dashicons-dismiss', __( 'Ville introuvable : corrigez le lieu ou utilisez « Re-géocoder les offres » dans les réglages du plugin', 'g2rd-wpjm-geo' ) );
 		}

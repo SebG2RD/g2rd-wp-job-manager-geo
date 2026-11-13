@@ -15,6 +15,7 @@ Nouvelle colonne **« Carte »**, présente sur toutes les pages de la liste. On
 | `placed` | Coordonnées valides venant du fournisseur actif | `dashicons-yes-alt` (✓) | vert `#00a32a` | « Placée sur la carte : Bezons, Gaillon, Aubevoye, Vernon » |
 | `empty` | Champ Lieu vide | `dashicons-dismiss` (✗) | rouge `#d63638` | « Lieu non renseigné » |
 | `pending` | Mode libre, offre dans la file de géocodage | `dashicons-clock` | rouge `#d63638` | « En attente de géocodage » |
+| `foreign` | Coordonnées valides, mais écrites par l'autre fournisseur, donc absentes de cette carte | `dashicons-dismiss` (✗) | rouge `#d63638` | « Coordonnées d'un autre fournisseur de carte : utilisez « Re-géocoder les offres » dans les réglages du plugin » |
 | `missing` | Tous les autres cas | `dashicons-dismiss` (✗) | rouge `#d63638` | « Ville introuvable : corrigez le lieu ou utilisez « Re-géocoder les offres » dans les réglages du plugin » |
 
 Les conditions sont évaluées dans l'ordre du tableau ; la première vraie l'emporte.

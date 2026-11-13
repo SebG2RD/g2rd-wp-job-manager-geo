@@ -1707,7 +1707,9 @@ G2RD_Test_State::$meta[804] = array( '_job_location' => 'Nulle part', 'geolocati
 
 $st = AdminListColumn::state( 800, Settings::PROVIDER_OSM, array() );
 check( 'état : placée en mode libre, villes et régions de la carte', AdminListColumn::PLACED === $st['state'] && array( 'Rouen', 'Normandie' ) === $st['labels'] );
-check( 'état : coordonnées écrites par Google en mode libre → introuvable', AdminListColumn::MISSING === AdminListColumn::state( 801, Settings::PROVIDER_OSM, array() )['state'] );
+check( 'état : coordonnées écrites par Google en mode libre → autre fournisseur', AdminListColumn::FOREIGN === AdminListColumn::state( 801, Settings::PROVIDER_OSM, array() )['state'] );
+G2RD_Test_State::$meta[806] = array( '_job_location' => 'Atlantide' );
+check( 'état : lieu sans aucune coordonnée → introuvable', AdminListColumn::MISSING === AdminListColumn::state( 806, Settings::PROVIDER_OSM, array() )['state'] );
 check( 'état : lieu vide', AdminListColumn::EMPTY_LOCATION === AdminListColumn::state( 802, Settings::PROVIDER_OSM, array() )['state'] );
 check( 'état : offre dans la file → en attente', AdminListColumn::PENDING === AdminListColumn::state( 803, Settings::PROVIDER_OSM, array( 803 => true ) )['state'] );
 check( 'état : hors de la file → introuvable', AdminListColumn::MISSING === AdminListColumn::state( 803, Settings::PROVIDER_OSM, array() )['state'] );
@@ -1715,7 +1717,7 @@ check( 'état : coordonnées (0, 0) → pas placée', AdminListColumn::MISSING =
 $st = AdminListColumn::state( 801, Settings::PROVIDER_GOOGLE, array() );
 check( 'état, mode Google : coordonnées sans source → placée, libellé du lieu', AdminListColumn::PLACED === $st['state'] && array( 'Paris' ) === $st['labels'] );
 check( 'état, mode Google : pas d’état « en attente »', AdminListColumn::MISSING === AdminListColumn::state( 803, Settings::PROVIDER_GOOGLE, array( 803 => true ) )['state'] );
-check( 'état, mode Google : offre géocodée par Photon → introuvable', AdminListColumn::MISSING === AdminListColumn::state( 800, Settings::PROVIDER_GOOGLE, array() )['state'] );
+check( 'état, mode Google : offre géocodée par Photon → autre fournisseur', AdminListColumn::FOREIGN === AdminListColumn::state( 800, Settings::PROVIDER_GOOGLE, array() )['state'] );
 
 update_option( GeocodeQueue::OPTION, array( 803 ) );
 G2RD_Test_State::$meta[805] = array(
@@ -1746,8 +1748,10 @@ $html = $cell( AdminListColumn::COLUMN, 803 );
 check( 'rendu en attente (offre de la file) : horloge rouge', false !== strpos( $html, 'g2rd-wpjm-geo-mapcol--pending' ) && false !== strpos( $html, 'dashicons-clock' ) && false !== strpos( $html, 'En attente de géocodage' ) );
 $html = $cell( AdminListColumn::COLUMN, 802 );
 check( 'rendu lieu vide : ✗ rouge', false !== strpos( $html, 'g2rd-wpjm-geo-mapcol--empty' ) && false !== strpos( $html, 'dashicons-dismiss' ) && false !== strpos( $html, 'Lieu non renseigné' ) );
+$html = $cell( AdminListColumn::COLUMN, 806 );
+check( 'rendu introuvable : ✗ rouge et piste de correction', false !== strpos( $html, 'g2rd-wpjm-geo-mapcol--missing' ) && false !== strpos( $html, 'dashicons-dismiss' ) && false !== strpos( $html, 'Ville introuvable' ) && false !== strpos( $html, 'Re-géocoder les offres' ) );
 $html = $cell( AdminListColumn::COLUMN, 801 );
-check( 'rendu introuvable : ✗ rouge et piste de correction', false !== strpos( $html, 'g2rd-wpjm-geo-mapcol--missing' ) && false !== strpos( $html, 'dashicons-dismiss' ) && false !== strpos( $html, 'Re-géocoder les offres' ) );
+check( 'rendu autre fournisseur : ✗ rouge, raison exacte et piste de correction', false !== strpos( $html, 'g2rd-wpjm-geo-mapcol--foreign' ) && false !== strpos( $html, 'dashicons-dismiss' ) && false !== strpos( $html, 'autre fournisseur' ) && false === strpos( $html, 'introuvable' ) && false !== strpos( $html, 'Re-géocoder les offres' ) );
 $html = $cell( AdminListColumn::COLUMN, 805 );
 check( 'rendu : libellé échappé dans l’infobulle et dans le texte', false === strpos( $html, '<b>' ) && 2 === substr_count( $html, 'Caen &quot;x&quot; &amp; y' ) );
 check( 'rendu : rien pour une autre colonne', '' === $cell( 'job_status', 800 ) );

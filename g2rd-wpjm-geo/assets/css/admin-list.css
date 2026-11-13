@@ -21,6 +21,7 @@
 }
 
 .g2rd-wpjm-geo-mapcol--empty,
+.g2rd-wpjm-geo-mapcol--foreign,
 .g2rd-wpjm-geo-mapcol--missing,
 .g2rd-wpjm-geo-mapcol--pending {
 	color: #d63638;
