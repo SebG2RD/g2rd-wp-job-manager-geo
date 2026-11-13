@@ -1667,6 +1667,25 @@ $cfg = ( new \G2RD\WPJMGeo\OsmAssets( $s ) )->config();
 check( 'URL des contours servie par le plugin, versionnée', 0 === strpos( $cfg['regionsUrl'], G2RD_WPJM_GEO_URL . 'assets/data/regions-fr.geojson?ver=' ) );
 check( 'crédit ODbL avec lien https vers la source', false !== strpos( $cfg['regionsCredit'], 'ODbL' ) && false !== strpos( $cfg['regionsCredit'], 'href="https://www.data.gouv.fr/' ) );
 
+echo PHP_EOL . '41. Carte : coordonnées d’une offre' . PHP_EOL;
+boot();
+G2RD_Test_State::$meta[810] = array( 'geolocation_lat' => '49.44321234', 'geolocation_long' => '1.0999' );
+check( 'coordonnées valides : arrondies à 6 décimales', array( 49.443212, 1.0999 ) === RestController::coordinates( 810 ) );
+$invalid = array(
+	811 => array( '0', '0' ),
+	812 => array( '91', '1' ),
+	813 => array( '1', '-181' ),
+	814 => array( 'abc', '1' ),
+	815 => array( '', '' ),
+);
+$nulls = 0;
+foreach ( $invalid as $id => $pair ) {
+	G2RD_Test_State::$meta[ $id ] = array( 'geolocation_lat' => $pair[0], 'geolocation_long' => $pair[1] );
+	$nulls                       += null === RestController::coordinates( $id ) ? 1 : 0;
+}
+check( 'coordonnées (0, 0), hors bornes, non numériques ou absentes : null', count( $invalid ) === $nulls );
+check( 'texte brut : balises retirées, entités décodées', 'Lille & environs' === RestController::plain( 'Lille &amp; <b>environs</b>' ) && '' === RestController::plain( array( 'x' ) ) );
+
 $results = $GLOBALS['g2rd_results'];
 echo PHP_EOL . sprintf( 'Résultat : %d réussis, %d échoués', $results['pass'], $results['fail'] ) . PHP_EOL;
 exit( $results['fail'] ? 1 : 0 );

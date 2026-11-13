@@ -262,16 +262,11 @@ class RestController {
 			return null;
 		}
 
-		$lat = get_post_meta( $id, 'geolocation_lat', true );
-		$lng = get_post_meta( $id, 'geolocation_long', true );
-		if ( ! is_numeric( $lat ) || ! is_numeric( $lng ) ) {
+		$point = self::coordinates( $id );
+		if ( ! $point ) {
 			return null;
 		}
-		$lat = round( (float) $lat, 6 );
-		$lng = round( (float) $lng, 6 );
-		if ( $lat < -90 || $lat > 90 || $lng < -180 || $lng > 180 || ( 0.0 === $lat && 0.0 === $lng ) ) {
-			return null;
-		}
+		list( $lat, $lng ) = $point;
 
 		$types = array();
 		if ( get_option( 'job_manager_enable_types' ) && function_exists( 'wpjm_get_the_job_types' ) ) {
@@ -310,12 +305,33 @@ class RestController {
 	}
 
 	/**
+	 * Point de l'offre dans WP Job Manager : coordonnées numériques, dans les bornes, hors (0, 0).
+	 * Même règle pour la carte et pour la colonne « Carte » de la liste des offres.
+	 *
+	 * @param int $id ID de l'offre.
+	 * @return array{0:float,1:float}|null Latitude et longitude arrondies à 6 décimales, ou null.
+	 */
+	public static function coordinates( $id ) {
+		$lat = get_post_meta( $id, 'geolocation_lat', true );
+		$lng = get_post_meta( $id, 'geolocation_long', true );
+		if ( ! is_numeric( $lat ) || ! is_numeric( $lng ) ) {
+			return null;
+		}
+		$lat = round( (float) $lat, 6 );
+		$lng = round( (float) $lng, 6 );
+		if ( $lat < -90 || $lat > 90 || $lng < -180 || $lng > 180 || ( 0.0 === $lat && 0.0 === $lng ) ) {
+			return null;
+		}
+		return array( $lat, $lng );
+	}
+
+	/**
 	 * Texte brut : le client n'insère ces valeurs que via textContent.
 	 *
 	 * @param mixed $value Valeur.
 	 * @return string
 	 */
-	private static function plain( $value ) {
+	public static function plain( $value ) {
 		if ( ! is_scalar( $value ) ) {
 			return '';
 		}
