@@ -40,6 +40,7 @@ use G2RD\WPJMGeo\RestController;
 use G2RD\WPJMGeo\Settings;
 use G2RD\WPJMGeo\UrlChecker;
 use G2RD\WPJMGeo\UrlCheckQueue;
+use G2RD\WPJMGeo\Updater;
 
 $GLOBALS['g2rd_results'] = array( 'pass' => 0, 'fail' => 0 );
 
@@ -1766,6 +1767,46 @@ $GLOBALS['typenow'] = 'post';
 do_action( 'admin_enqueue_scripts', 'edit.php' );
 check( 'feuille absente des autres écrans (édition d’une offre, liste des articles)', ! isset( G2RD_Test_State::$enqueued[ 'style:' . AdminListColumn::STYLE_HANDLE ] ) );
 unset( $GLOBALS['typenow'] );
+
+echo PHP_EOL . '43. Mises à jour depuis les releases GitHub' . PHP_EOL;
+G2RD_Test_State::reset();
+( new Updater() )->register();
+$own     = plugin_basename( G2RD_WPJM_GEO_FILE );
+$release = array(
+	'tag_name' => 'v9.1.0',
+	'html_url' => 'https://evil.test/release',
+	'body'     => "## 9.1.0\n<script>alert(1)</script>",
+	'assets'   => array(
+		array( 'name' => 'g2rd-wpjm-geo-9.1.0.zip.sha256', 'browser_download_url' => 'https://github.com/SebG2RD/g2rd-wp-job-manager-geo/releases/download/v9.1.0/g2rd-wpjm-geo-9.1.0.zip.sha256' ),
+		array( 'name' => 'g2rd-wpjm-geo-9.1.0.zip', 'browser_download_url' => 'https://github.com/SebG2RD/g2rd-wp-job-manager-geo/releases/download/v9.1.0/g2rd-wpjm-geo-9.1.0.zip' ),
+	),
+);
+G2RD_Test_State::$http[ Updater::API ]['GET'] = array( 'response' => array( 'code' => 200 ), 'body' => wp_json_encode( $release ) );
+$u = apply_filters( 'update_plugins_github.com', false, array( 'Version' => '1.4.0' ), $own, array() );
+check( 'release GitHub : version sans « v », paquet = l’asset ZIP, page de la release du dépôt', is_array( $u ) && '9.1.0' === $u['version'] && 'https://github.com/SebG2RD/g2rd-wp-job-manager-geo/releases/download/v9.1.0/g2rd-wpjm-geo-9.1.0.zip' === $u['package'] && 'https://github.com/SebG2RD/g2rd-wp-job-manager-geo/releases/tag/v9.1.0' === $u['url'] && 'g2rd-wpjm-geo' === $u['slug'] );
+check( 'une seule requête, vers l’API des releases', array( 'GET ' . Updater::API ) === G2RD_Test_State::$http_calls );
+apply_filters( 'update_plugins_github.com', false, array( 'Version' => '1.4.0' ), $own, array() );
+check( 'réponse mise en cache : pas de nouvelle requête', 1 === count( G2RD_Test_State::$http_calls ) );
+check( 'autre plugin du même hôte : réponse inchangée, sans requête', false === apply_filters( 'update_plugins_github.com', false, array(), 'g2rd-woocommerce-promotions/g2rd-woocommerce-promotions.php', array() ) && array( 'version' => '2.0.0' ) === apply_filters( 'update_plugins_github.com', array( 'version' => '2.0.0' ), array(), 'autre/autre.php', array() ) && 1 === count( G2RD_Test_State::$http_calls ) );
+$info = apply_filters( 'plugins_api', false, 'plugin_information', (object) array( 'slug' => 'g2rd-wpjm-geo' ) );
+check( '« Voir les détails » : version, paquet, notes échappées', is_object( $info ) && '9.1.0' === $info->version && $u['package'] === $info->download_link && false === strpos( $info->sections['changelog'], '<script>' ) && false !== strpos( $info->sections['changelog'], '&lt;script&gt;' ) );
+check( '« Voir les détails » d’un autre plugin : inchangé', false === apply_filters( 'plugins_api', false, 'plugin_information', (object) array( 'slug' => 'akismet' ) ) && 'x' === apply_filters( 'plugins_api', 'x', 'query_plugins', (object) array( 'slug' => 'g2rd-wpjm-geo' ) ) );
+do_action( 'delete_site_transient_update_plugins' );
+check( 'cache vidé avec celui de WordPress (« Vérifier à nouveau »)', false === get_transient( Updater::TRANSIENT ) );
+
+$refused = function ( array $changes ) use ( $release, $own ) {
+	G2RD_Test_State::$transients = array();
+	G2RD_Test_State::$http[ Updater::API ]['GET'] = array( 'response' => array( 'code' => 200 ), 'body' => wp_json_encode( array_merge( $release, $changes ) ) );
+	return false === apply_filters( 'update_plugins_github.com', false, array( 'Version' => '1.4.0' ), $own, array() );
+};
+$elsewhere = array( array( 'name' => 'g2rd-wpjm-geo-9.1.0.zip', 'browser_download_url' => 'https://evil.test/releases/download/v9.1.0/g2rd-wpjm-geo-9.1.0.zip' ) );
+check( 'refusé : paquet hors des releases du dépôt, ZIP absent, étiquette invalide', $refused( array( 'assets' => $elsewhere ) ) && $refused( array( 'assets' => array() ) ) && $refused( array( 'tag_name' => 'latest' ) ) );
+G2RD_Test_State::$transients = array();
+G2RD_Test_State::$http_calls = array();
+G2RD_Test_State::$http[ Updater::API ]['GET'] = array( 'response' => array( 'code' => 403 ), 'body' => '{"message":"API rate limit exceeded"}' );
+$first  = apply_filters( 'update_plugins_github.com', false, array( 'Version' => '1.4.0' ), $own, array() );
+$second = apply_filters( 'update_plugins_github.com', false, array( 'Version' => '1.4.0' ), $own, array() );
+check( 'API en échec (quota) : pas de mise à jour, échec mis en cache', false === $first && false === $second && 1 === count( G2RD_Test_State::$http_calls ) );
 
 $results = $GLOBALS['g2rd_results'];
 echo PHP_EOL . sprintf( 'Résultat : %d réussis, %d échoués', $results['pass'], $results['fail'] ) . PHP_EOL;

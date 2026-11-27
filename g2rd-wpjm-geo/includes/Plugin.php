@@ -56,6 +56,9 @@ final class Plugin {
 	private function boot() {
 		add_action( 'init', array( $this, 'load_textdomain' ) );
 
+		// Avant le contrôle des dépendances : les mises à jour restent proposées sans WP Job Manager.
+		( new Updater() )->register();
+
 		$dependencies = new Dependencies();
 		$dependencies->register();
 

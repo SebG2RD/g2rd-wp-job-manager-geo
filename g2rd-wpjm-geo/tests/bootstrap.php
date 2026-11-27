@@ -294,6 +294,9 @@ namespace {
 	function wp_remote_retrieve_body( $response ) {
 		return isset( $response['body'] ) ? $response['body'] : '';
 	}
+	function plugin_basename( $file ) {
+		return basename( dirname( $file ) ) . '/' . basename( $file );
+	}
 	function delete_post_meta( $id, $key ) {
 		if ( ! isset( G2RD_Test_State::$meta[ $id ][ $key ] ) ) {
 			return false;
@@ -520,7 +523,7 @@ namespace G2RD\WPJMGeo {
 }
 
 namespace {
-	foreach ( array( 'Settings', 'Logger', 'UrlChecker', 'ApplicationNormalizer', 'JobQueue', 'UrlCheckQueue', 'GoFetchIntegration', 'PhotonGeocoder', 'Regions', 'PlaceParser', 'PlaceLocator', 'GeocodingIntegration', 'GeocodeQueue', 'RestController', 'AdminMenu', 'RegeocodeTool', 'AdminScreen', 'Dependencies', 'GoogleAssets', 'OsmAssets', 'SettingsPage', 'MigrationTool', 'LocationAutocomplete', 'AdminLocation', 'AdminListColumn', 'LocationHelp', 'PrivacyPolicy' ) as $class ) {
+	foreach ( array( 'Settings', 'Logger', 'UrlChecker', 'ApplicationNormalizer', 'JobQueue', 'UrlCheckQueue', 'GoFetchIntegration', 'PhotonGeocoder', 'Regions', 'PlaceParser', 'PlaceLocator', 'GeocodingIntegration', 'GeocodeQueue', 'RestController', 'AdminMenu', 'RegeocodeTool', 'AdminScreen', 'Dependencies', 'GoogleAssets', 'OsmAssets', 'SettingsPage', 'MigrationTool', 'LocationAutocomplete', 'AdminLocation', 'AdminListColumn', 'LocationHelp', 'PrivacyPolicy', 'Updater' ) as $class ) {
 		require_once dirname( __DIR__ ) . '/includes/' . $class . '.php';
 	}
 }
