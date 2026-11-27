@@ -26,7 +26,7 @@
 	var REGION_LINE_COLOR = '#d35400';
 	var LABEL_SOURCE = 'g2rd-region-labels';
 	var REGION_SOURCE = 'g2rd-regions';
-	var shapesPromise = null;
+	var shapesPromise = Object.create( null ); // Par URL de fichier de contours.
 
 	function loadMaplibre() {
 		if ( window.maplibregl ) {
@@ -65,20 +65,41 @@
 		return maplibrePromise;
 	}
 
-	// Contours des régions (GeoJSON du plugin, ODbL), chargés une seule fois et seulement si une offre régionale est affichée.
-	function loadShapes() {
-		if ( ! shapesPromise ) {
-			shapesPromise = cfg.regionsUrl ? window.fetch( cfg.regionsUrl, { credentials: 'same-origin' } ).then( function ( response ) {
+	// Un fichier de contours (GeoJSON du plugin, ODbL), chargé une seule fois.
+	function loadShapes( url ) {
+		if ( ! shapesPromise[ url ] ) {
+			shapesPromise[ url ] = url ? window.fetch( url, { credentials: 'same-origin' } ).then( function ( response ) {
 				if ( ! response.ok ) {
 					throw new Error( 'HTTP ' + response.status );
 				}
 				return response.json();
-			} ) : Promise.reject( new Error( 'no-regions-url' ) );
-			shapesPromise.catch( function () {
-				shapesPromise = null; // Un échec n'est pas mémorisé.
+			} ) : Promise.reject( new Error( 'no-shapes-url' ) );
+			shapesPromise[ url ].catch( function () {
+				delete shapesPromise[ url ]; // Un échec n'est pas mémorisé.
 			} );
 		}
-		return shapesPromise;
+		return shapesPromise[ url ];
+	}
+
+	// Contours des zones affichées, réunis : les régions puis les départements (dessinés par-dessus), chaque fichier
+	// chargé seulement si une de ses zones est affichée. Codes des départements préfixés « D », comme dans splitPlaces().
+	function loadZones( areas ) {
+		var files = [ [ 'region', cfg.regionsUrl, '' ], [ 'department', cfg.departmentsUrl, 'D' ] ].filter( function ( file ) {
+			return areas.some( function ( area ) {
+				return file[ 0 ] === ( area.kind || 'region' );
+			} );
+		} );
+		return Promise.all( files.map( function ( file ) {
+			return loadShapes( file[ 1 ] ).then( function ( geojson ) {
+				return ( ( geojson && Array.isArray( geojson.features ) ) ? geojson.features : [] ).filter( function ( feature ) {
+					return feature && feature.properties;
+				} ).map( function ( feature ) {
+					return { type: 'Feature', properties: { code: file[ 2 ] + String( feature.properties.code ) }, geometry: feature.geometry };
+				} );
+			} );
+		} ) ).then( function ( lists ) {
+			return { type: 'FeatureCollection', features: [].concat.apply( [], lists ) };
+		} );
 	}
 
 	// Curseur en main au-dessus d'un calque cliquable, un seul écouteur : avec des paires entrée/sortie par calque, passer d'un calque à un autre laisse le curseur vide.
@@ -464,7 +485,7 @@
 			regions.forEach( function ( region ) {
 				byCode[ region.code ] = region;
 			} );
-			var shapes = regions.length ? loadShapes() : null;
+			var shapes = regions.length ? loadZones( regions ) : null;
 			if ( shapes ) {
 				shapes.catch( function () {} ); // Échec traité au chargement de la carte (point de secours).
 			}

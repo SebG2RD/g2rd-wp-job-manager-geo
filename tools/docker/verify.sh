@@ -139,13 +139,35 @@ ok 'liste des offres : colonne « Carte » et sa feuille' "$(has "$L" 'column-g2
 ok 'liste des offres : offre multi-lieux en vert, avec ses lieux' "$(has "$L" 'g2rd-wpjm-geo-mapcol--placed')$(has "$L" 'sur la carte : Paris, Lyon, Normandie')"
 ok 'liste des offres : offre sans lieu en rouge' "$(has "$L" 'g2rd-wpjm-geo-mapcol--empty')"
 
+JOBD=$(wp post create --post_type=job_listing --post_status=publish --post_title='Poste départements' --porcelain)
+curl -s -b cookies.txt -H "X-WP-Nonce: $NONCE" -H 'Content-Type: application/json' -X POST -d '{"meta":{"_job_location":"Calvados ; Seine et Marne ; Vienne (38)"}}' "$B/wp-json/wp/v2/job-listings/$JOBD" >/dev/null
+ok 'départements placés, ville homonyme avec son numéro gardée comme ville' "$(is "$(wp eval "echo implode( '|', array_map( function ( \$p ) { return \$p['type'] . ':' . \$p['label']; }, (array) get_post_meta( $JOBD, '_g2rd_wpjm_geo_places', true ) ) );")" 'department:Calvados|department:Seine-et-Marne|city:Vienne')"
+ok 'département : région du département dans WP Job Manager' "$(is "$(wp post meta get "$JOBD" geolocation_state_long 2>/dev/null)" Normandie)"
+R=$(curl -s "$B/wp-json/g2rd-wpjm-geo/v1/jobs")
+ok 'API REST : départements avec leur code' "$(has "$R" '"type":"department"')$(has "$R" '"department":"14"')$(has "$R" '"department":"77"')"
+ok 'contours des départements servis' "$(is "$(curl -s -o /dev/null -w '%{http_code}' "$B/wp-content/plugins/g2rd-wpjm-geo/assets/data/departements-fr.geojson")" 200)"
+ok 'liste des offres : départements dans la colonne « Carte »' "$(has "$(admin 'edit.php?post_type=job_listing')" 'sur la carte : Calvados, Seine-et-Marne, Vienne')"
+F=$(curl -sL "$B/?page_id=$FORM")
+ok 'formulaire : liste des départements transmise' "$(has "$F" '"departments":[')$(has "$F" '"name":"Calvados"')"
+
 echo "11. Retour vers Google"
 wp option update g2rd_wpjm_geo_settings '{"provider":"google"}' --format=json >/dev/null
 R=$(curl -s "$B/wp-json/g2rd-wpjm-geo/v1/jobs")
 ok 'carte Google : offres libres exclues' "$(hasnt "$R" "\"id\":$JOB,")"
 ok 'géocodage de WP Job Manager réactivé' "$(is "$(wp eval 'echo apply_filters( "job_manager_geolocation_enabled", true ) ? "on" : "off";')" on)"
 
-echo "12. Journal PHP"
+echo "12. Mises à jour depuis GitHub (vraie API)"
+# Version installée remplacée par 1.0.0 dans le cache de get_plugins() : WordPress doit trouver la dernière release.
+U=$(wp eval 'require_once ABSPATH . "wp-admin/includes/plugin.php"; delete_site_transient( "update_plugins" ); $f = plugin_basename( G2RD_WPJM_GEO_FILE ); $all = get_plugins(); $all[ $f ]["Version"] = "1.0.0"; wp_cache_set( "plugins", array( "" => $all ), "plugins" ); wp_update_plugins(); $t = get_site_transient( "update_plugins" ); echo isset( $t->response[ $f ] ) ? $t->response[ $f ]->new_version . " " . $t->response[ $f ]->package : "aucune";')
+ok 'mise à jour proposée par WordPress, paquet de la release GitHub' "$(has "$U" ' https://github.com/SebG2RD/g2rd-wp-job-manager-geo/releases/download/v')$(has "$U" '/g2rd-wpjm-geo-')"
+P=${U#* }
+ok 'paquet téléchargeable' "$(is "$(curl -sL -o /dev/null -w '%{http_code}' "$P")" 200)"
+U=$(wp eval 'require_once ABSPATH . "wp-admin/includes/plugin.php"; delete_site_transient( "update_plugins" ); wp_update_plugins(); $t = get_site_transient( "update_plugins" ); $f = plugin_basename( G2RD_WPJM_GEO_FILE ); echo isset( $t->response[ $f ] ) ? "proposée" : "aucune";')
+ok 'version installée à jour : rien de proposé' "$(is "$U" aucune)"
+I=$(wp eval 'require_once ABSPATH . "wp-admin/includes/plugin-install.php"; $i = plugins_api( "plugin_information", array( "slug" => "g2rd-wpjm-geo" ) ); echo is_wp_error( $i ) ? "erreur" : $i->name . " " . $i->version;')
+ok '« Voir les détails » : fiche de la release' "$(has "$I" 'G2RD WP Job Manager Geo ')"
+
+echo "13. Journal PHP"
 L=$(docker compose exec -T wp sh -c 'grep -E "PHP (Fatal error|Parse error|Warning|Notice|Deprecated)" /var/www/html/wp-content/debug.log 2>/dev/null | grep "plugins/g2rd-wpjm-geo" || true')
 ok 'aucune erreur liée au plugin' "$(is "$L" '')"
 

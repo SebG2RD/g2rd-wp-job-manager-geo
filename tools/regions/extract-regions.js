@@ -1,19 +1,31 @@
 #!/usr/bin/env node
 /*
- * Extrait les 18 régions françaises du fichier « Contours administratifs »
- * (data.gouv.fr, millésime 2025, licence ODbL) et affiche leurs centres et leurs
- * boîtes englobantes pour g2rd-wpjm-geo/includes/Regions.php. Les géométries sont recopiées telles quelles.
+ * Extrait les 18 régions françaises, ou les 95 départements de métropole sans Paris,
+ * du fichier « Contours administratifs » (data.gouv.fr, millésime 2025, licence ODbL)
+ * et affiche leurs centres et leurs boîtes englobantes pour
+ * g2rd-wpjm-geo/includes/Regions.php ou Departments.php. Les géométries sont recopiées
+ * telles quelles ; le fichier source est reconnu à son empreinte.
  *
- * Usage : node tools/regions/extract-regions.js <regions-1000m.geojson> <sortie.geojson>
- * Source : https://etalab-datasets.geo.data.gouv.fr/contours-administratifs/2025/geojson/regions-1000m.geojson
+ * Usage : node tools/regions/extract-regions.js <source.geojson> <sortie.geojson>
+ * Sources : https://etalab-datasets.geo.data.gouv.fr/contours-administratifs/2025/geojson/regions-1000m.geojson
+ *           https://etalab-datasets.geo.data.gouv.fr/contours-administratifs/2025/geojson/departements-1000m.geojson
  */
 'use strict';
 
 const fs = require('fs');
 const crypto = require('crypto');
 
-const SOURCE_SHA256 = '7f44a5c4deaeb710c9dc2b043ed4debcf50068a1b0740619a5873f9e878f9786';
-const CODES = ['01', '02', '03', '04', '06', '11', '24', '27', '28', '32', '44', '52', '53', '75', '76', '84', '93', '94'];
+// Départements 01 à 95 avec 2A et 2B, sauf Paris (75) : la ville et le département couvrent le même territoire.
+const DEPARTMENTS = Array.from({ length: 95 }, (_, i) => String(i + 1).padStart(2, '0'))
+  .filter(code => '20' !== code && '75' !== code)
+  .concat(['2A', '2B']);
+const SOURCES = {
+  '7f44a5c4deaeb710c9dc2b043ed4debcf50068a1b0740619a5873f9e878f9786': {
+    codes: ['01', '02', '03', '04', '06', '11', '24', '27', '28', '32', '44', '52', '53', '75', '76', '84', '93', '94'],
+    region: false,
+  },
+  'c4be02f0454addb63d8a327d008fe983561d3e063340825f953b3a4e59a2198f': { codes: DEPARTMENTS, region: true },
+};
 
 function ringArea(ring) {
   let area = 0;
@@ -94,25 +106,32 @@ function bbox(geometry) {
 
 const [source, target] = process.argv.slice(2);
 if (!source || !target) {
-  console.error('Usage : node tools/regions/extract-regions.js <regions-1000m.geojson> <sortie.geojson>');
+  console.error('Usage : node tools/regions/extract-regions.js <source.geojson> <sortie.geojson>');
   process.exit(2);
 }
 const raw = fs.readFileSync(source);
 const hash = crypto.createHash('sha256').update(raw).digest('hex');
-if (hash !== SOURCE_SHA256) {
+const known = SOURCES[hash];
+if (!known) {
   console.error('Empreinte du fichier source inattendue : ' + hash);
   process.exit(1);
 }
 const data = JSON.parse(raw.toString('utf8'));
 const features = data.features
-  .filter(f => CODES.includes(f.properties.code))
+  .filter(f => known.codes.includes(f.properties.code))
   .map(f => ({ type: 'Feature', properties: { code: f.properties.code, nom: f.properties.nom }, geometry: f.geometry }));
-if (features.length !== CODES.length) {
-  console.error('Régions trouvées : ' + features.length + ' sur ' + CODES.length);
+if (features.length !== known.codes.length) {
+  console.error('Zones trouvées : ' + features.length + ' sur ' + known.codes.length);
   process.exit(1);
 }
 fs.writeFileSync(target, JSON.stringify({ type: 'FeatureCollection', features }) + '\n');
+const regionOf = {};
+data.features.forEach(f => {
+  regionOf[f.properties.code] = f.properties.region;
+});
+const quote = text => (text.includes("'") ? '"' + text + '"' : "'" + text + "'");
 features.forEach(f => {
   const [lng, lat] = centre(f.geometry);
-  console.log("'" + f.properties.code + "' => array( '" + f.properties.nom + "', '" + lat.toFixed(4) + "', '" + lng.toFixed(4) + "', array( '" + bbox(f.geometry).join("', '") + "' ) ),");
+  const region = known.region ? ", '" + regionOf[f.properties.code] + "'" : '';
+  console.log("'" + f.properties.code + "' => array( " + quote(f.properties.nom) + ", '" + lat.toFixed(4) + "', '" + lng.toFixed(4) + "', array( '" + bbox(f.geometry).join("', '") + "' )" + region + ' ),');
 });

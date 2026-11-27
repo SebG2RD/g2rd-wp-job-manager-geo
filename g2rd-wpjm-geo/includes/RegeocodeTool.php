@@ -482,7 +482,7 @@ class RegeocodeTool {
 				<?php
 				echo esc_html(
 					$is_osm
-						? __( 'Recalcule avec Photon (OpenStreetMap) les coordonnées des offres qui ne viennent pas de la source libre, et place tous les lieux (villes et régions) des offres antérieures à la version 1.2.0. Les offres introuvables ne sont jamais effacées : elles sont listées pour correction.', 'g2rd-wpjm-geo' )
+						? __( 'Recalcule avec Photon (OpenStreetMap) les coordonnées des offres qui ne viennent pas de la source libre, et place tous les lieux (villes, départements et régions) des offres antérieures à la version 1.2.0. Les offres introuvables ne sont jamais effacées : elles sont listées pour correction.', 'g2rd-wpjm-geo' )
 						: __( 'Recalcule avec Google, via WP Job Manager et sa clé serveur, les coordonnées des offres géocodées par OpenStreetMap. Les offres introuvables ne sont jamais effacées.', 'g2rd-wpjm-geo' )
 				);
 				?>

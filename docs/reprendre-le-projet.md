@@ -57,7 +57,10 @@ Ces points dépendent du site réel et restent à confirmer sur place :
 - API Google avec de vraies clés ;
 - Go Fetch Jobs premium (son planificateur n'a pas pu être lu) ;
 - volume réel d'offres et part des offres introuvables (lancer Analyser et
-  Simuler pour le mesurer).
+  Simuler pour le mesurer) ;
+- notification de mise à jour sur un vrai site (dépôt public, accès sortant
+  vers `api.github.com` et `github.com`), puis installation par WordPress ;
+- colonne « Carte » à côté des colonnes des autres extensions.
 
 Retirez un point de cette liste dès qu'il est constaté sur le site.
 
@@ -96,8 +99,9 @@ Retirez un point de cette liste dès qu'il est constaté sur le site.
 5. Cas particuliers :
    - styles de la console repris du thème G2RD :
      `php tools/build-console-css.php ../G2RD-theme` ;
-   - contours des régions : `node tools/regions/extract-regions.js`, puis
-     mettre à jour `tools/regions/SHA256SUMS` (la CI vérifie l'empreinte).
+   - contours des régions ou des départements : `node tools/regions/extract-regions.js`
+     (il reconnaît le fichier source à son empreinte), puis mettre à jour
+     `tools/regions/SHA256SUMS` (la CI vérifie les empreintes).
 6. Ouvrez une PR vers `main` et attendez que la CI, PHPCS Security Audit et
    Plugin Check soient verts.
 

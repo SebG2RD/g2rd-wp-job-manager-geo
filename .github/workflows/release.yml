@@ -12,8 +12,9 @@ name: Release
 #   du dépôt ; il revérifie l'empreinte de l'artefact puis publie la release.
 #
 # Différences avec g2rd-facturation : pas de signature Ed25519 ni de webhook
-# g2rd.fr — ce plugin n'a pas de mise à jour automatique intégrée, il s'installe
-# à la main depuis la release.
+# g2rd.fr. Depuis la 1.4.0, les sites lisent la release publiée ici (classe
+# Updater, API GitHub publique) : son asset g2rd-wpjm-geo-X.Y.Z.zip est le
+# paquet que WordPress installe.
 on:
   push:
     tags:

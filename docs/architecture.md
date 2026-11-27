@@ -59,13 +59,14 @@ table propres au plugin.
 | `RestController` | Route `g2rd-wpjm-geo/v1/jobs` |
 | `GeocodingIntegration` | Géocodage des offres en mode libre, affichage des lieux multiples |
 | `PhotonGeocoder` | Appels à Photon côté serveur, choix entre homonymes, cache |
-| `PlaceParser`, `PlaceLocator`, `Regions` | Découpe du champ « Lieu », règle de la virgule, régions françaises |
+| `PlaceParser`, `PlaceLocator`, `Regions`, `Departments` | Découpe du champ « Lieu », règle de la virgule, régions et départements français |
 | `JobQueue`, `GeocodeQueue`, `UrlCheckQueue` | Files d'attente WP-Cron |
 | `GoFetchIntegration`, `ApplicationNormalizer`, `UrlChecker` | Remplacement des candidatures Go Fetch Jobs |
 | `Logger` | Table `{prefix}g2rd_wpjm_geo_log`, purge quotidienne |
 | `RegeocodeTool`, `MigrationTool` | Outils de la section « Outils », par lots via admin-ajax |
 | `AdminListColumn` | Colonne « Carte » de la liste des offres : même règle que l'API de la carte (`RestController::coordinates()`, source du fournisseur actif) ; sinon lieu vide, en attente (file de géocodage), coordonnées de l'autre fournisseur ou introuvable |
 | `PrivacyPolicy` | Texte suggéré pour la politique de confidentialité |
+| `Updater` | Mises à jour proposées par WordPress depuis la dernière release GitHub (filtre `update_plugins_github.com` de l'en-tête `Update URI`, limité au fichier de ce plugin ; paquet accepté seulement s'il vient des releases du dépôt ; cache 6 h) |
 
 ## Les deux fournisseurs
 
@@ -102,7 +103,7 @@ les offres placées par Photon.
      un seul appel était permis : dès deux villes absentes du cache, l'offre
      attendait le passage de WP-Cron.
 3. `PlaceLocator` découpe le texte (`PlaceParser` : « ; », « | », « / »,
-   retour à la ligne, « et »), reconnaît les régions sans réseau (`Regions`),
+   retour à la ligne, « et »), reconnaît les régions et les départements sans réseau (`Regions`, `Departments`),
    applique la règle de la virgule et géocode les villes avec `PhotonGeocoder`
    (20 appels au plus par offre, 10 lieux au plus).
 4. Le premier lieu est écrit dans les champs `geolocation_*` de WP Job Manager,
@@ -157,10 +158,12 @@ Côté navigateur :
 - le regroupement des points proches utilise un rayon de 20 px pour MapLibre et
   de 40 px pour Supercluster côté Google, ce qui revient au même à l'écran ;
 - en mode libre, une offre à plusieurs lieux donne un point par ville et une
-  zone colorée par région ; les contours (`assets/data/regions-fr.geojson`) ne
-  sont chargés que si une offre régionale est affichée ;
+  zone colorée par département ou région ; chaque fichier de contours
+  (`assets/data/regions-fr.geojson`, `assets/data/departements-fr.geojson`)
+  n'est chargé que si une de ses zones est affichée. Côté navigateur, le code
+  d'un département est préfixé « D » (le département 28 n'est pas la région 28) ;
 - la liste sous la carte reprend toutes les offres, une section par lieu,
-  classées par ordre alphabétique, régions à la fin.
+  classées par ordre alphabétique, départements et régions à la fin.
 
 ## Files d'attente WP-Cron
 

@@ -4,7 +4,7 @@ Extension WordPress qui complète [WP Job Manager](https://wordpress.org/plugins
 
 - **autocomplétion des villes** du monde entier sur le champ « Lieu » natif, au dépôt d'une offre comme dans wp-admin ;
 - **carte des offres** (shortcode `[wpjm_jobs_map]` ou bloc « Carte des offres d'emploi »), avec regroupement des points et liste des offres sous la carte ;
-- **plusieurs lieux par offre** en mode libre (villes et régions françaises) ;
+- **plusieurs lieux par offre** en mode libre (villes, départements et régions français) ;
 - **candidatures Go Fetch Jobs** : les URL de candidature des offres importées sont remplacées par une adresse email générique.
 
 Deux fournisseurs au choix, qui s'appliquent ensemble à la carte, à l'autocomplétion et au géocodage :
@@ -19,7 +19,7 @@ Deux fournisseurs au choix, qui s'appliquent ensemble à la carte, à l'autocomp
 
 Le plugin ne modifie ni WP Job Manager, ni Go Fetch Jobs, ni le thème.
 
-Version : **1.3.0**. Licence : GPL-2.0-or-later.
+Version : **1.4.0**. Licence : GPL-2.0-or-later.
 
 ## Documentation
 
@@ -50,7 +50,7 @@ Le plugin n'est pas publié sur wordpress.org : il s'installe depuis les [releas
    sha256sum -c g2rd-wpjm-geo-X.Y.Z.zip.sha256
    ```
 2. Dans WordPress : Extensions → Ajouter → Téléverser une extension, puis activez-la.
-3. Mise à jour : même procédure avec la nouvelle archive (WordPress propose de remplacer la version installée). Le plugin n'a pas de mise à jour automatique ; son en-tête `Update URI` empêche WordPress de chercher une mise à jour sur wordpress.org pour ce slug.
+3. Mise à jour : à partir de la 1.4.0, WordPress propose chaque nouvelle release du dépôt GitHub (Extensions, Mises à jour), comme pour une extension de wordpress.org. Le module `Updater` lit la dernière release publique par l'API GitHub et installe son archive `g2rd-wpjm-geo-X.Y.Z.zip` ; le dépôt doit donc être public. Une version antérieure se met à jour une fois à la main, avec la nouvelle archive (WordPress propose de remplacer la version installée).
 4. Après une mise à jour, videz le cache des pages (WP Rocket ou autre) pour que la carte reçoive sa nouvelle configuration.
 
 À l'activation, le plugin crée la table du journal et l'option de l'adresse générique de candidature (`reconversion@pompiersparis.fr` par défaut, à changer sur un autre site). Aucune offre n'est modifiée.
@@ -87,7 +87,7 @@ Sous la carte, une liste reprend toutes les offres, classées par lieu, avec les
 
 ### Plusieurs lieux par offre (mode libre)
 
-Le champ « Lieu » devient un champ à étiquettes : chaque ville ou région est une étiquette, enregistrée dans le champ natif séparée par « ; ». Le texte libre et les imports sont reconnus côté serveur (« Paris, Lyon » donne deux villes, « Rouen, Normandie » une seule). Sur la carte, un point par ville et une zone colorée par région. Les cas ambigus sont listés dans la FAQ du [readme.txt](g2rd-wpjm-geo/readme.txt), section « Limites connues des lieux multiples ».
+Le champ « Lieu » devient un champ à étiquettes : chaque ville, département ou région est une étiquette, enregistrée dans le champ natif séparée par « ; ». Le texte libre et les imports sont reconnus côté serveur (« Paris, Lyon » donne deux villes, « Rouen, Normandie » une seule, « Calvados » le département). Sur la carte, un point par ville et une zone colorée par département ou région. Les cas ambigus sont listés dans la FAQ du [readme.txt](g2rd-wpjm-geo/readme.txt), section « Limites connues des lieux multiples ».
 
 ### Candidatures Go Fetch Jobs
 
@@ -111,7 +111,7 @@ g2rd-wpjm-geo/          le plugin, seul dossier livré (sans tests/)
   includes/             classes PHP, autoload PSR-4 G2RD\WPJMGeo\Foo → includes/Foo.php
   assets/js/            scripts sans étape de compilation
   assets/css/           styles publics, console d'administration
-  assets/data/          contours des régions françaises (ODbL)
+  assets/data/          contours des régions et des départements français (ODbL)
   assets/vendor/        MapLibre GL JS, MarkerClusterer
   blocks/jobs-map/      bloc « Carte des offres d'emploi » (sans JSX)
   tests/                harnais PHP (run.php) et JS (js/run.js)
@@ -159,7 +159,7 @@ Le site de test répond sur <http://localhost:8899>. Docker Desktop doit être d
 
 | Workflow | Déclencheur | Rôle |
 | --- | --- | --- |
-| `ci.yml` | push et PR vers `main` ou `develop` | Tests PHP (matrice de versions) et JS, selon les fichiers modifiés ; empreinte des contours des régions |
+| `ci.yml` | push et PR vers `main` ou `develop` | Tests PHP (matrice de versions) et JS, selon les fichiers modifiés ; empreinte des contours des régions et des départements |
 | `phpcs-security.yml` | push et PR vers `main` | PHPCS Security Audit et PHPCompatibility, bloquants |
 | `plugin-check.yml` | push sur `main`, toute PR | Plugin Check de WordPress.org sur l'archive construite, bloquant sur les erreurs |
 | `auto-tag.yml` | push sur `main` | Crée l'étiquette `vX.Y.Z` quand le sujet du commit commence par `version: X.Y.Z` |
@@ -197,5 +197,5 @@ Plugin sous licence GPL-2.0-or-later.
 | MapLibre GL JS 5.24.0 (`assets/vendor/maplibre-gl/`) | BSD-3-Clause |
 | MarkerClusterer (`assets/vendor/markerclusterer.min.js`) | Apache-2.0 |
 | Polices Instrument Sans et IBM Plex Mono (`assets/fonts/`) | SIL Open Font License 1.1 |
-| Contours des régions (`assets/data/regions-fr.geojson`), Etalab, data.gouv.fr, millésime 2025 | ODbL 1.0 |
+| Contours des régions et des départements (`assets/data/regions-fr.geojson`, `assets/data/departements-fr.geojson`), Etalab, data.gouv.fr, millésime 2025 | ODbL 1.0 |
 | Fonds de carte OpenFreeMap, données © contributeurs OpenStreetMap | ODbL, attribution affichée sur la carte |
