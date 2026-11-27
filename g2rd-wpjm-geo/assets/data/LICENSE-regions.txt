@@ -1,15 +1,22 @@
-Contours des régions françaises — assets/data/regions-fr.geojson
+Contours des régions et des départements français
+assets/data/regions-fr.geojson et assets/data/departements-fr.geojson
 
 Source : « Contours administratifs », millésime 2025, publié par data.gouv.fr
 https://www.data.gouv.fr/fr/datasets/contours-administratifs/
 Fichier d'origine (téléchargé le 2026-10-23) :
 https://etalab-datasets.geo.data.gouv.fr/contours-administratifs/2025/geojson/regions-1000m.geojson
 SHA-256 du fichier d'origine : 7f44a5c4deaeb710c9dc2b043ed4debcf50068a1b0740619a5873f9e878f9786
+Fichier d'origine des départements (téléchargé le 2026-11-27) :
+https://etalab-datasets.geo.data.gouv.fr/contours-administratifs/2025/geojson/departements-1000m.geojson
+SHA-256 du fichier d'origine : c4be02f0454addb63d8a327d008fe983561d3e063340825f953b3a4e59a2198f
 
 Extrait : les 18 régions (codes INSEE 01, 02, 03, 04, 06, 11, 24, 27, 28, 32,
 44, 52, 53, 75, 76, 84, 93, 94) ; les 8 collectivités d'outre-mer (codes 975
 à 989) sont retirées. Géométries recopiées sans modification ; seules les
-propriétés « code » et « nom » sont gardées. Extraction reproductible :
+propriétés « code » et « nom » sont gardées. Départements : les 95
+départements de métropole (01 à 95, 2A et 2B), sans Paris (75), ni les
+départements d'outre-mer (des régions dans le premier fichier), ni les
+collectivités d'outre-mer. Extraction reproductible :
 tools/regions/extract-regions.js, dans le dépôt du plugin :
 https://github.com/SebG2RD/g2rd-wp-job-manager-geo
 

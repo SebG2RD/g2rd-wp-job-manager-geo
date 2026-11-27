@@ -134,5 +134,5 @@ jobs:
           NODE_PATH: tools/jsdom/node_modules
         run: node g2rd-wpjm-geo/tests/js/run.js
 
-      - name: Empreinte des contours des régions (données ODbL embarquées)
-        run: grep ' g2rd-wpjm-geo/assets/data/regions-fr.geojson$' tools/regions/SHA256SUMS | sha256sum -c -
+      - name: Empreinte des contours des régions et des départements (données ODbL embarquées)
+        run: sha256sum -c tools/regions/SHA256SUMS

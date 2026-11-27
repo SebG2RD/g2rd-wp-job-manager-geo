@@ -21,6 +21,7 @@ Conceptions et plans, par évolution :
 | 1.2.1 | Carte moins regroupée, liste sous la carte, sommaire de la console | [spec](superpowers/specs/2026-10-24-carte-liste-console-design.md) | [plan](superpowers/plans/2026-10-24-carte-liste-console.md) |
 | 1.2.2 | Correctif : toutes les villes placées dès l'enregistrement (remplace le « budget d'appels » de la spec 1.2.0) | — | — |
 | 1.3.0 | Colonne « Carte » dans la liste des offres | [spec](superpowers/specs/2026-11-13-colonne-carte-admin-design.md) | [plan](superpowers/plans/2026-11-13-colonne-carte-admin.md) |
+| 1.4.0 | Départements, mises à jour depuis GitHub | [spec](superpowers/specs/2026-11-27-departements-et-mises-a-jour-design.md) | — |
 
 Documents ailleurs dans le dépôt :
 
