@@ -233,7 +233,7 @@ class SettingsPage {
 				'info',
 				sprintf(
 					/* translators: %d: number of jobs. */
-					_n( '%d offre libre n’affiche qu’un lieu sur la carte : re-géocodez-la pour placer tous ses lieux (villes et régions).', '%d offres libres n’affichent qu’un lieu sur la carte : re-géocodez-les pour placer tous leurs lieux (villes et régions).', $stats['update'], 'g2rd-wpjm-geo' ),
+					_n( '%d offre libre n’affiche qu’un lieu sur la carte : re-géocodez-la pour placer tous ses lieux (villes, départements et régions).', '%d offres libres n’affichent qu’un lieu sur la carte : re-géocodez-les pour placer tous leurs lieux (villes, départements et régions).', $stats['update'], 'g2rd-wpjm-geo' ),
 					$stats['update']
 				),
 				'',

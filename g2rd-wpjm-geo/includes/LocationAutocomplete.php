@@ -116,12 +116,14 @@ class LocationAutocomplete {
 			),
 		);
 		if ( $is_osm ) {
-			// Plusieurs lieux (villes et régions françaises) en étiquettes, joints par « ; » dans le champ natif.
+			// Plusieurs lieux (villes, départements et régions français) en étiquettes, joints par « ; » dans le champ natif.
 			$config['tags']            = true;
 			$config['maxPlaces']       = PlaceLocator::MAX_PLACES;
 			$config['regions']         = Regions::all();
-			$config['i18n']['results'] = __( 'Suggestions de villes et de régions', 'g2rd-wpjm-geo' );
+			$config['departments']     = Departments::all();
+			$config['i18n']['results'] = __( 'Suggestions de villes, de départements et de régions', 'g2rd-wpjm-geo' );
 			$config['i18n']['region']  = __( 'Région', 'g2rd-wpjm-geo' );
+			$config['i18n']['department'] = __( 'Département', 'g2rd-wpjm-geo' );
 			$config['tagsI18n']        = array(
 				/* translators: %s: place name. */
 				'remove'    => __( 'Retirer %s', 'g2rd-wpjm-geo' ),

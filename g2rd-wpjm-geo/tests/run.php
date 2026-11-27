@@ -23,6 +23,7 @@ use G2RD\WPJMGeo\AdminLocation;
 use G2RD\WPJMGeo\AdminListColumn;
 use G2RD\WPJMGeo\LocationHelp;
 use G2RD\WPJMGeo\ApplicationNormalizer;
+use G2RD\WPJMGeo\Departments;
 use G2RD\WPJMGeo\GeocodeQueue;
 use G2RD\WPJMGeo\GeocodingIntegration;
 use G2RD\WPJMGeo\GoFetchIntegration;
@@ -1226,7 +1227,12 @@ function g2rd_world_feature( $name ) {
 		'Bretagne' => array( 6.9917, 47.5986, 'Territoire de Belfort', 'Bourgogne-Franche-Comté', 'France', 'FR', '90130' ),
 		'Rennes'   => array( -1.6779, 48.1173, 'Ille-et-Vilaine', 'Bretagne', 'France', 'FR', '35000' ),
 		'London'   => array( -81.2497, 42.9837, 'Middlesex County', 'Ontario', 'Canada', 'CA', 'N6A' ),
+		'Vienne'   => array( 4.8742, 45.5256, 'Isère', 'Auvergne-Rhône-Alpes', 'France', 'FR', '38200' ),
 	);
+	if ( 'Calvados' === $name ) {
+		// Limite administrative du département, que Photon renvoie aussi : ce n'est pas une commune.
+		return photon_feature( 'Calvados', 'boundary', 'administrative', -0.3606, 49.0935, array( 'state' => 'Normandie', 'country' => 'France', 'countrycode' => 'FR' ) );
+	}
 	list( $lng, $lat, $county, $state, $country, $code, $postcode ) = $cities[ $name ];
 	return photon_feature( $name, 'place', 'city', $lng, $lat, array( 'county' => $county, 'state' => $state, 'country' => $country, 'countrycode' => $code, 'postcode' => $postcode ) );
 }
@@ -1240,7 +1246,7 @@ function g2rd_world( array $replies ) {
 		parse_str( (string) parse_url( $url, PHP_URL_QUERY ), $query );
 		$q                                 = isset( $query['q'] ) ? (string) $query['q'] : '';
 		$GLOBALS['g2rd_world_queries'][] = $q;
-		$known                             = array( 'Rouen', 'Caen', 'Le Havre', 'Paris', 'Lyon', 'Brest', 'Bretagne', 'London', 'Rennes' );
+		$known                             = array( 'Rouen', 'Caen', 'Le Havre', 'Paris', 'Lyon', 'Brest', 'Bretagne', 'London', 'Rennes', 'Vienne' );
 		$names                             = isset( $replies[ $q ] ) ? $replies[ $q ] : ( in_array( $q, $known, true ) ? array( $q ) : array() );
 		return photon_reply( array_map( 'g2rd_world_feature', $names ) );
 	};
@@ -1636,6 +1642,7 @@ check( 'script des étiquettes enregistré, sans dépendance', array() === G2RD_
 ( new LocationAutocomplete( $s ) )->enqueue();
 list( , $c ) = g2rd_ac_config();
 check( 'mode libre : étiquettes, plafond, 18 régions, textes', true === $c['tags'] && 10 === $c['maxPlaces'] && 18 === count( $c['regions'] ) && 'Normandie' === $c['regions'][8]['name'] && 'Région' === $c['i18n']['region'] && false !== strpos( $c['tagsI18n']['remove'], '%s' ) && '10 lieux au plus.' === $c['tagsI18n']['limit'] && '' !== $c['tagsI18n']['required'] );
+check( 'mode libre : 95 départements, mention « Département »', 95 === count( $c['departments'] ) && array( 'code' => '14', 'name' => 'Calvados' ) === $c['departments'][13] && 'Département' === $c['i18n']['department'] );
 $job_fields   = array( 'job' => array( 'job_location' => array( 'description' => 'Leave this blank if the location is not important' ) ) );
 $admin_fields = array( '_job_location' => array( 'label' => 'Lieu', 'description' => '' ) );
 list( $s )    = boot( array( 'provider' => Settings::PROVIDER_OSM ) );
@@ -1661,12 +1668,13 @@ check( 'mode Google : aucune aide, description inchangée', 'D' === $fields['job
 list( $s ) = boot( array( 'provider' => Settings::PROVIDER_GOOGLE, 'browser_api_key' => 'BROWSER' ) );
 ( new LocationAutocomplete( $s ) )->enqueue();
 list( , $c ) = g2rd_ac_config();
-check( 'mode Google : ni étiquettes ni régions', ! isset( $c['tags'] ) && ! isset( $c['regions'] ) && ! isset( $c['tagsI18n'] ) );
+check( 'mode Google : ni étiquettes, ni régions, ni départements', ! isset( $c['tags'] ) && ! isset( $c['regions'] ) && ! isset( $c['departments'] ) && ! isset( $c['tagsI18n'] ) );
 
 echo PHP_EOL . '40. Carte libre : contours des régions' . PHP_EOL;
 list( $s ) = boot( array( 'provider' => Settings::PROVIDER_OSM ) );
 $cfg = ( new \G2RD\WPJMGeo\OsmAssets( $s ) )->config();
 check( 'URL des contours servie par le plugin, versionnée', 0 === strpos( $cfg['regionsUrl'], G2RD_WPJM_GEO_URL . 'assets/data/regions-fr.geojson?ver=' ) );
+check( 'URL des contours des départements servie par le plugin, versionnée', 0 === strpos( $cfg['departmentsUrl'], G2RD_WPJM_GEO_URL . 'assets/data/departements-fr.geojson?ver=' ) );
 check( 'crédit ODbL avec lien https vers la source', false !== strpos( $cfg['regionsCredit'], 'ODbL' ) && false !== strpos( $cfg['regionsCredit'], 'href="https://www.data.gouv.fr/' ) );
 
 echo PHP_EOL . '41. Carte : coordonnées d’une offre' . PHP_EOL;
@@ -1807,6 +1815,95 @@ G2RD_Test_State::$http[ Updater::API ]['GET'] = array( 'response' => array( 'cod
 $first  = apply_filters( 'update_plugins_github.com', false, array( 'Version' => '1.4.0' ), $own, array() );
 $second = apply_filters( 'update_plugins_github.com', false, array( 'Version' => '1.4.0' ), $own, array() );
 check( 'API en échec (quota) : pas de mise à jour, échec mis en cache', false === $first && false === $second && 1 === count( G2RD_Test_State::$http_calls ) );
+
+echo PHP_EOL . '44. Départements' . PHP_EOL;
+G2RD_Test_State::reset();
+check( '95 départements de métropole : 2A et 2B, sans Paris ni l’outre-mer', 95 === count( Departments::codes() ) && null !== Departments::get( '2A' ) && null !== Departments::get( '2B' ) && null === Departments::get( '75' ) && null === Departments::get( '20' ) && null === Departments::get( '971' ) && null === Departments::find( 'Paris' ) && null === Departments::find( 'Guadeloupe' ) );
+$d = Departments::get( '14' );
+check( 'Calvados : centre, boîte en nombres, région Normandie', 'Calvados' === $d['name'] && '28' === $d['region'] && 4 === count( $d['bbox'] ) && is_float( $d['bbox'][0] ) && is_numeric( $d['lat'] ) );
+$found = function ( $text ) {
+	$d = Departments::find( $text );
+	return $d ? $d['code'] : null;
+};
+check( 'accents, casse, tirets, apostrophes, « St » et article ignorés', '77' === $found( 'seine et marne' ) && '93' === $found( 'Seine-St-Denis' ) && '21' === $found( 'Côte d’Or' ) && '21' === $found( "cote-d'or" ) && '86' === $found( 'la Vienne' ) && '2A' === $found( 'Corse du Sud' ) && '90' === $found( 'Territoire de Belfort' ) );
+check( 'préfixe « Département (de la, du, des, de l’) »', '86' === $found( 'Département de la Vienne' ) && '59' === $found( 'Département du Nord' ) && '40' === $found( 'Département des Landes' ) && '01' === $found( "Département de l'Ain" ) && '14' === $found( 'département Calvados' ) && '37' === $found( "Département d'Indre-et-Loire" ) );
+check( 'pas un département : ville, indice, mot seul, vide', null === $found( 'Rouen' ) && null === $found( 'Vienne (38)' ) && null === $found( 'Département' ) && null === $found( '' ) && null === $found( 'Normandie' ) );
+$every = 0;
+foreach ( Departments::DATA as $code => $row ) {
+	$every += ( (string) $code === $found( $row[0] ) ) ? 1 : 0;
+}
+check( 'chaque nom officiel retrouve son département (95)', 95 === $every );
+check( 'chaque département pointe vers une région connue', 95 === count( array_filter( Departments::DATA, function ( $row ) { return null !== Regions::get( $row[4] ); } ) ) );
+$all = Departments::all();
+check( 'liste pour l’autocomplétion : code et nom seulement', 95 === count( $all ) && array( 'code' => '01', 'name' => 'Ain' ) === $all[0] && false === strpos( wp_json_encode( $all ), 'bbox' ) );
+
+$shapes = json_decode( (string) file_get_contents( dirname( __DIR__ ) . '/assets/data/departements-fr.geojson' ), true );
+$codes  = array_column( array_column( $shapes['features'], 'properties' ), 'code' );
+check( 'contours embarqués : les 95 départements dans l’ordre de la table, propriétés code et nom', Departments::codes() === $codes && array( 'code', 'nom' ) === array_keys( $shapes['features'][0]['properties'] ) );
+$inside = 0;
+$boxes  = 0;
+foreach ( $shapes['features'] as $feature ) {
+	$dep      = Departments::get( $feature['properties']['code'] );
+	$polygons = 'Polygon' === $feature['geometry']['type'] ? array( $feature['geometry']['coordinates'] ) : $feature['geometry']['coordinates'];
+	foreach ( $polygons as $polygon ) {
+		if ( $dep && $dep['name'] === $feature['properties']['nom'] && g2rd_in_ring( array( (float) $dep['lng'], (float) $dep['lat'] ), $polygon[0] ) ) {
+			++$inside;
+			break;
+		}
+	}
+	$real = g2rd_extent( $feature['geometry']['coordinates'] );
+	$box  = $dep ? $dep['bbox'] : array();
+	if ( 4 === count( $box ) && $box[0] <= $real[0] && $box[1] <= $real[1] && $box[2] >= $real[2] && $box[3] >= $real[3] && $real[0] - $box[0] <= 0.0001 + 1e-9 && $box[3] - $real[3] <= 0.0001 + 1e-9 ) {
+		++$boxes;
+	}
+}
+check( 'nom identique au contour, centre à l’intérieur, boîte englobante juste', 95 === $inside && 95 === $boxes );
+
+list( $s ) = boot();
+$locator   = new PlaceLocator( new PhotonGeocoder( $s ) );
+g2rd_world(
+	array(
+		'Vienne, Isère'  => array( 'Vienne' ),
+		'Calvados, Orne' => array( 'Calvados' ), // Seule la limite du département porte ce nom.
+		'Caen, Calvados' => array( 'Caen' ),
+	)
+);
+$r = $locator->locate( 'Calvados' );
+check( 'département seul : centre fixe, adresse départementale, sans requête', is_array( $r ) && array( 'type' => 'department', 'label' => 'Calvados', 'lat' => $d['lat'], 'lng' => $d['lng'], 'department' => '14' ) === $r['places'][0] && 'Normandie' === $r['address']['state_long'] && 'Calvados, France' === $r['address']['formatted_address'] && '' === $r['address']['city'] && 'FR' === $r['address']['country_short'] && array() === $GLOBALS['g2rd_world_queries'] );
+$cases = array(
+	'Calvados ; Orne'                     => 'department:Calvados | department:Orne',
+	'Calvados, Normandie'                 => 'department:Calvados',
+	'Calvados, France'                    => 'department:Calvados',
+	'Seine et Marne'                      => 'department:Seine-et-Marne',
+	'Normandie ; Eure-et-Loir'            => 'region:Normandie | department:Eure-et-Loir',
+	'Calvados ; Département du Calvados' => 'department:Calvados',
+	'Normandie, Calvados'                 => 'department:Calvados',
+);
+foreach ( $cases as $text => $expected ) {
+	check( sprintf( '« %s » → %s (sans requête)', $text, $expected ), $expected === g2rd_labels( $locator->locate( $text ) ) && array() === $GLOBALS['g2rd_world_queries'] );
+}
+$cases = array(
+	'Vienne (38)'                => 'city:Vienne',
+	'Vienne, Isère'              => 'city:Vienne',
+	'Calvados, Orne'             => 'department:Calvados | department:Orne',
+	'Caen, Calvados'             => 'city:Caen',
+	'Rouen, Calvados, Normandie' => 'city:Rouen | department:Calvados',
+	'Paris'                      => 'city:Paris',
+);
+foreach ( $cases as $text => $expected ) {
+	check( sprintf( '« %s » → %s', $text, $expected ), $expected === g2rd_labels( $locator->locate( $text ) ) );
+}
+
+update_post_meta(
+	900,
+	GeocodingIntegration::META_PLACES,
+	array(
+		array( 'type' => 'department', 'label' => '<b>Calvados</b>', 'lat' => $d['lat'], 'lng' => $d['lng'], 'department' => '14' ),
+		array( 'type' => 'department', 'label' => 'Paris', 'lat' => '48.85', 'lng' => '2.35', 'department' => '75' ),
+	)
+);
+$p = RestController::places( 900, (float) $d['lat'], (float) $d['lng'], '', true );
+check( 'carte : département revérifié (nom et boîte de la table), département inconnu écarté', 1 === count( $p ) && 'department' === $p[0]['type'] && 'Calvados' === $p[0]['label'] && '14' === $p[0]['department'] && $d['bbox'] === $p[0]['bbox'] && (float) $d['lng'] === $p[0]['lng'] );
 
 $results = $GLOBALS['g2rd_results'];
 echo PHP_EOL . sprintf( 'Résultat : %d réussis, %d échoués', $results['pass'], $results['fail'] ) . PHP_EOL;

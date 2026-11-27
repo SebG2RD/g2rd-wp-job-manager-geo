@@ -147,11 +147,13 @@ class JobsMap {
 			'alsoAt'        => __( 'Aussi à :', 'g2rd-wpjm-geo' ),
 			/* translators: %s: region name. */
 			'regionTitle'   => __( '%s (toute la région)', 'g2rd-wpjm-geo' ),
+			/* translators: %s: department name. */
+			'departmentTitle' => __( '%s (tout le département)', 'g2rd-wpjm-geo' ),
 			'oneJob'        => __( '1 offre', 'g2rd-wpjm-geo' ),
 			/* translators: %d: number of jobs (2 or more). */
 			'manyJobsShort' => __( '%d offres', 'g2rd-wpjm-geo' ),
 			'legendCity'    => __( 'Offre dans une ville', 'g2rd-wpjm-geo' ),
-			'legendRegion'  => __( 'Offre sur toute une région', 'g2rd-wpjm-geo' ),
+			'legendRegion'  => __( 'Offre sur toute une région ou un département', 'g2rd-wpjm-geo' ),
 		);
 
 		$attributes = array(

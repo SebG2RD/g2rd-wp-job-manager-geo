@@ -1,6 +1,6 @@
 <?php
 /**
- * Lieux d'une offre : texte du champ « Lieu » → villes et régions placées.
+ * Lieux d'une offre : texte du champ « Lieu » → villes, départements et régions placés.
  *
  * @package G2RD\WPJMGeo
  */
@@ -12,8 +12,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Découpe le texte (PlaceParser), reconnaît les régions françaises (Regions,
- * sans réseau) et géocode les villes avec Photon.
+ * Découpe le texte (PlaceParser), reconnaît les régions et les départements
+ * français (Regions, Departments, sans réseau) et géocode les villes avec Photon.
  *
  * Règle de la virgule : les segments qui suivent le premier le précisent s'ils
  * égalent le pays, la région ou le département du lieu trouvé ; sinon chacun
@@ -123,7 +123,14 @@ class PlaceLocator {
 				);
 			}
 			foreach ( $result['found'] as $entry ) {
-				$key = 'region' === $entry['place']['type'] ? 'r:' . $entry['place']['region'] : 'c:' . $entry['place']['lat'] . ',' . $entry['place']['lng'];
+				$place = $entry['place'];
+				if ( 'region' === $place['type'] ) {
+					$key = 'r:' . $place['region'];
+				} elseif ( 'department' === $place['type'] ) {
+					$key = 'd:' . $place['department'];
+				} else {
+					$key = 'c:' . $place['lat'] . ',' . $place['lng'];
+				}
 				if ( ! isset( $seen[ $key ] ) && count( $found ) < self::MAX_PLACES ) {
 					$seen[ $key ] = true;
 					$found[]      = $entry;
@@ -166,22 +173,33 @@ class PlaceLocator {
 		$first = $segments[0];
 		$rest  = array_slice( $segments, 1 );
 
-		$region = self::hinted( $first, $rest ) ? null : Regions::find( $first );
+		$hinted = self::hinted( $first, $rest );
+		$region = $hinted ? null : Regions::find( $first );
 		if ( $region ) {
-			$more = array();
+			$more   = array();
+			$within = false;
 			foreach ( $rest as $segment ) {
 				if ( '' !== self::segment_key( $segment ) ) {
 					$more[] = $segment;
+					$named  = Departments::find( $segment );
+					$within = $within || ( $named && $named['region'] === $region['code'] );
 				}
 			}
-			return self::result( array( self::region_entry( $region ) ), array(), $more );
+			// « Normandie, Calvados » : le département précise la région, qui n'est pas gardée.
+			return self::result( $within ? array() : array( self::region_entry( $region ) ), array(), $more );
+		}
+
+		$department = $hinted ? null : Departments::find( $first );
+		if ( $department && self::frames( $department, $rest ) ) {
+			return self::result( array( self::department_entry( $department ) ), array(), array() );
 		}
 
 		$detailed = $this->geocode( $piece );
 		if ( is_wp_error( $detailed ) || self::DEFER === $detailed ) {
 			return $detailed;
 		}
-		if ( is_array( $detailed ) ) {
+		// Département suivi d'autres lieux (« Vienne, Isère ») : une ville seulement si Photon trouve une commune, pas la limite du département.
+		if ( is_array( $detailed ) && ( ! $department || '' !== $detailed['address']['city'] ) ) {
 			return self::result( array( self::city_entry( $detailed ) ), array(), self::unused( $detailed, $rest ) );
 		}
 		if ( ! $rest ) {
@@ -212,6 +230,16 @@ class PlaceLocator {
 				$items[] = array(
 					'key'     => $key,
 					'entry'   => self::region_entry( $region ),
+					'context' => array(),
+				);
+				continue;
+			}
+			$department = '' === PhotonGeocoder::hint( $segment ) ? Departments::find( $segment ) : null;
+			if ( $department ) {
+				$covered[ $department['region'] ] = true;
+				$items[]                          = array(
+					'key'     => $key,
+					'entry'   => self::department_entry( $department ),
 					'context' => array(),
 				);
 				continue;
@@ -307,6 +335,28 @@ class PlaceLocator {
 			}
 		}
 		return false;
+	}
+
+	/**
+	 * Les segments qui suivent un département ne font-ils que le situer (sa région,
+	 * le pays, lui-même) ? « Calvados, Normandie » oui, « Vienne, Isère » non.
+	 *
+	 * @param array{code:string,region:string} $department Département.
+	 * @param list<string>                     $rest       Segments suivant le premier.
+	 * @return bool
+	 */
+	private static function frames( array $department, array $rest ) {
+		foreach ( $rest as $segment ) {
+			if ( '' === self::segment_key( $segment ) ) {
+				continue;
+			}
+			$region = Regions::find( $segment );
+			$same   = Departments::find( $segment );
+			if ( ! ( $region && $region['code'] === $department['region'] ) && ! ( $same && $same['code'] === $department['code'] ) ) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	/**
@@ -417,6 +467,35 @@ class PlaceLocator {
 				'formatted_address' => $region['name'] . ', France',
 				'city'              => '',
 				'state_long'        => $region['name'],
+				'postcode'          => '',
+				'country_long'      => 'France',
+				'country_short'     => 'FR',
+			),
+		);
+	}
+
+	/**
+	 * Lieu « département » : centre fixe, adresse avec la région pour les champs de WP Job Manager.
+	 *
+	 * @param array{code:string,name:string,lat:string,lng:string,region:string} $department Département.
+	 * @return array{place:array<string,string>,address:array<string,string>}
+	 */
+	private static function department_entry( array $department ) {
+		$region = Regions::get( $department['region'] );
+		return array(
+			'place'   => array(
+				'type'       => 'department',
+				'label'      => $department['name'],
+				'lat'        => $department['lat'],
+				'lng'        => $department['lng'],
+				'department' => $department['code'],
+			),
+			'address' => array(
+				'lat'               => $department['lat'],
+				'long'              => $department['lng'],
+				'formatted_address' => $department['name'] . ', France',
+				'city'              => '',
+				'state_long'        => $region ? $region['name'] : '',
 				'postcode'          => '',
 				'country_long'      => 'France',
 				'country_short'     => 'FR',

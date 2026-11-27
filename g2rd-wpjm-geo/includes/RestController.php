@@ -374,7 +374,7 @@ class RestController {
 	}
 
 	/**
-	 * Lieu enregistré, revérifié : coordonnées bornées, région connue (nom officiel).
+	 * Lieu enregistré, revérifié : coordonnées bornées, région ou département connu (nom officiel).
 	 *
 	 * @param mixed $place Élément de la métadonnée.
 	 * @return array<string,string|float>|null
@@ -406,6 +406,17 @@ class RestController {
 			$clean['lng']    = (float) $region['lng'];
 			// Boîte du contour, tirée de la table du plugin et non des données enregistrées.
 			$clean['bbox'] = $region['bbox'];
+		} elseif ( 'department' === $place['type'] ) {
+			$department = isset( $place['department'] ) && is_scalar( $place['department'] ) ? Departments::get( (string) $place['department'] ) : null;
+			if ( ! $department ) {
+				return null;
+			}
+			$clean['type']       = 'department';
+			$clean['label']      = $department['name'];
+			$clean['department'] = $department['code'];
+			$clean['lat']        = (float) $department['lat'];
+			$clean['lng']        = (float) $department['lng'];
+			$clean['bbox']       = $department['bbox'];
 		}
 		return $clean;
 	}
