@@ -221,7 +221,7 @@ class PlaceLocator {
 		$lost    = array();
 		$covered = array();
 		foreach ( $segments as $segment ) {
-			$key = self::segment_key( $segment );
+			$key = self::place_key( $segment );
 			if ( '' === $key || self::in_context( $key, $items, -1 ) ) {
 				continue; // Ni un lieu, ni autre chose qu'une précision d'une ville déjà trouvée.
 			}
@@ -291,7 +291,7 @@ class PlaceLocator {
 		$own     = Regions::find( $detailed['address']['state_long'] );
 		$more    = array();
 		foreach ( $rest as $segment ) {
-			$key = self::segment_key( $segment );
+			$key = self::place_key( $segment );
 			if ( '' === $key || in_array( $key, $context, true ) ) {
 				continue;
 			}
@@ -390,6 +390,20 @@ class PlaceLocator {
 	private static function segment_key( $segment ) {
 		$key = self::key( PhotonGeocoder::clean( $segment ) );
 		return ( in_array( $key, PhotonGeocoder::VAGUE, true ) || 'france' === $key ) ? '' : $key;
+	}
+
+	/**
+	 * Comme segment_key(), mais un département sans indice est ramené à son nom
+	 * (« Département du Calvados » → « calvados ») : il se compare ainsi au
+	 * département d'une ville trouvée, que Photon donne sans préfixe.
+	 *
+	 * @param string $segment Segment.
+	 * @return string
+	 */
+	private static function place_key( $segment ) {
+		$key        = self::segment_key( $segment );
+		$department = ( '' !== $key && '' === PhotonGeocoder::hint( $segment ) ) ? Departments::find( $segment ) : null;
+		return $department ? self::key( $department['name'] ) : $key;
 	}
 
 	/**

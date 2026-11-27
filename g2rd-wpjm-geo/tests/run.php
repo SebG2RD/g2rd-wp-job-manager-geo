@@ -1866,6 +1866,7 @@ g2rd_world(
 		'Vienne, Isère'  => array( 'Vienne' ),
 		'Calvados, Orne' => array( 'Calvados' ), // Seule la limite du département porte ce nom.
 		'Caen, Calvados' => array( 'Caen' ),
+		'Caen, Département du Calvados' => array( 'Caen' ),
 	)
 );
 $r = $locator->locate( 'Calvados' );
@@ -1887,6 +1888,8 @@ $cases = array(
 	'Vienne, Isère'              => 'city:Vienne',
 	'Calvados, Orne'             => 'department:Calvados | department:Orne',
 	'Caen, Calvados'             => 'city:Caen',
+	'Caen, Département du Calvados'          => 'city:Caen',
+	'Rouen, Caen, Département du Calvados'   => 'city:Rouen | city:Caen',
 	'Rouen, Calvados, Normandie' => 'city:Rouen | department:Calvados',
 	'Paris'                      => 'city:Paris',
 );
