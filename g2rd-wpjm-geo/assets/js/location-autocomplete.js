@@ -23,9 +23,9 @@
 	];
 	// Photon : villes, bourgs, villages et communes du monde entier.
 	var PHOTON_TAGS = [ 'place:city', 'place:town', 'place:village', 'place:municipality' ];
-	// Mode étiquettes (configuration du plugin en mode libre) : plusieurs lieux, régions proposées sans réseau.
+	// Mode étiquettes (configuration du plugin en mode libre) : plusieurs lieux, régions et départements proposés sans réseau.
 	var T = 'photon' === source && settings.tags ? window.g2rdWpjmGeoTags : null;
-	var regionIndex = T ? T.regionIndex( settings.regions ) : [];
+	var regionIndex = T ? T.regionIndex( settings.regions, settings.departments ) : [];
 	var MAX_SUGGESTIONS = 6;
 	var uid = 0;
 
@@ -66,7 +66,7 @@
 		return out;
 	}
 
-	// Commune dont le nom est aussi celui d'une region (« Bretagne », Indre) : le libelle recoit un indice que le
+	// Commune dont le nom est aussi celui d'une region ou d'un departement (« Bretagne », Indre ; « Vienne », Isere) : le libelle recoit un indice que le
 	// serveur reconnait (PhotonGeocoder::hint), sinon il lirait la region. Departement (2 chiffres, 3 pour 97),
 	// ou code postal complet pour la Corse (20) ; sans code postal, le nom reste seul.
 	function homonymName( props ) {
@@ -123,7 +123,7 @@
 
 	function fromRegions( value ) {
 		return T.searchRegions( value, regionIndex, MAX_SUGGESTIONS ).map( function ( hit ) {
-			var kind = i18n.region || '';
+			var kind = ( 'department' === hit.region.kind ? i18n.department : i18n.region ) || '';
 			return {
 				label: hit.region.name,
 				main: hit.region.name,
@@ -134,7 +134,7 @@
 		} );
 	}
 
-	// Mode étiquettes : régions dont le nom commence par la saisie, puis villes Photon, puis régions trouvées par un mot.
+	// Mode étiquettes : régions et départements dont le nom commence par la saisie, puis villes Photon, puis ceux trouvés par un mot.
 	function merge( local, cities ) {
 		var first = local.filter( function ( item ) {
 			return item.start;
@@ -565,7 +565,7 @@
 			return;
 		}
 		if ( T ) {
-			var field = T.create( input, { regions: settings.regions, max: settings.maxPlaces || 10, i18n: settings.tagsI18n || {} } );
+			var field = T.create( input, { regions: settings.regions, departments: settings.departments, max: settings.maxPlaces || 10, i18n: settings.tagsI18n || {} } );
 			attach( field.input, field );
 			return;
 		}

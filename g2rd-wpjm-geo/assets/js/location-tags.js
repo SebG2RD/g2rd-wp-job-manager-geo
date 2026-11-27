@@ -1,9 +1,9 @@
 /**
- * Champ « Lieu » à étiquettes (mode OpenStreetMap) : plusieurs villes et régions
+ * Champ « Lieu » à étiquettes (mode OpenStreetMap) : plusieurs villes, départements et régions
  * dans le champ natif de WP Job Manager, joints par « ; ». Le champ natif reste
  * celui qui est enregistré : il est masqué et mis à jour à chaque ajout ou retrait.
  * Fonctions de texte partagées avec l'autocomplétion : découpage (comme
- * PlaceParser::split() côté serveur) et recherche des régions (comme Regions::find()).
+ * PlaceParser::split() côté serveur) et recherche des régions et des départements (comme Regions::find() et Departments::find()).
  */
 ( function ( window, document ) {
 	'use strict';
@@ -80,7 +80,9 @@
 		return pieces( text, false );
 	}
 
-	function regionIndex( regions ) {
+	// Régions et départements dans un même index. Un département a kind « department » et un code
+	// préfixé « D » : le département 28 (Eure-et-Loir) n'est pas la région 28 (Normandie).
+	function regionIndex( regions, departments ) {
 		var entries = [];
 		( Array.isArray( regions ) ? regions : [] ).forEach( function ( region ) {
 			if ( ! region || 'string' !== typeof region.code || 'string' !== typeof region.name ) {
@@ -92,19 +94,37 @@
 				}
 			} );
 		} );
+		( Array.isArray( departments ) ? departments : [] ).forEach( function ( department ) {
+			if ( department && 'string' === typeof department.code && 'string' === typeof department.name && department.name ) {
+				entries.push( { key: key( department.name ), name: department.name, region: { code: 'D' + department.code, name: department.name, kind: 'department' } } );
+			}
+		} );
 		return entries;
 	}
 
+	// Formes cherchées, comme Regions::find() et Departments::find() : la saisie telle quelle, puis sans
+	// « Région » (régions seulement) ou sans « Département (de, du, de la, des, d') » (départements seulement).
+	function variants( text ) {
+		var full = key( text );
+		var out = full ? [ { text: full, kind: '' } ] : [];
+		[ [ /^region /, 'region' ], [ /^departement (?:de la |de l |du |des |de |d )?/, 'department' ] ].forEach( function ( prefix ) {
+			var stripped = key( full.replace( prefix[ 0 ], '' ) );
+			if ( stripped && stripped !== full ) {
+				out.push( { text: stripped, kind: prefix[ 1 ] } );
+			}
+		} );
+		return out;
+	}
+
+	function fits( entry, variant ) {
+		return ! variant.kind || variant.kind === ( entry.region.kind || 'region' );
+	}
+
 	function findRegion( text, index ) {
-		var wanted = key( text );
-		var candidates = [ wanted, key( wanted.replace( /^region /, '' ) ) ];
 		var found = null;
-		if ( ! wanted ) {
-			return null;
-		}
-		candidates.some( function ( candidate ) {
+		variants( text ).some( function ( variant ) {
 			index.some( function ( entry ) {
-				if ( entry.key === candidate ) {
+				if ( entry.key === variant.text && fits( entry, variant ) ) {
 					found = entry.region;
 					return true;
 				}
@@ -115,24 +135,20 @@
 		return found;
 	}
 
-	// Régions dont un nom commence par la saisie, puis dont un mot commence par elle (3 lettres au moins).
-	// La saisie est comparée telle quelle (« Région Sud ») et sans le préfixe « Région » (« Région Bretagne »).
+	// Régions et départements dont un nom commence par la saisie, puis dont un mot commence par elle (3 lettres
+	// au moins). La saisie est comparée telle quelle (« Région Sud ») et sans son préfixe (« Région Bretagne »).
 	function searchRegions( query, index, max ) {
-		var full = key( query );
-		var stripped = key( full.replace( /^region /, '' ) );
-		var wanted = stripped && stripped !== full ? [ full, stripped ] : [ full ];
+		var wanted = variants( query );
 		var out = [];
 		var seen = {};
-		if ( ! full ) {
-			return out;
-		}
 		[ 0, 1 ].forEach( function ( pass ) {
 			index.forEach( function ( entry ) {
 				if ( out.length >= max || seen[ entry.region.code ] ) {
 					return;
 				}
-				var hit = wanted.some( function ( text ) {
-					return 0 === pass ? 0 === entry.key.indexOf( text ) : text.length >= 3 && ( ' ' + entry.key ).indexOf( ' ' + text ) > 0;
+				var hit = wanted.some( function ( variant ) {
+					var text = variant.text;
+					return fits( entry, variant ) && ( 0 === pass ? 0 === entry.key.indexOf( text ) : text.length >= 3 && ( ' ' + entry.key ).indexOf( ' ' + text ) > 0 );
 				} );
 				if ( hit ) {
 					seen[ entry.region.code ] = true;
@@ -152,7 +168,7 @@
 	/**
 	 * Remplace à l'écran le champ natif par une zone à étiquettes.
 	 *
-	 * has( text, region ) indique si un lieu est déjà présent (même texte, ou même région sous une autre écriture).
+	 * has( text, region ) indique si un lieu est déjà présent (même texte, ou même région ou même département sous une autre écriture).
 	 *
 	 * @return {{root: Element, input: HTMLInputElement, add: Function, commit: Function, has: Function, values: Function}}
 	 */
@@ -160,7 +176,7 @@
 		var opts = options || {};
 		var i18n = opts.i18n || {};
 		var max = opts.max || 10;
-		var index = regionIndex( opts.regions );
+		var index = regionIndex( opts.regions, opts.departments );
 		var required = !! native.required;
 		var tags = [];
 		var settled = ''; // Texte de la saisie au dernier état enregistré dans le champ natif.

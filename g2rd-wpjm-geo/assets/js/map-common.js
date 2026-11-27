@@ -116,7 +116,8 @@
 
 	function regionTitle( region, i18n ) {
 		var label = region.label || '';
-		return String( i18n.regionTitle || '%s' ).replace( '%s', function () {
+		var template = 'department' === region.kind && i18n.departmentTitle ? i18n.departmentTitle : i18n.regionTitle;
+		return String( template || '%s' ).replace( '%s', function () {
 			return label;
 		} ) + ' \u2014 ' + jobCount( region.jobs.length, i18n );
 	}
@@ -137,9 +138,18 @@
 	// Lieux d'une offre (champ places de l'API) ; sans liste, l'offre garde son point unique.
 	function placesOf( job ) {
 		var list = Array.isArray( job.places ) ? job.places.filter( function ( place ) {
-			return place && ( 'city' === place.type || ( 'region' === place.type && 'string' === typeof place.region && place.region ) );
+			return place && ( 'city' === place.type || '' !== areaCode( place ) );
 		} ) : [];
 		return list.length ? list : [ { type: 'city', label: '', lat: job.latitude, lng: job.longitude } ];
+	}
+
+	// Code d'une zone (région ou département), chaîne vide pour une ville. Celui d'un département est préfixé « D » :
+	// le département 28 (Eure-et-Loir) n'est pas la région 28 (Normandie).
+	function areaCode( place ) {
+		if ( 'region' === place.type && 'string' === typeof place.region && place.region ) {
+			return place.region;
+		}
+		return 'department' === place.type && 'string' === typeof place.department && place.department ? 'D' + place.department : '';
 	}
 
 	// Boîte d'une région recopiée si valide (4 nombres, bornes, ouest < est, sud < nord), sinon null.
@@ -160,7 +170,7 @@
 
 	/**
 	 * Une copie de l'offre par ville (coordonnées de la ville) et une entrée par
-	 * région. Chaque copie porte `_also` : les autres lieux de l'offre.
+	 * zone (région ou département, kind « region » ou « department »). Chaque copie porte `_also` : les autres lieux de l'offre.
 	 */
 	function splitPlaces( jobs ) {
 		var points = [];
@@ -171,8 +181,8 @@
 			var seen = Object.create( null );
 			var places = placesOf( job ).filter( function ( place ) {
 				var key;
-				if ( 'region' === place.type ) {
-					key = 'r' + place.region;
+				if ( areaCode( place ) ) {
+					key = 'r' + areaCode( place );
 				} else {
 					var cLat = parseFloat( place.lat );
 					var cLng = parseFloat( place.lng );
@@ -201,17 +211,18 @@
 					}
 				} );
 				copy._also = also;
-				if ( 'region' === place.type ) {
+				var area = areaCode( place );
+				if ( area ) {
 					var lat = parseFloat( place.lat );
 					var lng = parseFloat( place.lng );
 					if ( ! isFinite( lat ) || ! isFinite( lng ) || Math.abs( lat ) > 90 || Math.abs( lng ) > 180 ) {
 						return;
 					}
-					if ( ! regions[ place.region ] ) {
-						regions[ place.region ] = { code: place.region, label: place.label || '', position: { lat: lat, lng: lng }, bounds: validBounds( place.bbox ), jobs: [] };
-						order.push( place.region );
+					if ( ! regions[ area ] ) {
+						regions[ area ] = { code: area, kind: place.type, label: place.label || '', position: { lat: lat, lng: lng }, bounds: validBounds( place.bbox ), jobs: [] };
+						order.push( area );
 					}
-					regions[ place.region ].jobs.push( copy );
+					regions[ area ].jobs.push( copy );
 					return;
 				}
 				copy.latitude = place.lat;

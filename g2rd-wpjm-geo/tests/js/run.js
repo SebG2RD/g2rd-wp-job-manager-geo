@@ -78,11 +78,11 @@ const HOSTILE_ATTRIBUTION = '<a href="https://openfreemap.org" target="_blank">O
   + '<img src="x" onerror="window.pwned=1"><iframe srcdoc="<b>cadre</b>"></iframe><a href="javascript:window.pwned=2">piege</a><b data-poc="1" onmouseover="window.pwned=3">gras</b>';
 
 async function osmMap({ data, clustering = true, noWebgl = false, styleFail = false, restFail = false, preload = true, admin = '', narrow = false, regionsFail = false, throwRender = false, badShape = false, italicFirst = false }) {
-  const i18n = JSON.stringify({ loading: 'Chargement', error: 'ERREUR', empty: 'VIDE', view: 'Voir offre', manyJobs: '%d offres ici', regeocode: 'Re-geocoder', places: 'Liste', alsoAt: 'Aussi à :', regionTitle: '%s (toute la région)', oneJob: '1 offre', manyJobsShort: '%d offres', legendCity: 'Offre dans une ville', legendRegion: 'Offre sur toute une région' }).replace(/"/g, '&quot;');
+  const i18n = JSON.stringify({ loading: 'Chargement', error: 'ERREUR', empty: 'VIDE', view: 'Voir offre', manyJobs: '%d offres ici', regeocode: 'Re-geocoder', places: 'Liste', alsoAt: 'Aussi à :', regionTitle: '%s (toute la région)', departmentTitle: '%s (tout le département)', oneJob: '1 offre', manyJobsShort: '%d offres', legendCity: 'Offre dans une ville', legendRegion: 'Offre sur toute une région' }).replace(/"/g, '&quot;');
   const html = '<div class="g2rd-wpjm-geo-map" data-rest-url="https://x.test/wp-json/g2rd-wpjm-geo/v1/jobs" data-per-page="4" data-clustering="' + (clustering ? 1 : 0) + '" data-admin-url="' + admin + '" data-nonce="" data-i18n="' + i18n + '"><div class="g2rd-wpjm-geo-map__canvas"></div><p class="g2rd-wpjm-geo-map__status">Chargement</p></div>';
   const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://x.test/' });
   const w = dom.window;
-  const st = { map: null, mapOpts: null, sources: {}, layers: [], layout: [], popups: [], fit: null, jump: null, ease: null, controls: [], noRotate: false, before: {}, states: [], markers: [], rendered: [], regionFetches: 0, controlNodes: [], queryLayers: null, canvas: null };
+  const st = { map: null, mapOpts: null, sources: {}, layers: [], layout: [], popups: [], fit: null, jump: null, ease: null, controls: [], noRotate: false, before: {}, states: [], markers: [], rendered: [], regionFetches: 0, departmentFetches: 0, controlNodes: [], queryLayers: null, canvas: null };
   class FakeMap {
     constructor(o) {
       st.mapOpts = o; st.map = this; this.events = {};
@@ -124,7 +124,7 @@ async function osmMap({ data, clustering = true, noWebgl = false, styleFail = fa
   w.WebGL2RenderingContext = noWebgl ? undefined : function () {};
   w.HTMLCanvasElement.prototype.getContext = function () { return noWebgl ? null : {}; };
   if (narrow) w.innerWidth = 600;
-  w.g2rdWpjmGeoOsm = { styleUrl: 'https://tiles.openfreemap.org/styles/liberty', maplibreJs: 'https://x.test/vendor/maplibre-gl.js', maplibreCss: 'https://x.test/vendor/maplibre-gl.css', language: 'fr', locale: { 'Popup.Close': 'Fermer', 'Map.Title': '' }, regionsUrl: 'https://x.test/data/regions-fr.geojson?ver=1', regionsCredit: '<a href="https://www.data.gouv.fr/fr/datasets/contours-administratifs/">Contours des régions : data.gouv.fr (ODbL)</a>' };
+  w.g2rdWpjmGeoOsm = { styleUrl: 'https://tiles.openfreemap.org/styles/liberty', maplibreJs: 'https://x.test/vendor/maplibre-gl.js', maplibreCss: 'https://x.test/vendor/maplibre-gl.css', language: 'fr', locale: { 'Popup.Close': 'Fermer', 'Map.Title': '' }, regionsUrl: 'https://x.test/data/regions-fr.geojson?ver=1', departmentsUrl: 'https://x.test/data/departements-fr.geojson?ver=1', regionsCredit: '<a href="https://www.data.gouv.fr/fr/datasets/contours-administratifs/">Contours des régions : data.gouv.fr (ODbL)</a>' };
   w.IntersectionObserver = undefined;
   w.fetch = (url) => {
     if (url.indexOf('https://x.test/data/regions-fr.geojson') === 0) {
@@ -135,6 +135,15 @@ async function osmMap({ data, clustering = true, noWebgl = false, styleFail = fa
         { type: 'Feature', properties: { code: '28', nom: 'Normandie' }, geometry: badShape ? { type: 'Point', coordinates: [0, 49] } : square(0, 49) },
         { type: 'Feature', properties: { code: '53', nom: 'Bretagne' }, geometry: square(-3, 48) },
         { type: 'Feature', properties: { code: '11', nom: 'Île-de-France' }, geometry: square(2, 48) }
+      ] }) });
+    }
+    if (url.indexOf('https://x.test/data/departements-fr.geojson') === 0) {
+      st.departmentFetches++;
+      const square = (x, y) => ({ type: 'Polygon', coordinates: [[[x, y], [x + 0.5, y], [x + 0.5, y + 0.5], [x, y]]] });
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ type: 'FeatureCollection', features: [
+        { type: 'Feature', properties: { code: '14', nom: 'Calvados' }, geometry: square(-0.5, 49) },
+        { type: 'Feature', properties: { code: '28', nom: 'Eure-et-Loir' }, geometry: square(1.2, 48.2) },
+        { type: 'Feature', properties: { code: '61', nom: 'Orne' }, geometry: square(0, 48.5) }
       ] }) });
     }
     if (restFail) return Promise.resolve({ ok: false, status: 500, headers: { get: () => null } });
@@ -184,25 +193,31 @@ const REGIONS = [
   { code: '84', name: 'Auvergne-Rhône-Alpes', aliases: ['AURA', 'Auvergne', 'Rhône-Alpes'] },
   { code: '93', name: "Provence-Alpes-Côte d'Azur", aliases: ['PACA', 'Région Sud'] }
 ];
+const DEPARTMENTS = [
+  { code: '14', name: 'Calvados' },
+  { code: '28', name: 'Eure-et-Loir' },
+  { code: '59', name: 'Nord' },
+  { code: '86', name: 'Vienne' }
+];
 const TAGS_I18N = { remove: 'Retirer %s', added: 'Lieu ajouté : %s', removed: 'Lieu retiré : %s', duplicate: '%s figure déjà dans la liste.', limit: '3 lieux au plus.', required: 'Indiquez au moins un lieu.' };
 
 // Champ à étiquettes seul (sans l'autocomplétion), plafond de 3 lieux.
-function tagField({ value = '', required = false, max = 3 } = {}) {
+function tagField({ value = '', required = false, max = 3, departments = [] } = {}) {
   const dom = new JSDOM('<form><label for="job_location">Lieu</label><input type="text" id="job_location" name="job_location" placeholder="ex. Paris"' + (required ? ' required' : '') + ' value="' + value + '"></form>', { runScripts: 'outside-only' });
   const w = dom.window;
   w.eval(src('js/location-tags.js'));
   const d = w.document, native = d.getElementById('job_location');
   let changes = 0; native.addEventListener('change', () => changes++);
-  const field = w.g2rdWpjmGeoTags.create(native, { regions: REGIONS, max, i18n: TAGS_I18N });
+  const field = w.g2rdWpjmGeoTags.create(native, { regions: REGIONS, departments, max, i18n: TAGS_I18N });
   return { w, d, native, field, input: field.input, tags: () => [...d.querySelectorAll('.g2rd-wpjm-geo-tags__tag')], live: () => d.querySelector('.g2rd-wpjm-geo-tags__live').textContent, changes: () => changes };
 }
 
 // Autocomplétion Photon en mode étiquettes, comme le PHP la configure en mode libre.
-async function tagsAc({ features = null, max = 10, required = false, regions = REGIONS } = {}) {
+async function tagsAc({ features = null, max = 10, required = false, regions = REGIONS, departments = [] } = {}) {
   const dom = new JSDOM('<form id="f"><label for="job_location">Lieu</label><input type="text" id="job_location" name="job_location" placeholder="ex. Paris"' + (required ? ' required' : '') + '><button id="go">Envoyer</button></form>', { runScripts: 'outside-only', pretendToBeVisual: true });
   const w = dom.window, calls = [];
-  w.g2rdWpjmGeoAutocomplete = { source: 'photon', photonUrl: 'https://photon.test/api/', lang: 'fr', selectors: ['#job_location'], minLength: 2, tags: true, maxPlaces: max, regions, tagsI18n: TAGS_I18N,
-    i18n: { poweredBy: 'Recherche (c) OpenStreetMap contributors', results: 'Suggestions', region: 'Région' } };
+  w.g2rdWpjmGeoAutocomplete = { source: 'photon', photonUrl: 'https://photon.test/api/', lang: 'fr', selectors: ['#job_location'], minLength: 2, tags: true, maxPlaces: max, regions, departments, tagsI18n: TAGS_I18N,
+    i18n: { poweredBy: 'Recherche (c) OpenStreetMap contributors', results: 'Suggestions', region: 'Région', department: 'Département' } };
   w.AbortController = class { constructor() { this.signal = { aborted: false }; } abort() { this.signal.aborted = true; } };
   const feature = (name, county, state) => ({ properties: { name, county, state, country: 'France', osm_key: 'place' } });
   w.fetch = url => {
@@ -1010,6 +1025,62 @@ const regionNoBox = { id: 15, title: 'Sans boite', permalink: 'https://x.test/jo
     const mheads = [...mdet.querySelectorAll('.g2rd-wpjm-geo-places__heading')].map(h => h.textContent);
     check('lieux de meme libelle fusionnes en une section', 1 === mheads.length && 'Paris, France — 3 offres' === mheads[0] && 3 === mdet.querySelectorAll('.g2rd-wpjm-geo-places__job').length);
   }
+
+  console.log('\nO. Departements');
+  {
+    const tw = new JSDOM('<p></p>', { runScripts: 'outside-only' }).window;
+    tw.eval(src('js/location-tags.js'));
+    const T = tw.g2rdWpjmGeoTags;
+    const idx = T.regionIndex(REGIONS, DEPARTMENTS);
+    const cal = T.findRegion('calvados', idx);
+    check('departement exact : code prefixe « D », type department ; article et prefixe « Departement de la » acceptes', !!cal && 'D14' === cal.code && 'department' === cal.kind && 'D86' === T.findRegion('Département de la Vienne', idx).code && 'D59' === T.findRegion('le Nord', idx).code);
+    check('prefixes croises refuses comme sur le serveur : « Region Calvados », « Departement Normandie »', null === T.findRegion('Région Calvados', idx) && null === T.findRegion('Département Normandie', idx) && '28' === T.findRegion('Normandie', idx).code);
+    const hits = T.searchRegions('nor', idx, 6);
+    check('recherche : regions puis departements dont le nom commence par la saisie', 'Normandie|Nord' === hits.map(h => h.region.name).join('|') && 'department' === hits[1].region.kind);
+    check('sans liste de departements : aucun departement reconnu', null === T.findRegion('Calvados', T.regionIndex(REGIONS)));
+  }
+  const fd = tagField({ departments: DEPARTMENTS });
+  fd.field.add('Normandie'); fd.field.add('Eure-et-Loir');
+  check('region 28 et departement 28 : deux etiquettes distinctes, toutes deux des zones', 'Normandie ; Eure-et-Loir' === fd.native.value && 2 === fd.tags().length && fd.tags().every(t => t.classList.contains('g2rd-wpjm-geo-tags__tag--region')));
+  check('meme departement sous une autre ecriture : doublon refuse', false === fd.field.add("Département d'Eure-et-Loir") && 2 === fd.tags().length);
+  let ga = await tagsAc({ features: [], departments: DEPARTMENTS });
+  await type(ga, 'calv');
+  check('autocompletion : departement propose sans reseau, mention « Departement »', 1 === ga.options().length && /Calvados/.test(ga.options()[0].textContent) && /Département/.test(ga.options()[0].textContent));
+  ga.options()[0].dispatchEvent(new ga.w.MouseEvent('mousedown', { bubbles: true, cancelable: true })); await wait(10);
+  check('departement choisi : nom seul dans le champ, etiquette de zone', 'Calvados' === ga.native.value && ga.tags()[0].classList.contains('g2rd-wpjm-geo-tags__tag--region'));
+  const vienne = { properties: { name: 'Vienne', county: 'Isère', state: 'Auvergne-Rhône-Alpes', country: 'France', countrycode: 'FR', postcode: '38200', osm_key: 'place' } };
+  ga = await tagsAc({ features: [vienne], departments: DEPARTMENTS });
+  await type(ga, 'vienne');
+  const vcity = ga.options().find(x => /Auvergne/.test(x.textContent));
+  check('ville homonyme d un departement : departement en tete, puis la ville', 2 === ga.options().length && /Département/.test(ga.options()[0].textContent) && !!vcity);
+  vcity.dispatchEvent(new ga.w.MouseEvent('mousedown', { bubbles: true, cancelable: true })); await wait(10);
+  check('ville homonyme choisie : numero du departement ajoute, etiquette de ville', 'Vienne (38), Auvergne-Rhône-Alpes, France' === ga.native.value && !ga.tags()[0].classList.contains('g2rd-wpjm-geo-tags__tag--region'));
+  {
+    const dw = new JSDOM('<p></p>', { runScripts: 'outside-only' }).window;
+    dw.eval(src('js/map-common.js'));
+    const DC = dw.g2rdWpjmGeoMapCommon;
+    const dsp = DC.splitPlaces([{ id: 1, title: 'A', places: [
+      { type: 'region', label: 'Normandie', lat: 49.1202, lng: 0.1128, region: '28', bbox: [-1.946, 48.182, 1.802, 50.069] },
+      { type: 'department', label: 'Eure-et-Loir', lat: 48.3, lng: 1.4, department: '28', bbox: [0.7, 47.9, 1.9, 48.9] },
+      { type: 'department', label: 'Sans code', lat: 1, lng: 1 }
+    ] }]);
+    check('departement : zone a part (D28, distincte de la region 28), boite recopiee ; sans code : ignore', 2 === dsp.regions.length && 'region' === dsp.regions[0].kind && 'D28' === dsp.regions[1].code && 'department' === dsp.regions[1].kind && '0.7,47.9,1.9,48.9' === dsp.regions[1].bounds.join() && 0 === dsp.points.length);
+    const ti = { regionTitle: '%s (toute la région)', departmentTitle: '%s (tout le département)', oneJob: '1 offre', manyJobsShort: '%d offres' };
+    check('titres : « (tout le departement) » ou « (toute la region) »', 'Eure-et-Loir (tout le département) — 1 offre' === DC.regionTitle(dsp.regions[1], ti) && 'Normandie (toute la région) — 1 offre' === DC.regionTitle(dsp.regions[0], ti));
+  }
+  const depJobs = [
+    { id: 21, title: 'Calvados', permalink: 'https://x.test/job/21', company: 'C', city: '', country: 'France', latitude: 49.09, longitude: -0.36, job_type: '', places: [{ type: 'department', label: 'Calvados', lat: 49.09, lng: -0.36, department: '14', bbox: [-1.16, 48.75, 0.45, 49.43] }] },
+    { id: 22, title: 'Eure-et-Loir et Normandie', permalink: 'https://x.test/job/22', company: 'E', city: '', country: 'France', latitude: 48.3, longitude: 1.4, job_type: '', places: [{ type: 'department', label: 'Eure-et-Loir', lat: 48.3, lng: 1.4, department: '28', bbox: [0.7, 47.9, 1.9, 48.9] }, { type: 'region', label: 'Normandie', lat: 49.1202, lng: 0.1128, region: '28', bbox: [-1.946, 48.182, 1.802, 50.069] }] }
+  ];
+  let od = await osmMap({ data: depJobs });
+  check('carte : contours des regions et des departements charges une fois chacun', 1 === od.st.regionFetches && 1 === od.st.departmentFetches);
+  check('zones : la region puis les departements affiches (Orne ecarte), codes distincts', '28,D14,D28' === od.st.sources['g2rd-regions'].data.features.map(z => z.properties.code).join());
+  const dl = od.st.sources['g2rd-region-labels'].data.features.map(z => z.properties.text);
+  check('etiquettes des departements dans le canevas', -1 !== dl.indexOf('Calvados · 1 offre') && -1 !== dl.indexOf('Eure-et-Loir · 1 offre'));
+  od.st.map.fire('click:g2rd-region-fill', { point: {}, lngLat: [-0.3, 49.1], features: [{ properties: { code: 'D14' } }] });
+  check('clic sur un departement : bulle « Calvados (tout le departement) »', /Calvados \(tout le département\)/.test(od.st.popups[od.st.popups.length - 1].node.textContent));
+  od = await osmMap({ data: [depJobs[0]] });
+  check('seulement des departements : contours des regions non charges', 0 === od.st.regionFetches && 1 === od.st.departmentFetches && 'D14' === od.st.sources['g2rd-regions'].data.features.map(z => z.properties.code).join());
 
   console.log('\nResultat JS : ' + pass + ' reussis, ' + fail + ' echoues');
   process.exit(fail ? 1 : 0);
