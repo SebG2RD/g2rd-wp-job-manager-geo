@@ -3,6 +3,6 @@
   "private": true,
   "description": "jsdom pour le harnais de tests JS (g2rd-wpjm-geo/tests/js/run.js) ; jamais livré avec le plugin.",
   "dependencies": {
-    "jsdom": "30.1.3"
+    "jsdom": "31.0.1"
   }
 }
